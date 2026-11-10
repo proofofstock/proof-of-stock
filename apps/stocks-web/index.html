@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Stock Token Passport</title>
+  <meta name="description" content="Is this token the stock it claims to be, and can you trust its price right now? Issuer registry, reference price and its age, DEX premium by market session, on Base and Robinhood Chain.">
+  <meta name="theme-color" content="#050608">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230052ff'/%3E%3Cpath d='M8 11l6 5-6 5' stroke='%23ffffff' stroke-width='3' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3Cpath d='M16 22h8' stroke='%23ffffff' stroke-width='3' stroke-linecap='round'/%3E%3C/svg%3E">
+  <!--og-->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Martian+Mono:wght@300;400;600&amp;family=Onest:wght@400;500;700&amp;display=swap">
+  <link rel="stylesheet" href="style.css">
+  <script src="app.js" defer></script>
+  <script src="beacon.js" defer></script>
+</head>
+<body>
+  <div class="bg" aria-hidden="true"><div class="bg-grid"></div><div class="bg-glow a"></div><div class="bg-glow b"></div><div class="bg-scan"></div></div>
+
+  <div class="tape" aria-label="Live: where on-chain prices sit against the issuer">
+    <span class="tape-label" title="How far each token's on-chain price sits from the issuer's own price">vs issuer</span>
+    <div class="tape-track"><div id="tape" class="tape-run"></div></div>
+  </div>
+
+  <header class="hero">
+    <p class="kicker">Built on Base · Coinbase tokenized stocks <span class="kicker-also">· also Robinhood Chain</span></p>
+    <h2 class="headline">Check a stock token<br><em>before you trade it.</em></h2>
+    <p class="lede">A stock token is the real thing only if its contract is in the issuer's registry. Its on-chain price only makes sense next to the issuer's own price and how old that price is. Type a ticker or an address and the terminal checks both.</p>
+    <div class="hero-try">
+      <span class="faint">try</span>
+      <button type="button" class="chip" data-run="NVDA">NVDA</button>
+      <button type="button" class="chip" data-run="TSLA">TSLA</button>
+      <button type="button" class="chip" data-run="AAPL">AAPL</button>
+      <button type="button" class="chip" data-run="MSTR">MSTR</button>
+      <button type="button" class="chip" data-run="CRCL">CRCL</button>
+      <button type="button" class="chip" data-run="now">now</button>
+      <button type="button" class="chip" data-run="impostors">impostors</button>
+      <button type="button" class="chip" data-run="help">help</button>
+    </div>
+    <div class="hero-stamps" aria-hidden="true"><span class="stamp ok">issuer-listed</span><span class="stamp bad">not official</span></div>
+  </header>
+
+  <main class="term" id="terminal" aria-label="Stock Token Passport terminal">
+    <header class="titlebar">
+      <span class="dots" role="group" aria-label="Window">
+        <button type="button" class="dot dot-r" data-win="clear" title="Clear the screen" aria-label="Clear the screen"><svg viewBox="0 0 12 12" aria-hidden="true"><path d="M3.5 3.5l5 5M8.5 3.5l-5 5"/></svg></button>
+        <button type="button" class="dot dot-y" data-win="normal" title="Normal size" aria-label="Normal size"><svg viewBox="0 0 12 12" aria-hidden="true"><path d="M3 6h6"/></svg></button>
+        <button type="button" class="dot dot-g" data-win="large" title="Larger window" aria-label="Larger window" aria-pressed="false"><svg viewBox="0 0 12 12" aria-hidden="true"><path d="M3 6h6M6 3v6"/></svg></button>
+      </span>
+      <h1>stock-token-passport</h1>
+      <nav class="tabs" role="tablist" aria-label="Chain">
+        <button type="button" class="tab" data-chain="base" role="tab" aria-selected="true">base</button>
+        <button type="button" class="tab" data-chain="robinhood" role="tab" aria-selected="false">robinhood</button>
+        <button type="button" class="tab" data-chain="all" role="tab" aria-selected="false">both</button>
+      </nav>
+    </header>
+
+    <section id="log" class="log" aria-live="polite" aria-label="Answers"></section>
+
+    <form id="prompt" class="prompt" autocomplete="off">
+      <label for="cmd" class="sr">Ticker, company name, contract address or command</label>
+      <span class="ps1" aria-hidden="true"><span class="chain-ps1">base</span><span class="i i-chev"></span></span>
+      <input id="cmd" name="cmd" type="text" maxlength="80" spellcheck="false" autocapitalize="off" placeholder="NVDA, Tesla, 0x address or help">
+      <button type="submit" class="go">check</button>
+    </form>
+
+    <footer class="statusbar">
+      <span id="status" class="status">connecting</span>
+      <span class="hint">↑↓ history · <kbd>help</kbd> · <button type="button" class="linkish" data-win="clear">clear screen</button></span>
+    </footer>
+  </main>
+
+  <section class="checks" aria-label="What it checks">
+    <article class="check">
+      <span class="num">01</span>
+      <h3>Is it the issuer's token?</h3>
+      <p>Coinbase lists its stock tokens on Base and Robinhood lists its own on Robinhood Chain. Only an exact contract address from those lists counts. A token that copies the name or symbol is marked <b class="t-bad">not official</b>, and you get a warning before any link to it opens.</p>
+      <div class="mini mini-id" aria-hidden="true"><span class="ok">0xb2..0cd0<span class="i i-check" aria-hidden="true"></span>registry</span><span class="bad">0x35..f703<span class="i i-cross" aria-hidden="true"></span>not listed</span></div>
+    </article>
+    <article class="check">
+      <span class="num">02</span>
+      <h3>What does the issuer say it's worth?</h3>
+      <p>The issuer's price for one token (Coinbase NAV or Robinhood token bid/ask), always with its age. These prices stop moving while the US market is closed. A price from 40 hours ago is normal on a Sunday and odd on a Tuesday afternoon.</p>
+      <div class="mini" aria-hidden="true"><span class="faint">reference</span> $188.42 <span class="faint">· 41 h ago · market closed</span></div>
+    </article>
+    <article class="check">
+      <span class="num">03</span>
+      <h3>How far has the chain drifted?</h3>
+      <p>Every 15 minutes we compare the deepest on-chain pool with that price and keep the history, split into market open, extended hours and closed. Under 0.5% stays grey. Amber is a gap, red is a big gap.</p>
+      <div class="mini" aria-hidden="true"><span>+0.13%</span> <span class="t-warn">+1.40%</span> <span class="t-bad">+4.12%</span></div>
+    </article>
+  </section>
+
+  <section class="why" aria-label="Why it matters">
+    <div class="why-text">
+      <h3>Where the gaps open</h3>
+      <p>From Friday close to Monday open the issuer's price stays the same for 65 hours, but the tokens keep trading. Holidays make that longer. This is when the on-chain price can move away from the share.</p>
+      <p class="faint">Each passport shows the last 72 hours with closed hours shaded.</p>
+    </div>
+    <svg class="why-art" viewBox="0 0 520 170" role="img" aria-label="Illustration: the premium drifting while the market is closed">
+      <rect x="150" y="10" width="210" height="130" class="art-closed"/>
+      <text x="255" y="30" text-anchor="middle" class="art-label">market closed · reference held</text>
+      <line x1="10" y1="90" x2="510" y2="90" class="art-zero"/>
+      <path d="M10 92 C40 88 70 95 100 90 S140 86 150 90 C170 96 190 78 215 72 S260 56 290 64 S340 50 360 58 C380 70 400 86 430 89 S490 91 510 90" class="art-line"/>
+      <text x="14" y="160" class="art-label">Fri session</text><text x="150" y="160" class="art-label">Fri 16:00 ET</text><text x="360" y="160" class="art-label">Mon 09:30 ET</text>
+    </svg>
+  </section>
+
+  <section class="agents" id="mcp" aria-label="For agents">
+    <div>
+      <h3>Ask it from your agent</h3>
+      <p>The same passport works as a public MCP server. Anyone can connect an agent to it without a key or an account. It has six read-only tools: <code>find_stock_token</code>, <code>list_stock_tokens</code>, <code>stock_passport</code>, <code>verify_stock_tokens</code> (up to 50 addresses before a buy), <code>recent_impostors</code> and <code>compare_venues</code>. They return data with its time and source. There is no tool that trades. <a class="inline-link" href="docs/reference/tools.md">Tool reference</a></p>
+      <p class="faint">Claude: Settings → Connectors → Add custom connector → paste the URL. Claude Code: run the command. Other MCP clients: the JSON.</p>
+    </div>
+    <div class="code">
+      <div class="code-head"><span>MCP server URL</span><button type="button" class="btn" data-copy="mcp-url">copy</button></div>
+      <pre id="mcp-url">__MCP_URL__</pre>
+      <div class="code-head"><span>Claude Code</span><button type="button" class="btn" data-copy="mcp-cc">copy</button></div>
+      <pre id="mcp-cc">claude mcp add --transport http stock-passport __MCP_URL__</pre>
+      <div class="code-head"><span>mcp.json</span><button type="button" class="btn" data-copy="mcp-json">copy</button></div>
+      <pre id="mcp-json">{
+  "mcpServers": {
+    "stock-passport": {
+      "type": "http",
+      "url": "__MCP_URL__"
+    }
+  }
+}</pre>
+    </div>
+  </section>
+
+  <footer class="foot">
+    <div class="foot-top">
+      <div class="foot-brand">
+        <span class="foot-mark" aria-hidden="true"><span class="i i-chev"></span></span>
+        <div>
+          <div class="foot-name">Stock Token Passport</div>
+          <div class="foot-tag">Issuer registries and prices for tokenized stocks, with their time and source. Built on Base.</div>
+        </div>
+      </div>
+      <nav class="foot-nav" aria-label="Documentation and status">
+        <a class="foot-link" href="docs/">Docs</a>
+        <a class="foot-link" href="docs/explanation/methodology.md">Methodology</a>
+        <a class="foot-link" href="docs/reference/tools.md">MCP tools</a>
+        <a class="foot-link" href="history">History</a>
+        <a class="foot-link" href="llms.txt">llms.txt</a>
+        <a class="foot-link" href="status" id="foot-status"><span class="foot-dot" aria-hidden="true"></span>Status</a>
+        <!--source-->
+      </nav>
+    </div>
+    <p class="foot-note">Data with its time and source. Not investment advice or a trading signal; holder rights are set by the issuer's prospectus. Registries: Coinbase (Base), Robinhood (Robinhood Chain). Pools: DexScreener, GeckoTerminal.</p>
+    <div class="foot-bottom">
+      <span>© 2026 Stock Token Passport. All rights reserved.</span>
+      <span class="foot-meta">
+        <a class="foot-legal" href="docs/legal.md">Legal</a>
+        <a class="foot-legal" href="CHANGELOG.md" title="Changelog">v__VERSION__ · __RELEASED__</a>
+      </span>
+    </div>
+  </footer>
+</body>
+</html>

@@ -1,0 +1,35 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://proofofstock.xyz/schemas/v2/stock-peg-run.schema.json",
+  "title": "Tokenized stock peg run",
+  "description": "One row per run of scripts/stocks/stock-peg.mjs, written even when the run wrote no token rows, so 'no readings' is never confused with 'never ran'. A run whose issuer list could not be read completely writes this row with registry.complete=false and no token rows.",
+  "type": "object",
+  "required": ["_schema_version", "run_id", "chain_id", "issuer", "started_at", "finished_at", "registry", "tokens_considered", "rows_written", "rows_invalid", "refused", "pair_read_errors", "supplemented", "supplement_errors"],
+  "properties": {
+    "_schema_version": { "const": "1.0" },
+    "run_id": { "type": "string", "minLength": 1 },
+    "chain_id": { "type": "integer" },
+    "issuer": { "enum": ["coinbase", "robinhood"] },
+    "started_at": { "type": "string", "format": "date-time" },
+    "finished_at": { "type": "string", "format": "date-time" },
+    "registry": {
+      "type": "object",
+      "required": ["records", "complete", "error"],
+      "properties": {
+        "records": { "type": ["integer", "null"] },
+        "complete": { "type": "boolean" },
+        "error": { "type": ["string", "null"] }
+      },
+      "additionalProperties": false
+    },
+    "tokens_considered": { "type": "integer", "minimum": 0, "description": "registry records with supply on this chain; on Base the unminted are skipped, they have no pools" },
+    "rows_written": { "type": "integer", "minimum": 0 },
+    "rows_invalid": { "type": "integer", "minimum": 0 },
+    "refused": { "type": "object", "additionalProperties": { "type": "integer" } },
+    "pair_read_errors": { "type": "integer", "minimum": 0 },
+    "supplemented": { "type": "integer", "minimum": 0, "description": "tokens whose pools were completed from GeckoTerminal" },
+    "supplement_errors": { "type": "integer", "minimum": 0, "description": "GeckoTerminal reads that failed; those rows keep the DexScreener pools" },
+    "aborted": { "type": ["string", "null"], "description": "set when the run stopped on an error after the registry was read; the rows before it stand" }
+  },
+  "additionalProperties": false
+}

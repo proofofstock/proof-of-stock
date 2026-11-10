@@ -1,0 +1,338 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://proofofstock.xyz/docs/reference/passport.schema.json",
+  "title": "Stock Token Passport answer (GET /api/passport)",
+  "description": "v0.3.0. The body of a 200 answer from GET /api/passport, built by evm/core/stocks/passport.mjs buildPassport and extended by apps/stocks-web.mjs passportOf. Two shapes, told apart by in_registry. Premium and spread are fractions (0.0025 = 0.25%). Prices are USD per token. The MCP tool stock_passport returns the same object in structuredContent, plus `summary`, and without `series_points` unless include_series is true. Held equal to the code by docs/reference/passport-schema.test.mjs.",
+  "oneOf": [
+    { "$ref": "#/definitions/in_registry" },
+    { "$ref": "#/definitions/not_in_registry" }
+  ],
+  "definitions": {
+    "address": { "type": "string", "pattern": "^0x[0-9a-f]{40}$" },
+    "address_or_null": { "type": ["string", "null"], "pattern": "^0x[0-9a-f]{40}$" },
+    "iso_time": { "type": "string", "format": "date-time" },
+    "iso_time_or_null": { "type": ["string", "null"], "format": "date-time" },
+    "number_or_null": { "type": ["number", "null"] },
+    "string_or_null": { "type": ["string", "null"] },
+    "chain": { "enum": ["base", "robinhood"] },
+    "chain_id": { "enum": [8453, 4663] },
+    "note": {
+      "enum": ["not_in_registry", "no_readings", "no_reference", "reference_held_market_closed", "reference_held_market_open",
+        "trading_halted", "paused", "no_dex_price", "pools_capped", "multiplier_change_pending", "calendar_unknown",
+        "reference_spread_wide", "reading_stale", "not_minted"]
+    },
+    "premium_refused": { "enum": ["no_reference", "pairs_unavailable", "no_pairs", "no_eligible_pool", "reference_spread_wide", null] },
+    "reference_kind": { "enum": ["nav_total_return", "token_bid_ask_mid"] },
+    "market_now": {
+      "type": "object",
+      "required": ["session", "reason", "holiday", "early_close"],
+      "additionalProperties": false,
+      "properties": {
+        "session": { "enum": ["pre", "regular", "post", "closed", "unknown"] },
+        "reason": { "enum": ["not_a_time", "outside_calendar", "weekend", "holiday", "pre_market", "regular", "regular_early_close", "after_hours", "overnight"] },
+        "holiday": { "$ref": "#/definitions/string_or_null" },
+        "early_close": { "type": "boolean" }
+      }
+    },
+    "identity": {
+      "type": "object",
+      "required": ["symbol", "name"],
+      "additionalProperties": false,
+      "properties": {
+        "symbol": { "$ref": "#/definitions/string_or_null" },
+        "name": { "$ref": "#/definitions/string_or_null" }
+      }
+    },
+    "resembles": {
+      "type": "object",
+      "required": ["kind", "ticker", "registry_symbol", "registry_address"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "enum": ["registry_symbol", "issuer_name_suffix", "ticker"] },
+        "ticker": { "$ref": "#/definitions/string_or_null" },
+        "registry_symbol": { "$ref": "#/definitions/string_or_null" },
+        "registry_address": { "$ref": "#/definitions/address_or_null" }
+      }
+    },
+    "issuer": {
+      "type": "object",
+      "required": ["name", "symbol", "token_name", "isin", "minted", "multiplier", "multiplier_pending", "paused", "rights"],
+      "additionalProperties": false,
+      "if": { "properties": { "name": { "const": "robinhood" } } },
+      "then": { "properties": { "minted": { "type": "null" } } },
+      "else": { "properties": { "minted": { "type": "boolean" } } },
+      "properties": {
+        "name": { "enum": ["coinbase", "robinhood"] },
+        "symbol": { "$ref": "#/definitions/string_or_null" },
+        "token_name": { "$ref": "#/definitions/string_or_null" },
+        "isin": { "$ref": "#/definitions/string_or_null" },
+        "minted": { "type": ["boolean", "null"], "description": "null on Robinhood, whose API reports no supply" },
+        "multiplier": { "$ref": "#/definitions/number_or_null" },
+        "multiplier_pending": { "$ref": "#/definitions/number_or_null" },
+        "paused": { "type": "array", "items": { "type": "string" } },
+        "rights": { "const": "set by the issuer's prospectus, not by the token contract" }
+      }
+    },
+    "reference": {
+      "type": "object",
+      "required": ["kind", "price_usd", "updated_at", "age_s", "halted", "bid", "ask", "spread"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "$ref": "#/definitions/reference_kind" },
+        "price_usd": { "$ref": "#/definitions/number_or_null" },
+        "updated_at": { "$ref": "#/definitions/iso_time_or_null" },
+        "age_s": { "type": ["integer", "null"] },
+        "halted": { "type": ["boolean", "null"] },
+        "bid": { "$ref": "#/definitions/number_or_null" },
+        "ask": { "$ref": "#/definitions/number_or_null" },
+        "spread": { "$ref": "#/definitions/number_or_null" }
+      }
+    },
+    "pool": {
+      "type": "object",
+      "required": ["pair_address", "dex_id", "quote_symbol", "price_usd", "liquidity_usd", "volume_h24_usd"],
+      "additionalProperties": false,
+      "properties": {
+        "pair_address": { "$ref": "#/definitions/string_or_null" },
+        "dex_id": { "$ref": "#/definitions/string_or_null" },
+        "quote_symbol": { "$ref": "#/definitions/string_or_null" },
+        "price_usd": { "$ref": "#/definitions/number_or_null" },
+        "side": { "enum": ["base", "quote"] },
+        "liquidity_usd": { "$ref": "#/definitions/number_or_null" },
+        "volume_h24_usd": { "$ref": "#/definitions/number_or_null" }
+      }
+    },
+    "premium_at_reference_time": {
+      "type": ["object", "null"],
+      "required": ["observed_at", "premium", "lag_s"],
+      "additionalProperties": false,
+      "properties": {
+        "observed_at": { "$ref": "#/definitions/iso_time" },
+        "premium": { "type": "number" },
+        "lag_s": { "type": "integer", "minimum": 0, "maximum": 1800 }
+      }
+    },
+    "latest": {
+      "type": "object",
+      "required": ["observed_at", "dex_price_usd", "dex_pool", "premium", "premium_refused", "dex_inside_quote", "age_s", "cadence_s", "premium_at_reference_time", "pools"],
+      "additionalProperties": false,
+      "properties": {
+        "observed_at": { "$ref": "#/definitions/iso_time" },
+        "dex_price_usd": { "$ref": "#/definitions/number_or_null" },
+        "dex_pool": { "$ref": "#/definitions/string_or_null" },
+        "premium": { "$ref": "#/definitions/number_or_null" },
+        "premium_refused": { "$ref": "#/definitions/premium_refused" },
+        "dex_inside_quote": { "type": ["boolean", "null"] },
+        "age_s": { "type": "integer" },
+        "cadence_s": { "const": 900 },
+        "premium_at_reference_time": { "$ref": "#/definitions/premium_at_reference_time" },
+        "pools": {
+          "type": "object",
+          "required": ["seen", "eligible", "capped", "top"],
+          "additionalProperties": false,
+          "properties": {
+            "seen": { "type": ["integer", "null"], "minimum": 0 },
+            "eligible": { "type": "integer", "minimum": 0 },
+            "capped": { "type": "boolean" },
+            "top": { "type": "array", "maxItems": 5, "items": { "$ref": "#/definitions/pool" } }
+          }
+        }
+      }
+    },
+    "stats": {
+      "type": "object",
+      "required": ["n", "median", "p10", "p90", "min", "max"],
+      "additionalProperties": false,
+      "properties": {
+        "n": { "type": "integer", "minimum": 0 },
+        "median": { "$ref": "#/definitions/number_or_null" },
+        "p10": { "$ref": "#/definitions/number_or_null" },
+        "p90": { "$ref": "#/definitions/number_or_null" },
+        "min": { "$ref": "#/definitions/number_or_null" },
+        "max": { "$ref": "#/definitions/number_or_null" }
+      }
+    },
+    "series": {
+      "type": "object",
+      "required": ["window_h", "readings", "with_premium", "first_at", "premium_all", "premium_by_session"],
+      "additionalProperties": false,
+      "properties": {
+        "window_h": { "type": "number", "minimum": 1, "maximum": 72 },
+        "readings": { "type": "integer", "minimum": 0 },
+        "with_premium": { "type": "integer", "minimum": 0 },
+        "first_at": { "$ref": "#/definitions/iso_time_or_null" },
+        "premium_all": { "$ref": "#/definitions/stats" },
+        "premium_by_session": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "regular": { "$ref": "#/definitions/stats" },
+            "extended": { "$ref": "#/definitions/stats" },
+            "closed": { "$ref": "#/definitions/stats" },
+            "unknown": { "$ref": "#/definitions/stats" }
+          }
+        }
+      }
+    },
+    "series_point": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 3,
+      "items": [
+        { "type": "integer", "description": "epoch milliseconds of the reading" },
+        { "type": ["number", "null"], "description": "premium as a fraction, or null when that reading was refused" },
+        { "enum": ["r", "e", "c", "u"], "description": "US equity session: regular, extended, closed, unknown" }
+      ]
+    },
+    "links": {
+      "type": "object",
+      "required": ["dex", "explorer"],
+      "additionalProperties": false,
+      "properties": {
+        "dex": { "type": "string", "pattern": "^https://dexscreener\\.com/(base|robinhood)/0x[0-9a-f]{40}$" },
+        "explorer": { "type": ["string", "null"], "pattern": "^https://.+/token/0x[0-9a-f]{40}$" }
+      }
+    },
+    "sources": {
+      "type": "object",
+      "required": ["registry", "reference", "dex", "recorded_every_s", "pools_counted"],
+      "additionalProperties": false,
+      "properties": {
+        "registry": { "type": "string", "format": "uri" },
+        "reference": { "type": "string" },
+        "dex": { "type": "string" },
+        "recorded_every_s": { "const": 900 },
+        "pools_counted": {
+          "type": "object",
+          "required": ["min_liquidity_usd", "paired_with_addresses", "rule"],
+          "additionalProperties": false,
+          "properties": {
+            "min_liquidity_usd": { "const": 10000 },
+            "paired_with_addresses": { "type": "array", "items": { "$ref": "#/definitions/address" } },
+            "rule": { "type": "string" }
+          }
+        }
+      }
+    },
+    "elsewhere": {
+      "type": "object",
+      "required": ["chain", "issuer", "symbol", "name", "address", "multiplier", "latest"],
+      "additionalProperties": false,
+      "properties": {
+        "chain": { "$ref": "#/definitions/chain" },
+        "issuer": { "enum": ["coinbase", "robinhood"] },
+        "symbol": { "$ref": "#/definitions/string_or_null" },
+        "name": { "$ref": "#/definitions/string_or_null" },
+        "address": { "$ref": "#/definitions/address" },
+        "multiplier": { "$ref": "#/definitions/number_or_null" },
+        "latest": {
+          "type": ["object", "null"],
+          "required": ["observed_at", "premium", "premium_refused", "dex_price_usd", "reference_price_usd", "reference_age_s", "liquidity_usd", "halted"],
+          "additionalProperties": false,
+          "properties": {
+            "observed_at": { "$ref": "#/definitions/iso_time" },
+            "premium": { "$ref": "#/definitions/number_or_null" },
+            "premium_refused": { "$ref": "#/definitions/premium_refused" },
+            "dex_price_usd": { "$ref": "#/definitions/number_or_null" },
+            "reference_price_usd": { "$ref": "#/definitions/number_or_null" },
+            "reference_age_s": { "type": ["integer", "null"], "description": "seconds before generated_at: from updated_at when known, else the age at the reading plus the reading age" },
+            "liquidity_usd": { "$ref": "#/definitions/number_or_null" },
+            "halted": { "type": ["boolean", "null"] }
+          }
+        }
+      }
+    },
+    "case": {
+      "description": "The address's case in the dated archive (GET /api/history/cases), or null when it never was one.",
+      "type": ["object", "null"],
+      "required": ["status", "first_seen_at", "flagged_at", "source", "archived_at", "closed_at", "events"],
+      "additionalProperties": false,
+      "properties": {
+        "status": { "enum": ["open", "listed_by_issuer", "closed"] },
+        "first_seen_at": { "$ref": "#/definitions/iso_time_or_null" },
+        "flagged_at": { "$ref": "#/definitions/iso_time_or_null" },
+        "source": { "enum": ["observed", "backfilled", null] },
+        "archived_at": { "$ref": "#/definitions/iso_time_or_null" },
+        "closed_at": { "$ref": "#/definitions/iso_time_or_null" },
+        "events": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "impostor_listing": {
+      "type": ["object", "null"],
+      "required": ["first_seen_at", "deployer"],
+      "additionalProperties": false,
+      "properties": {
+        "first_seen_at": { "$ref": "#/definitions/iso_time_or_null" },
+        "deployer": { "$ref": "#/definitions/address_or_null" }
+      }
+    },
+    "in_registry": {
+      "type": "object",
+      "required": ["address", "chain_id", "generated_at", "not_trading_signal", "market_now", "in_registry", "resembles", "issuer", "identity",
+        "reference", "latest", "series", "notes", "chain", "links", "sources", "same_stock_elsewhere", "series_points", "impostor_listing",
+        "readings_loaded", "registry_age_s"],
+      "additionalProperties": false,
+      "properties": {
+        "address": { "$ref": "#/definitions/address" },
+        "chain_id": { "$ref": "#/definitions/chain_id" },
+        "generated_at": { "$ref": "#/definitions/iso_time" },
+        "not_trading_signal": { "const": true },
+        "market_now": { "$ref": "#/definitions/market_now" },
+        "in_registry": { "const": true },
+        "resembles": { "type": "null" },
+        "issuer": { "$ref": "#/definitions/issuer" },
+        "identity": { "$ref": "#/definitions/identity" },
+        "reference": { "oneOf": [{ "type": "null" }, { "$ref": "#/definitions/reference" }] },
+        "latest": { "oneOf": [{ "type": "null" }, { "$ref": "#/definitions/latest" }] },
+        "series": { "$ref": "#/definitions/series" },
+        "notes": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/definitions/note" }, "not": { "contains": { "const": "not_in_registry" } } },
+        "chain": { "$ref": "#/definitions/chain" },
+        "links": { "$ref": "#/definitions/links" },
+        "sources": { "$ref": "#/definitions/sources" },
+        "same_stock_elsewhere": { "type": "array", "items": { "$ref": "#/definitions/elsewhere" } },
+        "series_points": { "type": "array", "maxItems": 401, "items": { "$ref": "#/definitions/series_point" } },
+        "impostor_listing": { "type": "null" },
+        "case": { "$ref": "#/definitions/case" },
+        "readings_loaded": { "type": "boolean" },
+        "registry_age_s": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "not_in_registry": {
+      "type": "object",
+      "required": ["address", "chain_id", "generated_at", "not_trading_signal", "market_now", "in_registry", "issuer", "resembles", "identity",
+        "latest", "series", "notes", "chain", "links", "sources", "same_stock_elsewhere", "series_points", "impostor_listing",
+        "readings_loaded", "registry_age_s"],
+      "additionalProperties": false,
+      "properties": {
+        "address": { "$ref": "#/definitions/address" },
+        "chain_id": { "$ref": "#/definitions/chain_id" },
+        "generated_at": { "$ref": "#/definitions/iso_time" },
+        "not_trading_signal": { "const": true },
+        "market_now": { "$ref": "#/definitions/market_now" },
+        "in_registry": { "const": false },
+        "issuer": { "type": "null" },
+        "resembles": { "oneOf": [{ "type": "null" }, { "$ref": "#/definitions/resembles" }] },
+        "identity": { "$ref": "#/definitions/identity" },
+        "latest": { "type": "null" },
+        "series": { "type": "null" },
+        "notes": {
+          "type": "array",
+          "uniqueItems": true,
+          "minItems": 1,
+          "maxItems": 2,
+          "items": { "enum": ["not_in_registry", "calendar_unknown"] },
+          "contains": { "const": "not_in_registry" }
+        },
+        "chain": { "$ref": "#/definitions/chain" },
+        "links": { "$ref": "#/definitions/links" },
+        "sources": { "$ref": "#/definitions/sources" },
+        "same_stock_elsewhere": { "type": "array", "maxItems": 0 },
+        "series_points": { "type": "array", "maxItems": 0 },
+        "impostor_listing": { "$ref": "#/definitions/impostor_listing" },
+        "case": { "$ref": "#/definitions/case" },
+        "readings_loaded": { "type": "boolean" },
+        "registry_age_s": { "type": "integer", "minimum": 0 }
+      }
+    }
+  }
+}

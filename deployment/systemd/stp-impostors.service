@@ -1,0 +1,20 @@
+# deployment/systemd/stp-impostors.service — the impostor list and the names file (scripts/stocks/impostor-list.mjs),
+# built from the collector's token-static streams under the dataset roots. Minutes on Robinhood, so low priority.
+[Unit]
+Description=Stock Token Passport: impostor list, Base and Robinhood
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+WorkingDirectory=/opt/stp/current
+ExecStart=/bin/sh -c 'rc=0; /usr/bin/node --max-old-space-size=2048 scripts/stocks/impostor-list.mjs --chain=base --root=/var/lib/stp/base || rc=1; /usr/bin/node --max-old-space-size=2048 scripts/stocks/impostor-list.mjs --chain=robinhood --root=/var/lib/stp/robinhood || rc=1; exit $rc'
+Nice=19
+IOSchedulingClass=idle
+MemoryAccounting=true
+MemoryMax=2560M
+CPUQuota=50%
+TimeoutStartSec=40min
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=stp-impostors

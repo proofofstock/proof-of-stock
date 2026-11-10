@@ -1,0 +1,50 @@
+{
+  "_finding": "Both issuers publish their reference in TOKEN units: Coinbase's nav_price is total return (the multiplier already in it) and Robinhood's tokenBid/tokenAsk are already scaled. The Solana module this was modelled on multiplies the share price by the multiplier, and copied as it is that formula would show a premium the size of the multiplier on every token whose multiplier is not 1. These mutations put that error back, and drop the rule that only a pool in which the token is the BASE side prices it.",
+  "target": "evm/core/stocks/peg.mjs",
+  "runner": [
+    "node",
+    "evm/core/stocks/peg.test.mjs"
+  ],
+  "mutations": [
+    {
+      "name": "the multiplier is applied to a reference that already carries it",
+      "find": "  return out(null, best.price_usd / ref - 1)",
+      "replace": "  return out(null, best.price_usd / (ref * (num(reference?.multiplier) ?? 1)) - 1)",
+      "expect": "FAIL a token at its reference shows no premium whatever its multiplier",
+      "_note": "The defect the Base phase-0 review named: an invented premium equal to the multiplier."
+    },
+    {
+      "name": "a quote-side pool is priced with the base token's price",
+      "find": "    return usd > 0 && nat > 0 ? { price: usd / nat, side: 'quote' } : null",
+      "replace": "    return usd > 0 ? { price: usd, side: 'quote' } : null",
+      "expect": "FAIL a quote-side pool is priced by inversion: priceUsd / priceNative",
+      "_note": "DexScreener's priceUsd prices the base token; read off a pool where our token is the quote without inverting, it is someone else's price."
+    },
+    {
+      "name": "the shallowest pool prices the token",
+      "find": "  return out.sort((a, b) => num(b.liquidity.usd) - num(a.liquidity.usd))",
+      "replace": "  return out.sort((a, b) => num(a.liquidity.usd) - num(b.liquidity.usd))",
+      "expect": "FAIL of two eligible pools the deeper one prices the token"
+    },
+    {
+      "name": "a wide reference quote is used anyway",
+      "find": "  if (spread != null && (spread < 0 || spread > MAX_REFERENCE_SPREAD)) return out('reference_spread_wide')\n",
+      "replace": "",
+      "expect": "FAIL a reference quote wider than 1% refuses the premium",
+      "_note": "Measured 08.11: Robinhood's weekend quotes ran several percent wide; a mid against them reads the spread as a gap."
+    },
+    {
+      "name": "a pool against any token prices a stock token",
+      "find": "  if (referenceAssets && !referenceAssets.has(low(isBase ? p?.quoteToken?.address : p?.baseToken?.address))) return null\n",
+      "replace": "",
+      "expect": "FAIL a pool against a memecoin does not price a stock token, however deep",
+      "_note": "Robinhood Chain, 09.11: memecoins paired with DJT gave DJT at ~$990 against an issuer price of ~$4."
+    },
+    {
+      "name": "the other token is matched by symbol, not address",
+      "find": "  if (referenceAssets && !referenceAssets.has(low(isBase ? p?.quoteToken?.address : p?.baseToken?.address))) return null\n",
+      "replace": "  if (referenceAssets && !['USDC', 'USDG', 'WETH'].includes(isBase ? p?.quoteToken?.symbol : p?.baseToken?.symbol)) return null\n",
+      "expect": "FAIL ...and a look-alike symbol is not the reference asset: the address is"
+    }
+  ]
+}

@@ -1,0 +1,21 @@
+# deployment/systemd/stp-peg.service — the recorder (scripts/stocks/stock-peg.mjs): issuer registries, DEX pools, one
+# row per token per run, Base then Robinhood. A failure on one chain does not skip the other; the unit fails if either did.
+[Unit]
+Description=Stock Token Passport: peg readings, Base (Coinbase) and Robinhood
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+WorkingDirectory=/opt/stp/current
+ExecStart=/bin/sh -c 'rc=0; /usr/bin/node scripts/stocks/stock-peg.mjs --chain=base --root=/var/lib/stp/base || rc=1; /usr/bin/node scripts/stocks/stock-peg.mjs --chain=robinhood --root=/var/lib/stp/robinhood || rc=1; exit $rc'
+Nice=15
+IOSchedulingClass=idle
+MemoryAccounting=true
+MemoryMax=256M
+CPUQuota=25%
+TimeoutStartSec=10min
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=stp-peg

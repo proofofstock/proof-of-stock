@@ -1,0 +1,37 @@
+{
+  "_finding": "The verify answer and the badge are what other pages and agents trust. It must decide by the exact address only, refuse to answer from a registry it could not refresh (a false 'not listed' would accuse a token we failed to look up), ignore address case, and never let a value reach the SVG unescaped.",
+  "target": "evm/core/stocks/verify.mjs",
+  "runner": ["node", "evm/core/stocks/verify.test.mjs"],
+  "mutations": [
+    {
+      "name": "a copied symbol makes a token listed",
+      "find": "  const rec = records.find((r) => r.address === addr) || null\n",
+      "replace": "  const rec = records.find((r) => r.address === addr || (impostor && r.symbol === impostor.registry_symbol)) || null\n",
+      "expect": "FAIL a token copying a listed symbol is not listed"
+    },
+    {
+      "name": "a stale registry still answers",
+      "find": "  if (!records || ageS == null || ageS > freshS) {",
+      "replace": "  if (!records) {",
+      "expect": "FAIL a registry older than the limit is unavailable"
+    },
+    {
+      "name": "the address is matched case-sensitively",
+      "find": "  const addr = String(address || '').toLowerCase()\n",
+      "replace": "  const addr = String(address || '')\n",
+      "expect": "FAIL a mixed-case address is the same answer"
+    },
+    {
+      "name": "badge values are not escaped",
+      "find": "const esc = (s) => String(s).replace(/[&<>\"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '\"': '&quot;', \"'\": '&apos;' }[c]))",
+      "replace": "const esc = (s) => String(s)",
+      "expect": "FAIL every value is escaped"
+    },
+    {
+      "name": "borrowing a ticker is called an impostor",
+      "find": "  const strong = !rec && impostor && IMPOSTOR_KINDS.includes(impostor.kind)\n",
+      "replace": "  const strong = !rec && impostor\n",
+      "expect": "FAIL reusing a bare ticker is not called an impostor"
+    }
+  ]
+}

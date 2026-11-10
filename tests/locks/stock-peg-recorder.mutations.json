@@ -1,0 +1,34 @@
+{
+  "_finding": "Robinhood stamps each quote with the time its server answered, so a quote held all weekend looked seconds old and the 'held' notes never fired. The recorder ages a bid/ask reference from when its mid last changed, kept across runs; and it writes the run row even when a run dies midway. And it prices a stock token only from pools against the chain's stables or wrapped ETH: on 09.11 memecoin pools paired with DJT priced it at ~$990.",
+  "target": "scripts/stocks/stock-peg.mjs",
+  "runner": [
+    "node",
+    "scripts/stocks/stock-peg.test.mjs"
+  ],
+  "mutations": [
+    {
+      "name": "the reference is re-dated on every run",
+      "find": "  if (!prev || prev.mid !== mid) state[address] = { mid, since: reference.quoted_at || atIso }",
+      "replace": "  state[address] = { mid, since: reference.quoted_at || atIso }",
+      "expect": "FAIL an unchanged quote ages from when it was first seen"
+    },
+    {
+      "name": "a run that throws writes no run row",
+      "find": "    run.aborted = String(e && e.message || e).slice(0, 300)\n",
+      "replace": "    throw e\n",
+      "expect": "EISDIR"
+    },
+    {
+      "name": "the recorder does not pass the reference assets",
+      "find": "      const reading = pegReading(rec.address, rec.reference, pairs, { referenceAssets: C.referenceAssets })",
+      "replace": "      const reading = pegReading(rec.address, rec.reference, pairs)",
+      "expect": "FAIL the recorder prices DJT from its USDG pool, not from the deeper memecoin pools"
+    },
+    {
+      "name": "the wrapped native is left out of the reference assets",
+      "find": "  return new Set([...(d.stableAssets || []), d.wrappedNative].filter(Boolean)",
+      "replace": "  return new Set([...(d.stableAssets || [])].filter(Boolean)",
+      "expect": "FAIL Base: USDC and WETH, by address"
+    }
+  ]
+}

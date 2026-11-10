@@ -1,0 +1,22 @@
+{
+  "_finding": "The passport said 'no on-chain pool deep enough' for a token whose DEX price it showed beside it, because every null premium was read as a missing DEX price; and a recorder that had stopped left its last reading looking current.",
+  "target": "evm/core/stocks/passport.mjs",
+  "runner": [
+    "node",
+    "evm/core/stocks/passport.test.mjs"
+  ],
+  "mutations": [
+    {
+      "name": "every null premium is called a missing DEX price",
+      "find": "    if (latest.premium == null && NO_DEX_PRICE.has(latest.premium_refused)) notes.push('no_dex_price')",
+      "replace": "    if (latest.premium == null) notes.push('no_dex_price')",
+      "expect": "FAIL no reference is named as such, never as no DEX price"
+    },
+    {
+      "name": "an old latest reading is shown as current",
+      "find": "    if (now - Date.parse(latest.observed_at) > READING_STALE_S * 1000) notes.push('reading_stale')\n",
+      "replace": "",
+      "expect": "FAIL a latest reading an hour old says the recorder is behind"
+    }
+  ]
+}

@@ -1,0 +1,61 @@
+{
+  "_finding": "The W2-static radar flags tokens by address, and an address rule that misfires accuses the real asset or a fresh Coinbase deploy. A registry address must never be flagged; the full 0xb2+20-zero prefix (~2^88 to forge) is a likely unpublished Coinbase deploy, never an impostor; the prefix signals rest on an observed Coinbase deploy pattern and must switch off, visibly, the moment any registry address breaks it; 3 zeros is chance (1 in 16^5), 4 is the floor; a lookalike is what a wallet shows, per chain; and the radar must report every kind, not only the first.",
+  "target": "evm/core/stocks/impostor.mjs",
+  "runner": ["node", "evm/core/stocks/impostor.test.mjs"],
+  "mutations": [
+    {
+      "name": "a registry address is checked for signals",
+      "find": "  if (recs.some((r) => r.address === addr)) return { listed: true, hits: [], prefix_check }\n",
+      "replace": "",
+      "expect": "FAIL a listed Base address has no hit at all, though it carries the full prefix"
+    },
+    {
+      "name": "the full prefix is reported as an impostor kind",
+      "find": "    if (k >= FULL_PREFIX_ZEROS) hits.push(hit('unlisted_full_prefix', null, { zeros: k }))",
+      "replace": "    if (k >= FULL_PREFIX_ZEROS) hits.push(hit('registry_symbol', null, { zeros: k }))",
+      "expect": "FAIL the full prefix is never an impostor"
+    },
+    {
+      "name": "the prefix signals ignore the self-check",
+      "find": "  if (ch === 'base' && prefix_check.active) {",
+      "replace": "  if (ch === 'base') {",
+      "expect": "FAIL with the self-check off no prefix signal fires, and the caller sees why"
+    },
+    {
+      "name": "the self-check accepts a registry address off the full prefix",
+      "find": "  const without = recs.filter((r) => vanityZeros(r.address) < FULL_PREFIX_ZEROS).map((r) => r.address)",
+      "replace": "  const without = recs.filter((r) => vanityZeros(r.address) < VANITY_MIN_ZEROS).map((r) => r.address)",
+      "expect": "FAIL one Coinbase address without the full prefix turns them off and says which"
+    },
+    {
+      "name": "the vanity floor drops to 3 zeros",
+      "find": "    else if (k >= VANITY_MIN_ZEROS) hits.push(",
+      "replace": "    else if (k >= VANITY_MIN_ZEROS - 1) hits.push(",
+      "expect": "FAIL 3 zeros is noise, not a signal"
+    },
+    {
+      "name": "the Robinhood lookalike drops the head",
+      "find": "    return h && h.slice(0, rule.head) === head && h.slice(-rule.tail) === tail",
+      "replace": "    return h && h.slice(-rule.tail) === tail",
+      "expect": "FAIL Robinhood: the tail alone is not enough"
+    },
+    {
+      "name": "the Base lookalike also demands the head every listed address shares",
+      "find": "  base: Object.freeze({ head: 0, tail: 6 }),",
+      "replace": "  base: Object.freeze({ head: 6, tail: 6 }),",
+      "expect": "FAIL Base: the same last 6 hex without the shared head is caught, and names the listed token"
+    },
+    {
+      "name": "the Base lookalike tail shrinks to 5",
+      "find": "  base: Object.freeze({ head: 0, tail: 6 }),",
+      "replace": "  base: Object.freeze({ head: 0, tail: 5 }),",
+      "expect": "FAIL Base: matching only the last 5 is not a lookalike"
+    },
+    {
+      "name": "the radar stops at the first kind",
+      "find": "  if (look) hits.push(hit('address_lookalike', look, { rule: LOOKALIKE_RULES[ch] }))",
+      "replace": "  if (look && !hits.length) hits.push(hit('address_lookalike', look, { rule: LOOKALIKE_RULES[ch] }))",
+      "expect": "FAIL a Base copy carries its symbol, its lookalike tail and its partial prefix at once"
+    }
+  ]
+}

@@ -1,0 +1,73 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://proofofstock.xyz/schemas/v2/stock-peg.schema.json",
+  "title": "Tokenized stock peg reading",
+  "description": "One reading of one issuer-listed tokenized stock: the issuer's reference price for one token, the DEX pools that trade it, and the premium of the deepest eligible pool over the reference. Written by scripts/stocks/stock-peg.mjs every run, one row per token. A sidecar: nothing in the product reads it. The reference is in TOKEN units on both chains (Coinbase nav_price is total return; Robinhood tokenBid/tokenAsk are scaled), so the premium is dex/reference - 1 with no multiplier applied; the multiplier is recorded for the reader. A stale reference is recorded with its age, not refused: how the DEX price moves against a held reference while the exchange is closed is what this series is for.",
+  "type": "object",
+  "required": ["_schema_version", "run_id", "observed_at", "chain_id", "issuer", "token_address", "symbol", "isin", "multiplier", "multiplier_pending", "paused", "reference", "pools", "dex_price_usd", "dex_pool", "premium", "premium_refused"],
+  "properties": {
+    "_schema_version": { "const": "1.0" },
+    "run_id": { "type": "string", "minLength": 1, "description": "the run that wrote this row; its manifest row in stock-peg-runs-YYYY-MM-DD.jsonl carries the same id" },
+    "observed_at": { "type": "string", "format": "date-time" },
+    "chain_id": { "type": "integer" },
+    "issuer": { "enum": ["coinbase", "robinhood"] },
+    "token_address": { "type": "string", "pattern": "^0x[a-f0-9]{40}$" },
+    "symbol": { "type": ["string", "null"] },
+    "isin": { "type": ["string", "null"] },
+    "multiplier": { "type": ["number", "null"] },
+    "multiplier_pending": { "type": ["number", "null"] },
+    "paused": { "type": "array", "items": { "type": "string" } },
+    "reference": {
+      "type": "object",
+      "required": ["kind", "price_usd", "bid", "ask", "updated_at", "age_s", "halted"],
+      "properties": {
+        "kind": { "enum": ["nav_total_return", "token_bid_ask_mid"] },
+        "price_usd": { "type": ["number", "null"] },
+        "bid": { "type": ["number", "null"] },
+        "ask": { "type": ["number", "null"] },
+        "updated_at": { "type": ["string", "null"], "format": "date-time" },
+        "age_s": { "type": ["number", "null"], "description": "observed_at minus updated_at; null when the issuer gave no time" },
+        "halted": { "type": ["boolean", "null"] },
+        "spread": { "type": ["number", "null"], "description": "(ask - bid) / mid of the issuer quote; negative when crossed. Null when the issuer quotes no bid/ask (Coinbase NAV)." },
+        "quoted_at": { "type": ["string", "null"], "format": "date-time", "description": "the issuer server's own timestamp for the quote. updated_at is when the reference last CHANGED; for Robinhood that is tracked across runs, because generatedAt is only when the server answered." }
+      },
+      "additionalProperties": false
+    },
+    "pools": {
+      "type": "object",
+      "required": ["source", "seen", "eligible", "capped", "error", "top"],
+      "properties": {
+        "source": { "enum": ["dexscreener", "dexscreener+geckoterminal"], "description": "dexscreener alone, or with GeckoTerminal pools added when DexScreener's list hit its cap of 30" },
+        "seen": { "type": ["integer", "null"], "description": "pairs the source returned; null when the read failed" },
+        "eligible": { "type": "integer", "minimum": 0 },
+        "capped": { "type": "boolean", "description": "there may be pools neither source listed: DexScreener returned its cap of 30 and, when GeckoTerminal was asked, its last page was full too" },
+        "error": { "type": ["string", "null"] },
+        "top": {
+          "type": "array",
+          "maxItems": 5,
+          "items": {
+            "type": "object",
+            "required": ["pair_address", "dex_id", "quote_symbol", "price_usd", "liquidity_usd", "volume_h24_usd"],
+            "properties": {
+              "pair_address": { "type": ["string", "null"] },
+              "dex_id": { "type": ["string", "null"] },
+              "quote_symbol": { "type": ["string", "null"] },
+              "price_usd": { "type": ["number", "null"] },
+              "liquidity_usd": { "type": ["number", "null"] },
+              "volume_h24_usd": { "type": ["number", "null"] },
+              "side": { "enum": ["base", "quote"], "description": "which side of the pair our token is; a quote-side pool is priced by inversion" }
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "dex_price_usd": { "type": ["number", "null"] },
+    "dex_pool": { "type": ["string", "null"] },
+    "premium": { "type": ["number", "null"] },
+    "premium_refused": { "enum": ["no_reference", "pairs_unavailable", "no_pairs", "no_eligible_pool", "reference_spread_wide", null] },
+    "dex_inside_quote": { "type": ["boolean", "null"], "description": "whether the deepest pool's price sits inside the issuer's bid/ask; null when there is no bid/ask or no pool" }
+  },
+  "additionalProperties": false
+}

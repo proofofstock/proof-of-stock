@@ -1,0 +1,28 @@
+{
+  "_finding": "An agent reported Robinhood's 203 tokens as about 100, and the server accepted arguments its own schema forbids (hours 99999, extra properties, a number as the query). Answers now open with their counts in words, and arguments are checked against the tool's inputSchema.",
+  "target": "apps/stocks-mcp-http.mjs",
+  "runner": [
+    "node",
+    "apps/stocks-web.test.mjs"
+  ],
+  "mutations": [
+    {
+      "name": "tool arguments are not checked against the schema",
+      "find": "        if (problem) return error(-32602, `invalid arguments for ${tool.name}: ${problem}`)\n",
+      "replace": "",
+      "expect": "FAIL hours out of range is refused, not silently clamped"
+    },
+    {
+      "name": "the list answer gives no count in words",
+      "find": "        return text(r, `The ${ISSUER_NAME[r.issuer] || r.issuer} registry on",
+      "replace": "        return text(r, null && `The ${ISSUER_NAME[r.issuer] || r.issuer} registry on",
+      "expect": "FAIL the registry list states its exact count first"
+    },
+    {
+      "name": "a name-only impostor reads imitates null",
+      "find": "        : '; its name copies the way the issuer names its stock tokens, for an asset the issuer does not list'",
+      "replace": "        : `; its symbol or name imitates ${r.registry_symbol || r.ticker}`",
+      "expect": "FAIL a name-only impostor never reads"
+    }
+  ]
+}

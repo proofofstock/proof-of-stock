@@ -1,0 +1,37 @@
+{
+  "_finding": "Until 10.11 the impostor list was overwritten every run and no registry was kept, so no history of either existed (docs/stocks-truth-layer-tz.md §H). The archive is only worth anything if it never rewrites a row, never passes a backfilled fact off as observed, never drops a case the issuer listed and never closes a case on a partial list.",
+  "target": "evm/core/stocks/history.mjs",
+  "runner": ["node", "evm/core/stocks/history.test.mjs"],
+  "mutations": [
+    {
+      "name": "the archive rewrites its file instead of appending",
+      "find": "  fs.appendFileSync(path.join(dir, `${prefix}${day(atMs)}.jsonl`), rows.map((r) => JSON.stringify(r)).join('\\n') + '\\n')",
+      "replace": "  fs.writeFileSync(path.join(dir, `${prefix}${day(atMs)}.jsonl`), rows.map((r) => JSON.stringify(r)).join('\\n') + '\\n')",
+      "expect": "FAIL earlier rows are never rewritten: the old file only grows"
+    },
+    {
+      "name": "a listed case is dropped silently",
+      "find": "    if (registry.has(a)) out.push({ ...base('listed', 'observed'), ...caseFields(prev), flagged_at: prev.flagged_at ?? null })\n    else if (complete)",
+      "replace": "    if (registry.has(a)) continue\n    else if (complete)",
+      "expect": "FAIL a case the issuer then listed closes as listed, never silently"
+    },
+    {
+      "name": "backfilled cases are written as observed",
+      "find": "      out.push(firstArchive\n",
+      "replace": "      out.push(false\n",
+      "expect": "FAIL the first archive of a chain is backfilled, never passed off as seen live"
+    },
+    {
+      "name": "a partial list closes cases",
+      "find": "  const complete = !list.torn_files && !list.truncated\n",
+      "replace": "  const complete = true\n",
+      "expect": "FAIL a torn day file closes nothing: a token missing from a partial list has not left it"
+    },
+    {
+      "name": "prices enter the registry snapshot",
+      "find": "    paused: Array.isArray(r.paused) ? r.paused.slice().sort() : [] }))",
+      "replace": "    paused: Array.isArray(r.paused) ? r.paused.slice().sort() : [], price: r.reference && r.reference.price_usd }))",
+      "expect": "FAIL the canonical list leaves prices out, so they never make a snapshot"
+    }
+  ]
+}

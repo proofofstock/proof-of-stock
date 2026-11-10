@@ -1,0 +1,14 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.Coconatrm/stock-token-passport",
+  "title": "Stock Token Passport",
+  "description": "Check a tokenized stock on Base or Robinhood Chain: issuer registry, reference price and its age, DEX premium.",
+  "version": "0.3.0",
+  "websiteUrl": "https://proofofstock.xyz/docs/",
+  "remotes": [
+    {
+      "type": "streamable-http",
+      "url": "https://proofofstock.xyz/mcp"
+    }
+  ]
+}

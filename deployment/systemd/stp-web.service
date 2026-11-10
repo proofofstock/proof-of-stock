@@ -1,0 +1,37 @@
+# deployment/systemd/stp-web.service — the public Stock Token Passport site and MCP server (apps/stocks-web.mjs) on
+# 127.0.0.1:3005, behind nginx (deployment/nginx/proofofstock.xyz.conf). It runs the release /opt/stp/current points at
+# (scripts/deploy.sh). It reads the recorded readings and the impostor files under the two dataset roots. It writes
+# one thing: its own visit counter, under /var/lib/stp-analytics (apps/stocks-analytics.mjs).
+[Unit]
+Description=Stock Token Passport: public site and MCP server (read-only)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+Group=root
+WorkingDirectory=/opt/stp/current
+Environment=STOCKS_WEB_HOST=127.0.0.1
+Environment=STOCKS_WEB_PORT=3005
+Environment=STOCKS_ROOT_BASE=/var/lib/stp/base
+Environment=STOCKS_ROOT_ROBINHOOD=/var/lib/stp/robinhood
+Environment=STP_ANALYTICS_DIR=/var/lib/stp-analytics
+StateDirectory=stp-analytics
+StateDirectoryMode=0700
+ExecStart=/usr/bin/node apps/stocks-web.mjs
+Restart=on-failure
+RestartSec=5s
+Nice=5
+MemoryAccounting=true
+MemoryMax=384M
+CPUQuota=50%
+NoNewPrivileges=true
+ProtectSystem=full
+PrivateTmp=true
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=stp-web
+
+[Install]
+WantedBy=multi-user.target

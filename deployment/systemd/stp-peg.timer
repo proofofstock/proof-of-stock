@@ -1,0 +1,11 @@
+[Unit]
+Description=Stock Token Passport: peg readings every 15 minutes
+
+[Timer]
+OnCalendar=*:7/15
+RandomizedDelaySec=30s
+Persistent=true
+Unit=stp-peg.service
+
+[Install]
+WantedBy=timers.target

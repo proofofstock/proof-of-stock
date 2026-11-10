@@ -1,0 +1,22 @@
+{
+  "_finding": "The public site asked DexScreener for the name of every token outside the registry, from the same host and budget as the recorder. It now names them from our own dataset (the names file the impostor timer writes) and makes no outbound call on a request. It also refuses an MCP-Protocol-Version it does not speak.",
+  "target": "apps/stocks-web.mjs",
+  "runner": [
+    "node",
+    "apps/stocks-web.test.mjs"
+  ],
+  "mutations": [
+    {
+      "name": "the names file is not consulted",
+      "find": "    const n = names.get(chain)?.get(address)\n",
+      "replace": "    const n = null\n",
+      "expect": "FAIL an impostor is named by its resemblance"
+    },
+    {
+      "name": "an unsupported protocol version header is served",
+      "find": "    if (pv && !SUPPORTED_VERSIONS.includes(String(pv))) return send(",
+      "replace": "    if (false) return send(",
+      "expect": "FAIL a protocol version header this server does not speak is 400"
+    }
+  ]
+}

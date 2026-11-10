@@ -1,0 +1,23 @@
+{
+  "name": "stock-token-passport",
+  "version": "0.3.0",
+  "private": true,
+  "license": "MIT",
+  "repository": { "type": "git", "url": "https://github.com/Coconatrm/stock-token-passport" },
+  "stp": { "source_public": false },
+  "type": "module",
+  "description": "Is this token the issuer's tokenized stock? Registry check, issuer reference price and its age, on-chain premium; a site, a public MCP server and a pre-trade guard for agents. Base and Robinhood Chain.",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "test": "node scripts/run-tests.mjs",
+    "locks": "node scripts/run-locks.mjs",
+    "start": "node apps/stocks-web.mjs"
+  },
+  "dependencies": {
+    "ajv": "^8.17.1",
+    "ajv-formats": "^3.0.1",
+    "marked": "15.0.12"
+  }
+}
