@@ -9,6 +9,22 @@ import { SITE_NAME, SITE_DESCRIPTION } from '../evm/core/stocks/page-meta.mjs'
 
 export const CONTACT_EMAIL = 'hello@proofofstock.xyz'
 
+/** The crawlers named in robots.txt, by company: search, AI training and AI answer-time fetchers. */
+export const AI_CRAWLERS = Object.freeze([
+  ['OpenAI', ['GPTBot', 'OAI-SearchBot', 'ChatGPT-User']],
+  ['Anthropic', ['ClaudeBot', 'Claude-SearchBot', 'Claude-User']],
+  ['Google', ['Googlebot', 'Google-Extended', 'GoogleOther']],
+  ['Perplexity', ['PerplexityBot', 'Perplexity-User']],
+  ['Meta', ['meta-externalagent', 'meta-externalfetcher', 'FacebookBot']],
+  ['Apple', ['Applebot', 'Applebot-Extended']],
+  ['Amazon', ['Amazonbot']],
+  ['Mistral', ['MistralAI-User']],
+  ['Microsoft', ['bingbot']],
+  ['Common Crawl', ['CCBot']],
+  ['DuckDuckGo', ['DuckAssistBot']],
+  ['Cohere', ['cohere-ai']],
+])
+
 /**
  * Crawl everything a person reads; keep the JSON API and the MCP endpoint out. `/verify` is the JSON lookup (the page
  * for a token is `/?chain=…&address=…`). The API answers also carry X-Robots-Tag: noindex, for a crawler that ignores
@@ -17,14 +33,18 @@ export const CONTACT_EMAIL = 'hello@proofofstock.xyz'
  * @param {string} [path] the public path alone ('' in production)
  */
 export function robotsTxt (site, path = '') {
+  const rules = [`Allow: ${path}/`, `Disallow: ${path}/api/`, `Disallow: ${path}/mcp`, `Disallow: ${path}/verify`]
   return [
     '# Proof of Stock: pages, docs, /llms.txt and /llms-full.txt are open to every crawler and agent.',
     '# The JSON API and the MCP endpoint are for programs: see /docs/reference/http-api.md and /mcp.',
+    '',
+    '# Search and AI crawlers, named so a rule written for one of them elsewhere never closes this site to it.',
+    '# A crawler that finds its own name here follows this group and not the * group, so both carry the same rules.',
+    ...AI_CRAWLERS.flatMap(([org, agents]) => [`# ${org}`, ...agents.map((a) => `User-agent: ${a}`)]),
+    ...rules,
+    '',
     'User-agent: *',
-    `Allow: ${path}/`,
-    `Disallow: ${path}/api/`,
-    `Disallow: ${path}/mcp`,
-    `Disallow: ${path}/verify`,
+    ...rules,
     '',
     `Sitemap: ${site}/sitemap.xml`,
     '',

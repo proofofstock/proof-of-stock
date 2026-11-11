@@ -24,9 +24,9 @@
   </div>
 
   <header class="hero">
-    <p class="kicker">Built on Base · Coinbase tokenized stocks <span class="kicker-also">· also Robinhood Chain</span></p>
+    <p class="kicker">Built on Base · Tokenized stocks <span class="kicker-also">· covers Base (Coinbase) and Robinhood Chain (Robinhood)</span></p>
     <h1 class="headline">Is this stock token<br><em>the real one?</em></h1>
-    <p class="lede">Paste a token address or type a ticker. We check it against Coinbase's and Robinhood's own lists of their stock tokens, then show how far its on-chain price is from the issuer's price, and how old that price is.</p>
+    <p class="lede">Paste a token address or type a ticker. We check it against the issuer's own list of its stock tokens, then show how far its on-chain price is from the issuer's price, and how old that price is.</p>
     <div class="hero-try">
       <span class="faint">try</span>
       <button type="button" class="chip" data-run="NVDA">NVDA</button>
@@ -110,7 +110,7 @@
     <div>
       <h3>Ask it from your agent</h3>
       <p>The same passport works as a public MCP server. Anyone can connect an agent to it without a key or an account. It has six read-only tools: <code>find_stock_token</code>, <code>list_stock_tokens</code>, <code>stock_passport</code>, <code>verify_stock_tokens</code> (up to 50 addresses before a buy), <code>recent_impostors</code> and <code>compare_venues</code>. They return data with its time and source. There is no tool that trades. <a class="inline-link" href="docs/reference/tools.md">Tool reference</a></p>
-      <p><b>It can only read.</b> No wallet, no keys, no sign-in, and no tool that signs or sends a transaction. Every answer names its source (the issuer's own registry URL) and its time, so you or your agent can check it there. The worst a wrong answer can do is be wrong: an agent should still refuse a token that is not on the issuer's list.</p>
+      <p><b>It can only read:</b> no wallet, no key, no tool that sends a transaction. <a class="inline-link" href="#faq">Is it safe to connect my agent?</a></p>
       <p class="faint">Claude: Settings → Connectors → Add custom connector → paste the URL. Claude Code: run the command. Other MCP clients: the JSON.</p>
     </div>
     <div class="code">
@@ -128,6 +128,36 @@
   }
 }</pre>
     </div>
+  </section>
+
+  <section class="faq" id="faq" aria-labelledby="faq-title">
+    <h3 id="faq-title">Questions</h3>
+    <details class="qa">
+      <summary>If a token is issuer-listed, is it safe to buy?</summary>
+      <p>Listed means only that this exact contract address is on the issuer's published list for that chain, as we last read it. It says nothing about the price: pools can trade several percent away from the issuer's price, mostly while the market is closed, so check the gap and the price's age first. What the token entitles you to, and whether you may hold it, are set by the issuer's terms and your law. It is not investment advice.</p>
+    </details>
+    <details class="qa">
+      <summary>A token is not on the list. Is it fake?</summary>
+      <p>Not necessarily. It is not on any issuer list we read for that chain: it may be a token from an issuer we do not cover yet, or an unrelated coin that shares a ticker. We call it an impostor only when it copies a listed token's distinctive symbol or an issuer's naming style. A name or a ticker alone never makes a token listed.</p>
+    </details>
+    <details class="qa">
+      <summary>Where does the data come from?</summary>
+      <p>From each issuer's own public list of its tokens and its price, and from public pool data (DexScreener, GeckoTerminal). Every answer names its source and time, so you can check it there. Proof of Stock is independent: no issuer has reviewed or endorsed this site. The methodology lists every source, chain by chain.</p>
+    </details>
+    <details class="qa">
+      <summary>How old can an answer be, and what if a source is down?</summary>
+      <p>Issuer lists are reread every 5 minutes and pool prices recorded every 15, so a reading is usually under 20 minutes old; past 30 minutes it is marked stale. The issuer's own price can be hours or days old while the market is closed, and that age is shown too. If an issuer's list cannot be read for more than 15 minutes, the address check answers that it cannot verify, never &quot;not listed&quot;.</p>
+    </details>
+    <details class="qa">
+      <summary>Is it safe to connect my agent?</summary>
+      <p>It only reads. There is no wallet, no key, no sign-in, and no tool that signs or sends a transaction. A token's own name is its creator's text: it comes back as a short label and is never put into a sentence the service says. An agent should still refuse any token that is not on the issuer's list.</p>
+    </details>
+    <details class="qa">
+      <summary>Is it free, and can I call it from code?</summary>
+      <p>Yes, with no key and no account. Agents use the MCP server, programs use the HTTP API, and each client has a per-minute limit described in the docs.</p>
+    </details>
+    <p class="faq-more">More in the <a class="inline-link" href="docs/">documentation</a>, or write to hello@proofofstock.xyz.</p>
+    <script type="application/ld+json" id="faq-ld">{"@context":"https://schema.org","@type":"FAQPage","mainEntity":[{"@type":"Question","name":"If a token is issuer-listed, is it safe to buy?","acceptedAnswer":{"@type":"Answer","text":"Listed means only that this exact contract address is on the issuer's published list for that chain, as we last read it. It says nothing about the price: pools can trade several percent away from the issuer's price, mostly while the market is closed, so check the gap and the price's age first. What the token entitles you to, and whether you may hold it, are set by the issuer's terms and your law. It is not investment advice."}},{"@type":"Question","name":"A token is not on the list. Is it fake?","acceptedAnswer":{"@type":"Answer","text":"Not necessarily. It is not on any issuer list we read for that chain: it may be a token from an issuer we do not cover yet, or an unrelated coin that shares a ticker. We call it an impostor only when it copies a listed token's distinctive symbol or an issuer's naming style. A name or a ticker alone never makes a token listed."}},{"@type":"Question","name":"Where does the data come from?","acceptedAnswer":{"@type":"Answer","text":"From each issuer's own public list of its tokens and its price, and from public pool data (DexScreener, GeckoTerminal). Every answer names its source and time, so you can check it there. Proof of Stock is independent: no issuer has reviewed or endorsed this site. The methodology lists every source, chain by chain."}},{"@type":"Question","name":"How old can an answer be, and what if a source is down?","acceptedAnswer":{"@type":"Answer","text":"Issuer lists are reread every 5 minutes and pool prices recorded every 15, so a reading is usually under 20 minutes old; past 30 minutes it is marked stale. The issuer's own price can be hours or days old while the market is closed, and that age is shown too. If an issuer's list cannot be read for more than 15 minutes, the address check answers that it cannot verify, never \"not listed\"."}},{"@type":"Question","name":"Is it safe to connect my agent?","acceptedAnswer":{"@type":"Answer","text":"It only reads. There is no wallet, no key, no sign-in, and no tool that signs or sends a transaction. A token's own name is its creator's text: it comes back as a short label and is never put into a sentence the service says. An agent should still refuse any token that is not on the issuer's list."}},{"@type":"Question","name":"Is it free, and can I call it from code?","acceptedAnswer":{"@type":"Answer","text":"Yes, with no key and no account. Agents use the MCP server, programs use the HTTP API, and each client has a per-minute limit described in the docs."}}]}</script>
   </section>
 
   <footer class="foot">

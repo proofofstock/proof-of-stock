@@ -12,6 +12,12 @@ The version is in `package.json`, and the site footer, the MCP `serverInfo.versi
 
 ## [Unreleased]
 
+### Changed
+- **robots.txt names the search and AI crawlers** of OpenAI, Anthropic, Google, Perplexity, Meta, Apple, Amazon, Mistral, Microsoft, Common Crawl, DuckDuckGo and Cohere, with the same rules as every other crawler: the pages, docs and llms.txt open, the JSON API and /mcp out.
+
+### Added
+- **Questions on the landing** (`#faq`): six questions a visitor or an agent developer doubts before trusting it (listed is not a price verdict, not listed is not proof of a fake, where the data comes from, how old an answer can be and what happens when a source is down, whether an agent is safe, cost), in words that stay true as issuers are added; the same text as FAQPage JSON-LD. The hero names no single issuer in its sentence.
+
 ### Security
 - **A token's own symbol and name are treated as a stranger's text.** For a token outside the issuer registry they are published as one-line labels (invisible and control characters removed, cut to 32 and 64 characters), never put into a sentence the service says (the MCP lead of `recent_impostors`, an impostor page's title and link preview), and every answer that carries them says so in `untrusted_text`. The MCP server's instructions say the same. An agent reading our answers could otherwise be handed instructions through a token's name.
 - **The impostor rule compares normalized text:** an invisible character or a full-width letter in a symbol was a way past the exact comparison. Rule version `impostor-strong-v2`.

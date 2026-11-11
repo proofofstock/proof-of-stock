@@ -3,7 +3,7 @@
 //
 // Run: node apps/stocks-seo.test.mjs
 
-import { robotsTxt, sitemapXml, sitemapUrls, docUrl, homeJsonLd, docJsonLd, pageJsonLd, CONTACT_EMAIL } from './stocks-seo.mjs'
+import { robotsTxt, AI_CRAWLERS, sitemapXml, sitemapUrls, docUrl, homeJsonLd, docJsonLd, pageJsonLd, CONTACT_EMAIL } from './stocks-seo.mjs'
 
 let passed = 0, failed = 0
 const failures = []
@@ -22,6 +22,14 @@ console.log('robots.txt')
   check('the JSON API, the JSON lookup and the MCP endpoint are kept out', /^Disallow: \/api\/$/m.test(r) && /^Disallow: \/verify$/m.test(r) && /^Disallow: \/mcp$/m.test(r))
   check('docs, llms.txt and the badge are not disallowed', !/^Disallow: \/(docs|llms|badge)/m.test(r))
   check('it names the sitemap by its absolute URL', /^Sitemap: https:\/\/proofofstock\.xyz\/sitemap\.xml$/m.test(r))
+  // RFC 9309: a crawler obeys the group that names it, else the * group. Each must keep the API out on its own.
+  const groups = r.split(/\n\s*\n/).filter((g) => /^User-agent:/m.test(g))
+  const named = groups.find((g) => /^User-agent: GPTBot$/m.test(g))
+  const rulesOf = (g) => g.split('\n').filter((l) => /^(Allow|Disallow):/.test(l)).join('|')
+  const every = AI_CRAWLERS.flatMap(([, a]) => a)
+  check('the AI and search crawlers are named, by company', every.length >= 20 && every.every((a) => r.split('\n').includes('User-agent: ' + a)) && ['OpenAI', 'Anthropic', 'Google', 'Perplexity', 'Meta', 'Apple', 'Amazon', 'Mistral'].every((o) => r.includes('# ' + o + '\n')))
+  check('...in one group with the same rules as *, so naming them opens nothing more', named && groups.length === 2 && rulesOf(named) === rulesOf(groups[1]) && /Disallow: \/api\//.test(rulesOf(named)))
+  check('...and no crawler is shut out of the pages', !r.split('\n').includes('Disallow: /'))
   const p = robotsTxt('https://e.test/x', '/x')
   check('under a public path the rules carry it', /^Allow: \/x\/$/m.test(p) && /^Disallow: \/x\/api\/$/m.test(p) && /^Sitemap: https:\/\/e\.test\/x\/sitemap\.xml$/m.test(p))
 }

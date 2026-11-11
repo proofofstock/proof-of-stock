@@ -307,6 +307,20 @@ a.btn { text-decoration: none; display: inline-block; }
 .foot-legal { color: var(--dim); border-bottom: 1px dotted transparent; transition: color .15s, border-color .15s; }
 .foot-legal:hover, .foot-legal:focus-visible { color: var(--accent-hi); border-bottom-color: var(--accent-hi); outline: none; }
 
+/* Questions: plain rows that open, the same window glass and line as the rest; no cards, no icons. */
+.faq { max-width: 980px; margin: 64px auto 0; }
+.faq h3 { font: 700 26px/1.2 var(--sans); margin: 0 0 14px; }
+.qa { border-top: 1px solid var(--line); }
+.qa:last-of-type { border-bottom: 1px solid var(--line); }
+.qa summary { list-style: none; cursor: pointer; display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 16px 4px; font: 600 16px/1.4 var(--sans); color: var(--text); }
+.qa summary::-webkit-details-marker { display: none; }
+.qa summary::after { content: ''; flex: none; width: 10px; height: 10px; border-right: 1.6px solid var(--dim); border-bottom: 1.6px solid var(--dim); transform: rotate(45deg) translateY(-3px); transition: transform .15s; }
+.qa[open] summary::after { transform: rotate(-135deg) translateY(-2px); }
+.qa summary:hover, .qa summary:focus-visible { color: var(--accent-hi); outline: none; }
+.qa p { font: 15px/1.65 var(--sans); color: var(--dim); margin: 0; padding: 0 4px 18px; max-width: 76ch; }
+.faq-more { font: 14px/1.6 var(--sans); color: var(--faint); margin: 16px 4px 0; }
+@media (prefers-reduced-motion: reduce) { .qa summary::after { transition: none; } }
+
 @media (max-width: 860px) {
   .checks { grid-template-columns: 1fr; }
   .why, .agents { grid-template-columns: 1fr; gap: 18px; }
