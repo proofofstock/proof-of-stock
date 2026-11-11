@@ -3,3 +3,5 @@ node_modules/
 .env
 .env.*
 data/
+.mutation-run-in-progress
+.mutation-run-in-progress.compromised

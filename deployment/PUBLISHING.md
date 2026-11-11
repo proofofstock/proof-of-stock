@@ -2,13 +2,13 @@
 
 Each step needs the owner's own login. No credential for npm, GitHub or Smithery lives in this repository or on a host.
 
-## 1. `@stockofproof/guard` on npm
+## 1. `@proofofstock/guard` on npm
 
 The scope `@stockofproof` must exist as an npm organisation, which is free for public packages: npmjs.com → Add Organization → `stockofproof`.
 
 ```bash
 npm login
-cd packages/stockofproof-guard
+cd packages/proofofstock-guard
 npm test
 npm pack --dry-run        # shows exactly which files go out: index.mjs, agentkit.mjs, README.md, LICENSE, package.json
 npm publish               # publishConfig.access is public

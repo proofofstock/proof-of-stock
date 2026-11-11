@@ -1,4 +1,4 @@
-v0.3.0 · updated 2026-11-10
+v0.4.0 · updated 2026-11-11
 
 # Check a contract before listing or buying it
 
@@ -12,7 +12,7 @@ Four ways, from one address by hand to a check inside your code:
 | one address, a terminal | `GET /verify` |
 | a page that shows a token | the badge, `GET /badge.svg` |
 | an agent, up to 50 addresses | the MCP tool `verify_stock_tokens` |
-| a trading agent in Node | the `@stockofproof/guard` package, `beforeBuy()` |
+| a trading agent in Node | the `@proofofstock/guard` package, `beforeBuy()` |
 
 All four ask the same question and get the same answer. Base is checked against Coinbase's registry, Robinhood Chain
 against Robinhood's.
@@ -61,7 +61,7 @@ Two more fields worth knowing:
 
 ```html
 <a href="https://proofofstock.xyz/?chain=base&address=0xb200000000000000000000397293cb8cda9a10c5">
-  <img src="https://proofofstock.xyz/badge.svg?chain=base&address=0xb200000000000000000000397293cb8cda9a10c5" alt="Stock Token Passport">
+  <img src="https://proofofstock.xyz/badge.svg?chain=base&address=0xb200000000000000000000397293cb8cda9a10c5" alt="Proof of Stock">
 </a>
 ```
 
@@ -97,13 +97,13 @@ curl -s https://proofofstock.xyz/mcp \
 - If the registry is unavailable, the whole call fails with `isError: true`. No partial answer is given.
 - A batch of n addresses costs ⌈n/10⌉ units of the 60-per-minute limit.
 
-## Guard a trading agent with `@stockofproof/guard`
+## Guard a trading agent with `@proofofstock/guard`
 
-The package is in this repository at `packages/stockofproof-guard/`. It is ready to publish to npm but not published
+The package is in this repository at `packages/proofofstock-guard/`. It is ready to publish to npm but not published
 yet, so import it from the repository for now. It has no dependencies and needs Node 18 or later.
 
 ```js
-import { createGuard } from './packages/stockofproof-guard/index.mjs'
+import { createGuard } from './packages/proofofstock-guard/index.mjs'
 
 const guard = createGuard()   // { endpoint, fetchImpl, timeoutMs: 8000, failOpen: false }
 
@@ -140,7 +140,7 @@ allowed because `failOpen` is set.
 **Bad input throws.** A chain other than `base` or `robinhood`, or a malformed address, rejects the promise instead of
 returning a decision. Validate input first, or catch the error and treat it as a refusal.
 
-For Coinbase AgentKit, `packages/stockofproof-guard/agentkit.mjs` exports the same check as an action named
+For Coinbase AgentKit, `packages/proofofstock-guard/agentkit.mjs` exports the same check as an action named
 `check_stock_token_before_buy`. Its answer starts with `ALLOW` or `REFUSE`. The package README shows how to register
 it with `customActionProvider`.
 

@@ -1,11 +1,22 @@
-v0.3.0 · updated 2026-11-10
+v0.4.0 · updated 2026-11-11
 
-# Stock Token Passport documentation
+# Proof of Stock documentation
 
 ```
 Is 0x… on Base the issuer's tokenized stock?      → /verify, verify_stock_tokens
 What does the issuer say it is worth, and since?  → stock_passport: reference, reference.age_s
 How far does the chain trade from that?            → stock_passport: latest.premium
+```
+
+## Quick start
+
+No key, no sign-up.
+
+```bash
+# an agent: the MCP server
+claude mcp add --transport http stock-passport https://proofofstock.xyz/mcp
+# anything else: plain HTTP
+curl -s 'https://proofofstock.xyz/verify?chain=base&address=0xb20000000000000000000078ee7ce2fe4908108c'
 ```
 
 ## Tutorials
@@ -20,7 +31,7 @@ Learn by doing, start to finish.
 Recipes for one task each.
 
 - [Check a contract before listing or buying it](how-to/check-before-listing.md): `/verify`, the badge,
-  `verify_stock_tokens` and `@stockofproof/guard`.
+  `verify_stock_tokens` and `@proofofstock/guard`.
 - [Alert when the on-chain price drifts from the issuer's reference](how-to/alert-on-gap.md): poll `/api/overview` or
   `stock_passport`, with a small Node script.
 - [Compare one stock across Base and Robinhood Chain](how-to/compare-venues.md): `/api/matrix` and `compare_venues`.
@@ -43,6 +54,6 @@ Why it works the way it does.
 ## Also
 
 - [Legal](legal.md): not advice, no affiliation, data as is, licence.
-- [Changelog](../CHANGELOG.md)
+- [Changelog](changelog.md): every release, what changed and what broke.
 
 [Not investment advice](legal.md)

@@ -5,13 +5,13 @@
 
 // 09.11.2026 17:37–19:42 UTC: the recorder read pools where a stock token is paired with a memecoin, whose dollar price
 // is derived from the stock token itself, so the premium was circular (DJT read ~$990 against an issuer price of ~$4).
-// Fixed by #809, which prices only against a dollar stable or wrapped ETH. Rows of that span whose priced pool was not
+// Fixed the same day: the recorder prices only against a dollar stable or wrapped ETH. Rows of that span whose priced pool was not
 // against one of those are wrong; rows priced against them are kept.
 const REFERENCE_SYMBOLS = new Set(['USDC', 'USDBC', 'DAI', 'WETH', 'USDG', 'ETH'])
 export const KNOWN_BAD = Object.freeze([
   {
     from: Date.parse('2026-11-09T17:30:00Z'), to: Date.parse('2026-11-09T19:55:00Z'),
-    reason: 'circular prices from memecoin pools, fixed in #809',
+    reason: 'circular prices from memecoin pools, fixed the same day',
     covers: (row) => {
       const top = row && row.pools && Array.isArray(row.pools.top) ? row.pools.top[0] : null
       if (!top || row.premium == null) return false

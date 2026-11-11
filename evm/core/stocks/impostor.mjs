@@ -14,6 +14,8 @@
 // ⚠ A RESEMBLANCE IS NOT A VERDICT. The row says what the name looks like; it does not say the token is a scam, and it
 // does not change the token's class (it stays a memecoin unless something else says otherwise).
 
+import { normalizeUntrusted } from './untrusted-text.mjs'
+
 export const RESEMBLANCE_KINDS = Object.freeze(['registry_symbol', 'issuer_name_suffix', 'ticker'])
 
 // Robinhood's own convention for its stock tokens' names (see evm/core/screener/equity-filter.mjs, where it was found).
@@ -42,8 +44,10 @@ export function resemblance (identity, registry) {
  * resemblance() takes the first, resemblances() takes them all. The caller has already excluded registry addresses.
  */
 function nameHits (identity, recs) {
-  const sym = typeof identity.symbol === 'string' ? identity.symbol.trim() : ''
-  const name = typeof identity.name === 'string' ? identity.name : ''
+  // Compared as one visible line (untrusted-text.mjs): an invisible character or a full-width letter in the symbol was a
+  // way past the exact comparison. No length cut here: the naming rule reads the END of the name.
+  const sym = normalizeUntrusted(identity.symbol)
+  const name = normalizeUntrusted(identity.name)
   const hit = (kind, r) => ({ kind, ticker: tickerOf(r), registry_symbol: r.symbol, registry_address: r.address })
   const hits = []
   if (sym) {
@@ -53,9 +57,12 @@ function nameHits (identity, recs) {
     const exact = recs.find((r) => r.symbol === sym && tickerOf(r) !== r.symbol)
     if (exact) hits.push(hit('registry_symbol', exact))
   }
-  if (ROBINHOOD_NAME.test(name) && recs.some((r) => r.issuer === 'robinhood')) {
+  // ⚠ Never fewer cases than before: the name as written is tested too. A stem made only of invisible characters
+  //   satisfied the rule's \S until normalization removed it, and a case that stops matching is closed as gone.
+  const asWritten = typeof identity.name === 'string' ? identity.name : ''
+  if ((ROBINHOOD_NAME.test(name) || ROBINHOOD_NAME.test(asWritten)) && recs.some((r) => r.issuer === 'robinhood')) {
     const stem = name.replace(/\s+robinhood\s+token\s*$/i, '').trim().toLowerCase()
-    const r = recs.find((x) => x.issuer === 'robinhood' && (tickerOf(x).toLowerCase() === sym.toLowerCase() || (x.name && x.name.toLowerCase().startsWith(stem))))
+    const r = recs.find((x) => x.issuer === 'robinhood' && (tickerOf(x).toLowerCase() === sym.toLowerCase() || (x.name && normalizeUntrusted(x.name).toLowerCase().startsWith(stem))))
     hits.push({ kind: 'issuer_name_suffix', ticker: r ? tickerOf(r) : null, registry_symbol: r ? r.symbol : null, registry_address: r ? r.address : null })
   }
   if (sym) {

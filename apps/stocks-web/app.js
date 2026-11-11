@@ -1,11 +1,11 @@
-// apps/stocks-web/app.js — the Stock Token Passport as a terminal. Every value goes into the page as TEXT (textContent),
+// apps/stocks-web/app.js — Proof of Stock as a terminal. Every value goes into the page as TEXT (textContent),
 // never as HTML: names of tokens outside the registry come from third parties and may contain markup.
 //
 //   run()       parses a command: help, how, now, matrix, fakes, clear, both/base/robinhood, a number from the last list;
 //               anything else is a search
 //   block()     adds a "command → answer" block to the feed; reveal() scrolls to it
 //   lookup()    searches (api/find); one match opens the passport, several give a numbered list
-//   passport()  fetches a passport; render() draws it: stamp, fields, plain-language line, notes, folded tables
+//   passport()  fetches a passport; render() draws it: state, fields, plain-language line, notes, folded tables
 //   bottomLine() the "In short:" sentence
 //   boot()      the greeting, typed out unless the page was opened from a link or the reader asked for less motion
 'use strict'
@@ -88,9 +88,11 @@
   const mark = (c) => h('span', { class: 'chainmark ' + c }, CHAIN_LABEL[c] || c)
 
   async function api (path) {
-    const r = await fetch(path, { headers: { accept: 'application/json' } })
+    let r
+    try { r = await fetch(path, { headers: { accept: 'application/json' } }) } catch (_) { throw new Error('Could not reach the server. Check your connection and try again.') }
     const body = await r.json().catch(() => ({}))
-    if (!r.ok) throw new Error(body.error || ('request failed: ' + r.status))
+    if (r.status === 429) throw new Error('Too many checks in a minute. Wait a minute and try again.')
+    if (!r.ok) throw new Error(body.error || `The server could not answer (${r.status}). Try again in a minute.`)
     return body
   }
 
@@ -99,7 +101,7 @@
   let lastQuery = null
   function setChain (c, push) {
     chain = c
-    for (const t of document.querySelectorAll('.tab')) t.setAttribute('aria-selected', String(t.dataset.chain === c))
+    for (const t of document.querySelectorAll('.tab')) t.setAttribute('aria-pressed', String(t.dataset.chain === c))
     $('.chain-ps1').textContent = c === 'all' ? 'both' : c
     if (push) syncUrl({})
   }
@@ -229,7 +231,7 @@
     // Always ask every chain, the selected one first: an address pasted on the wrong tab still finds its passport.
     const chains = chain === 'all' ? CHAINS : [chain, ...CHAINS.filter((c) => c !== chain)]
     out.replaceChildren(line('checking ' + address + '', 'faint typing'))
-    const got = await Promise.all(chains.map((c) => api(`api/passport?chain=${c}&address=${address}`).catch(() => null)))
+    const got = await Promise.all(chains.map((c) => api(`api/passport?chain=${c}&address=${address}&series=1`).catch(() => null)))
     const pick = got.find((p) => p && p.in_registry) || got.find((p) => p && p.resembles) || got.find(Boolean)
     if (!pick) return out.replaceChildren(line('Could not check this address right now.', 'err'))
     syncUrl(pick.in_registry && pick.issuer ? { listedOn: pick.chain, symbol: pick.issuer.symbol } : { chain: pick.chain, address })
@@ -346,7 +348,7 @@
   }
   // A pool row's dex name opens that very pool on GeckoTerminal, where its live price and trades are. A pool address is
   // 20 bytes on v2/v3 pools and 32 bytes on v4 pool ids; anything else stays plain text rather than a guessed link.
-  const DEX_LABEL = { uniswap: 'Uniswap', aerodrome: 'Aerodrome', 'aero-slipstream-base': 'Aerodrome Slipstream', 'uniswap-v4-base': 'Uniswap v4', 'uniswap-v3-base': 'Uniswap v3', pancakeswap: 'PancakeSwap' }
+  const DEX_LABEL = { uniswap: 'Uniswap', aerodrome: 'Aerodrome', aero: 'Aerodrome', 'aero-slipstream-base': 'Aerodrome Slipstream', 'uniswap-v4-base': 'Uniswap v4', 'uniswap-v3-base': 'Uniswap v3', pancakeswap: 'PancakeSwap' }
   function poolLink (chain, x) {
     const name = DEX_LABEL[x.dex_id] || x.dex_id || '?'
     const id = String(x.pair_address || '')
@@ -361,10 +363,10 @@
     if (!p.in_registry) {
       const r = p.resembles
       const strong = r && (r.kind === 'registry_symbol' || r.kind === 'issuer_name_suffix')
-      const card = h('div', { class: 'card' },
+      const card = h('div', { class: 'card ' + (strong ? 'is-bad' : 'is-warn') },
         h('div', { class: 'cardhead' },
           h('div', null, h('h2', null, (p.identity.symbol || 'Unknown token') + (p.identity.name ? ' · ' + p.identity.name : '')), h('div', { class: 'sub' }, where, copyAddress(p.address, false))),
-          h('span', { class: 'stamp ' + (strong ? 'bad' : 'warn') }, 'not official')),
+          h('span', { class: 'state ' + (strong ? 'bad' : 'warn') }, "Not on the issuer's list")),
         h('div', { class: 'plain bad' }, strong
           ? (r.registry_symbol || r.ticker
             ? `This is not the issuer's token. Its ${r.kind === 'registry_symbol' ? 'symbol is the same as' : 'name copies'} ${r.registry_symbol || r.ticker}, but the contract is not in the issuer's registry.`
@@ -383,9 +385,9 @@
     const listedCase = p.case && p.case.status === 'listed_by_issuer' ? caseLine(p.case) : null
     const fields = h('div', { class: 'fields' },
       field('issuer', ISSUER_LABEL[i.name] || i.name),
-      field('reference', blank(usd(ref && ref.price_usd)), ref && ref.price_usd > 0 ? (REF_KIND[ref.kind] || ref.kind) + ' · ' + (ref.kind === 'token_bid_ask_mid' ? 'last moved ' : 'updated ') + age(ref.age_s) + (ref.spread != null ? ' · bid/ask ' + pct(ref.spread).replace('+', '') + ' apart' : '') : 'the issuer publishes none'),
+      field('issuer price', blank(usd(ref && ref.price_usd)), ref && ref.price_usd > 0 ? (REF_KIND[ref.kind] || ref.kind) + ' · ' + (ref.kind === 'token_bid_ask_mid' ? 'last moved ' : 'updated ') + age(ref.age_s) + (ref.spread != null ? ' · bid/ask ' + pct(ref.spread).replace('+', '') + ' apart' : '') : 'the issuer publishes none'),
       field('on-chain price', h('span', { class: sign(l && l.premium) }, blank(usd(l && l.dex_price_usd))), i.minted === false ? 'not minted yet' : l ? (p.notes.includes('reading_stale') ? 'read ' + age(l.age_s) : l.dex_price_usd == null ? 'no pool deep enough' : 'deepest pool') : 'not recorded yet'),
-      field('difference', h('span', { class: sign(l && l.premium) }, blank(pct(l && l.premium))), l && l.premium != null ? null : 'nothing to compare'),
+      field('on-chain vs issuer', h('span', { class: sign(l && l.premium) }, blank(pct(l && l.premium))), l && l.premium != null ? '+ means on-chain costs more' + (l.age_s != null ? ' · read ' + age(l.age_s) : '') : 'nothing to compare'),
       field('market', (SESSION[m.session] || m.session) + (m.holiday ? ' · ' + m.holiday : m.reason === 'weekend' ? ' · weekend' : '')),
       // A multiplier of exactly 1 with nothing pending says nothing; it is shown only when it matters.
       i.multiplier != null && (Number(i.multiplier) !== 1 || i.multiplier_pending != null) ? field('multiplier', String(+Number(i.multiplier).toFixed(6)), i.multiplier_pending != null ? 'pending ' + i.multiplier_pending : null) : null,
@@ -419,12 +421,13 @@
       folds.push(fold(`pools · ${l.pools.eligible} deep enough of ${l.pools.seen}${l.pools.capped ? '+' : ''}`,
         table(['dex', 'paired with', 'price', 'liquidity', '24h volume'], l.pools.top.map((x) => h('tr', null, h('td', null, poolLink(p.chain, x)), h('td', null, x.quote_symbol || '?'), h('td', null, usd(x.price_usd)), h('td', null, big(x.liquidity_usd)), h('td', null, big(x.volume_h24_usd)))))))
     }
-    return h('div', { class: 'card' },
+    return h('div', { class: 'card is-ok' },
       h('div', { class: 'cardhead' },
         h('div', null, h('h2', null, i.symbol + (i.token_name ? ' · ' + i.token_name.replace(/\s+Robinhood Token$/i, '') : '')), h('div', { class: 'sub' }, where, copyAddress(p.address, true))),
-        h('span', { class: 'stamp ok' }, 'issuer-listed')),
+        h('span', { class: 'state ok' }, 'Issuer-listed')),
       fields,
-      h('div', { class: 'plain' + (bl.cls ? ' ' + bl.cls : '') }, bl.text),
+      h('div', { class: 'plain ok' }, `Official: this exact contract is on ${ISSUER_LABEL[i.name] || i.name}'s list of its stock tokens${p.registry_age_s != null ? ` (list read ${age(p.registry_age_s)})` : ''}.`),
+      h('div', { class: 'plain' + (bl.cls ? ' ' + bl.cls : '') }, bl.text.replace(/^This is the issuer's token\. /, '').replace(/^This is the issuer's token, but /, 'But ')),
       notesOf(p),
       listedCase,
       officialLinks(p),
@@ -585,9 +588,10 @@
   function typewrite (el, text, speed = 14) {
     if (REDUCED) { el.textContent = text; return Promise.resolve() }
     el.classList.add('typing')
+    const log = $('#log'); if (log) log.setAttribute('aria-busy', 'true') // announced once, when typed out, not per character
     return new Promise((resolve) => {
       let k = 0
-      const tick = () => { el.textContent = text.slice(0, ++k); if (k < text.length) setTimeout(tick, speed); else { el.classList.remove('typing'); resolve() } }
+      const tick = () => { el.textContent = text.slice(0, ++k); if (k < text.length) setTimeout(tick, speed); else { el.classList.remove('typing'); if (log) log.removeAttribute('aria-busy'); resolve() } }
       tick()
     })
   }
@@ -605,8 +609,9 @@
       const dot = document.querySelector('#foot-status .foot-dot')
       if (dot && st) dot.classList.add(down ? 'down' : late ? 'late' : 'ok')
     } catch (_) { /* the dot is decoration */ }
-    const counts = st ? `Base: ${st.base?.registry_records ?? '?'} Coinbase stock tokens · also Robinhood Chain: ${st.robinhood?.registry_records ?? '?'}` : 'issuer registries'
-    const hello = `stock-token-passport · ${counts} · recorded every 15 min`
+    const counted = (c) => `${c?.registry_records ?? '?'}` + (c?.readings_tokens != null ? ` (${c.readings_tokens} with prices)` : '')
+    const counts = st ? `Coinbase lists ${counted(st.base)} on Base · Robinhood lists ${counted(st.robinhood)} on Robinhood Chain` : 'issuer registries'
+    const hello = `proof-of-stock · ${counts} · recorded every 15 min`
     const lines = [
       'Is this token the stock it claims to be, and what does it trade at right now?',
       'Type a ticker (NVDA), a company (Tesla) or paste a 0x address. Try: now · impostors · help',
@@ -623,7 +628,7 @@
   function status (st) {
     const el = $('#status')
     if (!st) { el.textContent = 'offline'; return }
-    el.replaceChildren(h('span', { class: 'live' }, '● '), Object.entries(st).map(([c, v]) => `${c}: ${v.registry_records ?? '?'} listed, readings ${v.readings_age_s == null ? 'loading' : age(v.readings_age_s)}`).join(' · '))
+    el.replaceChildren(h('span', { class: 'live' }, '● '), Object.entries(st).map(([c, v]) => `${c}: ${v.registry_records ?? '?'} listed, last price read ${v.newest_reading_age_s == null ? (v.readings_age_s == null ? 'loading' : 'none yet') : age(v.newest_reading_age_s)}`).join(' · '))
   }
 
   // ---------- wiring ----------

@@ -87,8 +87,11 @@ function latestOf (window, address, now = null) {
   }
 }
 
-/** The same security (same ISIN) on every OTHER chain, with its latest reading. */
-export function sameStockElsewhere (byChain, chain, address, now = null) {
+/**
+ * The same security (same ISIN) on every OTHER chain, with its latest reading. With maxAgeS (the passport's window),
+ * a reading older than that is not shown (latest: null): the same rule as the passport's own `latest`.
+ */
+export function sameStockElsewhere (byChain, chain, address, now = null, maxAgeS = null) {
   const own = (byChain[chain]?.records || []).find((r) => r.address === address)
   if (!own || !own.isin) return []
   const out = []
@@ -96,7 +99,9 @@ export function sameStockElsewhere (byChain, chain, address, now = null) {
     if (c === chain) continue
     for (const r of records || []) {
       if (r.isin !== own.isin) continue
-      out.push({ chain: c, issuer: r.issuer, symbol: r.symbol, name: r.name ?? null, address: r.address, multiplier: r.multiplier, latest: latestOf(window, r.address, now) })
+      let latest = latestOf(window, r.address, now)
+      if (latest && now != null && maxAgeS != null && now - Date.parse(latest.observed_at) > maxAgeS * 1000) latest = null
+      out.push({ chain: c, issuer: r.issuer, symbol: r.symbol, name: r.name ?? null, address: r.address, multiplier: r.multiplier, latest })
     }
   }
   return out

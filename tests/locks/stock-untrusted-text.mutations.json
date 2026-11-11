@@ -1,0 +1,34 @@
+{
+  "_finding": "A token's symbol and name are its creator's text. Outside the registry they were published as written: line breaks, invisible characters and any length reached an agent's context, and an invisible character in a symbol was a way past the exact comparison. They are normalized for comparison and cut for display in one module.",
+  "target": "evm/core/stocks/untrusted-text.mjs",
+  "runner": [
+    "node",
+    "apps/untrusted-text.test.mjs"
+  ],
+  "mutations": [
+    {
+      "name": "invisible characters are kept",
+      "find": ".replace(INVISIBLE, '')",
+      "replace": "",
+      "expect": "FAIL zero-width, direction overrides, tag characters, variation selectors and fillers are removed"
+    },
+    {
+      "name": "white space is not collapsed (line breaks survive)",
+      "find": ".replace(/\\s+/gu, ' ')",
+      "replace": "",
+      "expect": "FAIL line breaks, tabs and the line separator become one space"
+    },
+    {
+      "name": "the label is not cut",
+      "find": "  return cps.length <= max ? s : cps.slice(0, max).join('').trimEnd() + '…'",
+      "replace": "  return s",
+      "expect": "FAIL cut to the cap in code points, with an ellipsis"
+    },
+    {
+      "name": "no compatibility folding",
+      "find": "value.normalize('NFKC')",
+      "replace": "value",
+      "expect": "FAIL compatibility forms fold (full-width, superscript)"
+    }
+  ]
+}

@@ -22,7 +22,7 @@ import { passportFor } from './passport.mjs'
 import { CHAINS } from './stock-peg.mjs'
 
 export const PROTOCOL_VERSION = '2025-06-18'
-const SERVER_INFO = Object.freeze({ name: 'stock-token-passport-stdio', version: JSON.parse(fs.readFileSync(new URL('../../package.json', import.meta.url), 'utf8')).version })
+const SERVER_INFO = Object.freeze({ name: 'proof-of-stock-stdio', version: JSON.parse(fs.readFileSync(new URL('../../package.json', import.meta.url), 'utf8')).version })
 const DEFAULT_ROOT = Object.freeze({ base: '/var/lib/stp/base', robinhood: '/var/lib/stp/robinhood' })
 const CHAIN_ENUM = Object.keys(CHAINS)
 // One canonical disclaimer (docs/legal.md, served at /docs/legal.md); the tools point at it instead of repeating it.

@@ -48,7 +48,8 @@ const SOURCES = Object.freeze({
 import { buildPassport, DEFAULT_WINDOW_H } from '../evm/core/stocks/passport.mjs'
 import { usEquitySession } from '../evm/core/stocks/market-session.mjs'
 import { createWindowCache, readingsOf, seriesPoints } from '../evm/core/stocks/readings-window.mjs'
-import { metaFor, injectMeta } from '../evm/core/stocks/page-meta.mjs'
+import { metaFor, injectMeta, withHead, headOf } from '../evm/core/stocks/page-meta.mjs'
+import { robotsTxt, sitemapXml, sitemapUrls, docUrl, homeJsonLd, docJsonLd, pageJsonLd } from './stocks-seo.mjs'
 import { createMcpHttp, SUPPORTED_VERSIONS } from './stocks-mcp-http.mjs'
 import { verifyToken, badgeSvg, badgeState } from '../evm/core/stocks/verify.mjs'
 import { createDocsRenderer } from './stocks-docs.mjs'
@@ -56,6 +57,7 @@ import { statusPage } from './stocks-status.mjs'
 import { createHistoryStore, historyPage, BULK_WINDOW_DAYS, BULK_MAX, FULL_ARCHIVE } from './stocks-history.mjs'
 import { createAnalytics, parseHit } from './stocks-analytics.mjs'
 import { findAcross, sameStockElsewhere, overview, matrix, isinsOfTicker, MATRIX_VENUES } from '../evm/core/stocks/cross-chain.mjs'
+import { symbolLabel, nameLabel, UNTRUSTED_TEXT_NOTE } from '../evm/core/stocks/untrusted-text.mjs'
 
 /** How many matrix rows the MCP tool returns when no share is named. */
 export const MATRIX_MCP_TOP = 20
@@ -69,6 +71,10 @@ const STATIC = Object.freeze({
   '/docs.css': ['docs.css', 'text/css; charset=utf-8'],
   '/docs.js': ['docs.js', 'text/javascript; charset=utf-8'],
   '/beacon.js': ['beacon.js', 'text/javascript; charset=utf-8'],
+  '/og.png': ['og.png', 'image/png'],
+  '/logo.png': ['logo.png', 'image/png'],
+  '/favicon.svg': ['favicon.svg', 'image/svg+xml'],
+  '/favicon.ico': ['logo.png', 'image/png'],
 })
 export const SECURITY_HEADERS = Object.freeze({
   'content-security-policy': "default-src 'none'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
@@ -83,6 +89,7 @@ const ADDRESS = /^0x[0-9a-fA-F]{40}$/
 const MCP_MAX_BODY = 16 * 1024
 const BUCKETS_MAX = 20000
 export const BASE_PATH = '/stocks'
+const STATUS_DESCRIPTION = 'Is Proof of Stock up to date? The issuer registries, the price readings and the impostor list on Base and Robinhood Chain, each with its age.'
 
 // The documentation the site serves (docs/), as markdown, plus /llms.txt and /llms-full.txt (llmstxt.org). Only these
 // directories and files are public; internal notes in docs/ (the TZ, the ssh-based agent note) are not.
@@ -103,14 +110,24 @@ export function loadDocs (dir = DOCS_DIR) {
 }
 /** The llms.txt index: title, one line, then every page with its first sentence. */
 export function llmsTxt (docs, origin, version) {
-  const order = ['README.md', 'tutorials/', 'how-to/', 'reference/', 'explanation/', 'legal.md']
+  const order = ['README.md', 'tutorials/', 'how-to/', 'reference/', 'explanation/', 'legal.md', 'changelog.md']
   const rank = (k) => order.findIndex((o) => k === o || k.startsWith(o))
   const pages = [...docs.keys()].filter((k) => k.endsWith('.md') && k !== 'README.md').sort((a, b) => rank(a) - rank(b) || a.localeCompare(b))
   const titleOf = (t) => (t.match(/^#\s+(.+)$/m) || [])[1] || 'Untitled'
   const lineOf = (t) => (t.split('\n').find((l) => /^[A-Z][^|#`>\-*]/.test(l.trim()) && !/^v\d/.test(l.trim())) || '').trim().replace(/\s+/g, ' ').slice(0, 180)
   const sections = {}
   for (const k of pages) (sections[k.split('/').length > 1 ? k.split('/')[0] : 'more'] ||= []).push(`- [${titleOf(docs.get(k))}](${origin}/docs/${k}): ${lineOf(docs.get(k))}`)
-  const head = ['# Stock Token Passport', '', `> Is a token the issuer's tokenized stock, and how far does the chain trade from the issuer's price? Base (Coinbase registry) and Robinhood Chain (Robinhood registry). Public read-only MCP server: ${origin}/mcp. Version ${version}.`, '']
+  const head = ['# Proof of Stock', '', `> Is a token the issuer's tokenized stock, and how far does the chain trade from the issuer's price? Base (Coinbase registry) and Robinhood Chain (Robinhood registry). Public read-only MCP server: ${origin}/mcp. Version ${version}.`, '',
+    'Contact: hello@proofofstock.xyz. Read-only: nothing here trades, signs or holds a key. Not investment advice.', '']
+  // Where an agent starts: the endpoints and the one-file copy of every page, before the page index.
+  const start = [
+    `- [MCP server](${origin}/mcp): Streamable HTTP, POST one JSON-RPC message, no key or account` + (docs.has('reference/tools.md') ? `; tools: ${origin}/docs/reference/tools.md` : ''),
+    docs.has('reference/http-api.md') ? `- [HTTP API](${origin}/docs/reference/http-api.md): read-only JSON routes, e.g. ${origin}/verify?chain=base&address=0x…` : null,
+    docs.has('reference/passport.schema.json') ? `- [Passport JSON Schema](${origin}/docs/reference/passport.schema.json): the shape of one passport answer` : null,
+    docs.has('how-to/check-before-listing.md') ? `- [Pre-trade guard for agents](${origin}/docs/how-to/check-before-listing.md): the @proofofstock/guard package, beforeBuy() refuses a token the issuer did not list (fails closed; not on npm yet)` : null,
+    `- [Every page in one file](${origin}/llms-full.txt)`,
+  ].filter(Boolean)
+  head.push('## Start here', '', ...start, '')
   const names = { tutorials: 'Tutorials', 'how-to': 'How-to guides', reference: 'Reference', explanation: 'Explanation', more: 'More' }
   return head.concat(...['tutorials', 'how-to', 'reference', 'explanation', 'more'].filter((s) => sections[s]).map((s) => [`## ${names[s]}`, '', ...sections[s], ''])).join('\n')
 }
@@ -164,19 +181,22 @@ export function createStocksWeb ({
   const history = createHistoryStore({ roots, now, log })
   const analytics = createAnalytics({ now, log, ...analyticsOpts })
   const docs = loadDocs()
-  const changelog = (() => { try { return fs.readFileSync(path.join(path.dirname(DOCS_DIR), 'CHANGELOG.md'), 'utf8') } catch (_) { return '# Changelog\n' } })()
+  // The changelog is a docs page (/docs/changelog.md): the repository's own CHANGELOG.md, its links into docs/ rebased.
+  try { docs.set('changelog.md', fs.readFileSync(path.join(path.dirname(DOCS_DIR), 'CHANGELOG.md'), 'utf8').replace(/\]\(docs\//g, '](')) } catch (_) { /* a tree without it has no such page */ }
   const pkgJson = JSON.parse(fs.readFileSync(path.join(path.dirname(STATIC_DIR), '..', 'package.json'), 'utf8'))
   const appVersion = pkgJson.version
   // The source link: shown only once the repository is public (package.json stp.source_public), so nobody follows it to
   // a GitHub 404 before then. Opening the code is that one flag and a deploy.
   const sourceUrl = source !== undefined ? source : (pkgJson.stp?.source_public && pkgJson.repository?.url ? pkgJson.repository.url : null)
   // The release date is the changelog's for this version ("## [0.3.0] - 2026-11-10"), shown as "10 Nov 2026".
-  const released = (() => {
+  // The sitemap's lastmod for the home and the docs is the same date, as YYYY-MM-DD (null when unreleased).
+  const releasedIso = (() => {
     try {
       const m = fs.readFileSync(path.join(path.dirname(DOCS_DIR), 'CHANGELOG.md'), 'utf8').match(new RegExp('^## \\[' + appVersion.replace(/\./g, '\\.') + '\\] - (\\d{4}-\\d{2}-\\d{2})', 'm'))
-      return m ? new Date(m[1] + 'T00:00:00Z').toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' }) : 'unreleased'
-    } catch (_) { return 'unreleased' }
+      return m ? m[1] : null
+    } catch (_) { return null }
   })()
+  const released = releasedIso ? new Date(releasedIso + 'T00:00:00Z').toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' }) : 'unreleased'
   let docsPages = null // built once the static assets are versioned, below
   const llms = llmsTxt(docs, publicOrigin + publicPath, appVersion)
   // One file holds every page, so a relative link would resolve against /llms-full.txt and 404: each is made absolute
@@ -192,6 +212,11 @@ export function createStocksWeb ({
   static_['/'].body = Buffer.from(String(static_['/'].body).replace('href="style.css"', `href="style.css?v=${version('/style.css')}"`).replace('src="app.js"', `src="app.js?v=${version('/app.js')}"`).replace('src="beacon.js"', `src="beacon.js?v=${version('/beacon.js')}"`)
     .replaceAll('__MCP_URL__', publicOrigin + publicPath + '/mcp').replaceAll('__VERSION__', appVersion).replaceAll('__RELEASED__', released)
     .replace('<!--source-->', sourceUrl ? `<a class="foot-link" href="${sourceUrl}" target="_blank" rel="noopener noreferrer"><span class="i i-gh" aria-hidden="true"></span>GitHub</a>` : ''))
+  // What crawlers and link previews read: the preview image and logo by content hash (a new image is a new URL, so
+  // X and Telegram fetch it again), robots.txt and the head tags every page gets.
+  const site = publicOrigin + publicPath
+  const seo = { image: `${site}/og.png?v=${version('/og.png')}`, logo: `${site}/logo.png?v=${version('/logo.png')}` }
+  const robots = robotsTxt(site, publicPath)
   docsPages = createDocsRenderer({ docs, version: appVersion, released, sourceUrl, base: publicPath, assets: { css: `style.css?v=${version('/style.css')}`, docsCss: `docs.css?v=${version('/docs.css')}`, docsJs: `docs.js?v=${version('/docs.js')}`, beacon: `beacon.js?v=${version('/beacon.js')}` } })
 
   // ⚠ A RAW ERROR NEVER REACHES A RESPONSE. A file system or fetch error can carry an internal path or a piece of a file;
@@ -226,9 +251,12 @@ export function createStocksWeb ({
       // A deployer's address is the collector's work and is not published; how many listed impostors share it is.
       const byDeployer = new Map()
       for (const i of j.items || []) if (i.deployer) byDeployer.set(i.deployer, (byDeployer.get(i.deployer) || 0) + 1)
-      const pub = (i) => { const { deployer, ...rest } = i; return { ...rest, same_deployer_impostors: deployer ? byDeployer.get(deployer) - 1 : null } }
+      // ⚠ symbol and name are the creator's text: published as labels (untrusted-text.mjs), whatever the file holds.
+      const pub = (i) => { const { deployer, ...rest } = i; return { ...rest, symbol: symbolLabel(i.symbol), name: nameLabel(i.name), same_deployer_impostors: deployer ? byDeployer.get(deployer) - 1 : null } }
       const items = (j.items || []).map(pub)
-      impostors.set(chain, { ...j, items, byAddress: new Map(items.map((i) => [i.address, i])) })
+      // asWritten is for resemblance() only (nameOf → buildPassport, which publishes labels); no route serializes it.
+      const asWritten = new Map((j.items || []).map((i) => [i.address, { symbol: i.symbol ?? null, name: i.name ?? null }]))
+      impostors.set(chain, { ...j, items, byAddress: new Map(items.map((i) => [i.address, i])), asWritten })
     } catch (e) { if (!impostors.get(chain)?.items) impostors.set(chain, { error: e.code === 'ENOENT' ? 'not generated yet' : internal(`impostors ${chain}`, e, 'unreadable') }) }
   }
   // The names file: written by the same timer, read whole, the last good copy kept.
@@ -254,22 +282,41 @@ export function createStocksWeb ({
       }
     }
     let meta = metaFor({})
-    let record = null
-    if (CHAINS[c] && ADDRESS.test(a)) {
+    let record = null, impostor = null
+    const named = Boolean(CHAINS[c] && ADDRESS.test(a))
+    if (named) {
       record = registries.get(c)?.records?.find((r) => r.address === a) || null
       const latest = record ? windows[c].get().window?.byToken.get(a)?.latest : null
-      meta = metaFor({ chain: c, record, latest, impostor: record ? null : impostors.get(c)?.byAddress?.get(a) })
+      impostor = record ? null : impostors.get(c)?.byAddress?.get(a) || null
+      meta = metaFor({ chain: c, record, latest, impostor })
     }
-    const canonical = publicOrigin + publicPath + '/' + (record ? `?${c}=${encodeURIComponent(record.symbol)}` : CHAINS[c] && ADDRESS.test(a) ? `?chain=${c}&address=${a}` : '')
-    return Buffer.from(injectMeta(static_['/'].body, meta, canonical))
+    const canonical = publicOrigin + publicPath + '/' + (record ? `?${c}=${encodeURIComponent(record.symbol)}` : named ? `?chain=${c}&address=${a}` : '')
+    // A listed token and a listed impostor are pages worth a search result; any other address is the empty passport
+    // of a contract nobody indexed, one per address that exists: not indexed.
+    const jsonLd = named ? pageJsonLd({ site, url: canonical, title: meta.title, description: meta.description, logo: seo.logo }) : homeJsonLd({ site, version: appVersion, ...seo })
+    return Buffer.from(injectMeta(static_['/'].body, meta, canonical, { ...seo, jsonLd, robots: named && !record && !impostor ? 'noindex' : undefined }))
+  }
+
+  // A docs page with its canonical link, preview and JSON-LD. The docs are fixed at start, so each page is built once.
+  const docPages = new Map()
+  function docPage (rel) {
+    if (!docPages.has(rel)) {
+      const html = docsPages.render(rel), url = docUrl(site, rel), { title, description } = headOf(html)
+      docPages.set(rel, withHead(html, { url, type: 'article', ...seo, jsonLd: docJsonLd({ site, url, title, description, version: appVersion, ...seo }) }))
+    }
+    return docPages.get(rel)
+  }
+  // /status and /history, from what their own module rendered.
+  function withPageHead (sub, html, description) {
+    const url = site + sub, own = headOf(html)
+    return withHead(html, { url, description, ...seo, jsonLd: pageJsonLd({ site, url, title: own.title, description: own.description ?? description, logo: seo.logo }) })
   }
 
   // A token outside the registry, named from our dataset; unnamed, the passport says nothing about resemblance.
   function nameOf (chain, address) {
     const n = names.get(chain)?.get(address)
     if (n) return n
-    const listed = impostors.get(chain)?.byAddress?.get(address)
-    return listed ? { symbol: listed.symbol ?? null, name: listed.name ?? null } : {}
+    return impostors.get(chain)?.asWritten?.get(address) || {}
   }
 
   let sweptMinute = -1
@@ -306,7 +353,8 @@ export function createStocksWeb ({
 
   function send (res, status, body, type = 'application/json; charset=utf-8', extra = {}) {
     const buf = Buffer.isBuffer(body) ? body : Buffer.from(typeof body === 'string' ? body : JSON.stringify(body))
-    res.writeHead(status, { ...SECURITY_HEADERS, 'content-type': type, 'content-length': buf.length, ...extra })
+    // A JSON answer is for programs: no search engine lists it, whatever links to it.
+    res.writeHead(status, { ...SECURITY_HEADERS, 'content-type': type, 'content-length': buf.length, ...(/json/.test(type) ? { 'x-robots-tag': 'noindex' } : {}), ...extra })
     res.end(res.req.method === 'HEAD' ? undefined : buf)
   }
 
@@ -332,7 +380,7 @@ export function createStocksWeb ({
     const w = windows[chain].get()
     const identity = inRegistry ? {} : nameOf(chain, addr)
     const p = buildPassport({ address: addr, chainId: CHAINS[chain].chainId, registry: reg.records, readings: inRegistry && w.window ? readingsOf(w.window.byToken.get(addr), addr) : [], identity, now: now(), windowH: Math.min(hours, windowH) })
-    const elsewhere = inRegistry ? sameStockElsewhere(loaded().byChain, chain, addr, now()) : []
+    const elsewhere = inRegistry ? sameStockElsewhere(loaded().byChain, chain, addr, now(), hours * 3600) : []
     const listed = inRegistry ? null : impostors.get(chain)?.byAddress?.get(addr) || null
     const points = inRegistry && w.window ? seriesPoints(w.window.byToken.get(addr)).filter(([t]) => t >= now() - hours * 3600e3) : []
     // Where a reader can look for themselves: the token on GeckoTerminal (CoinGecko's DEX charts; its deepest pool when we
@@ -397,7 +445,7 @@ export function createStocksWeb ({
     const t = Math.max(from, since ? Date.parse(since) : from)
     const items = j.items.filter((i) => i.first_seen_at && Date.parse(i.first_seen_at) >= t)
       .sort((a, b) => String(b.first_seen_at).localeCompare(String(a.first_seen_at)))
-    return { chain, generated_at: j.generated_at, since: since || null, window_days: BULK_WINDOW_DAYS, count: items.length, older: FULL_ARCHIVE, note: j.note, items: items.slice(0, BULK_MAX).map((i) => ({ address: i.address, symbol: i.symbol, name: i.name, kind: i.kind, imitates_symbol: i.registry_symbol ?? null, listed_address: i.registry_address ?? null, first_seen_at: i.first_seen_at })) }
+    return { chain, generated_at: j.generated_at, since: since || null, window_days: BULK_WINDOW_DAYS, count: items.length, older: FULL_ARCHIVE, note: j.note, untrusted_text: UNTRUSTED_TEXT_NOTE, items: items.slice(0, BULK_MAX).map((i) => ({ address: i.address, symbol: i.symbol, name: i.name, kind: i.kind, imitates_symbol: i.registry_symbol ?? null, listed_address: i.registry_address ?? null, first_seen_at: i.first_seen_at })) }
   }
 
   /** The Base ↔ Robinhood matrix from memory, or null with the chains whose registry has not loaded. */
@@ -492,7 +540,14 @@ export function createStocksWeb ({
     const sub = url.pathname.slice(BASE_PATH.length)
     if (sub === '/') { if (req.method === 'GET') analytics.load(clientIp(req), req.headers, '/'); return send(res, 200, pageFor(url), STATIC['/'][1], { 'cache-control': 'no-cache' }) }
     if (STATIC[sub]) { const s = static_[sub]; return send(res, 200, s.body, s.type, { 'cache-control': 'public, max-age=86400' }) }
-    if (sub === '/CHANGELOG.md') return send(res, 200, changelog, 'text/markdown; charset=utf-8', { 'cache-control': 'public, max-age=600', 'access-control-allow-origin': '*' })
+    // The old address of the changelog: it is a docs page now.
+    if (sub === '/CHANGELOG.md') { res.writeHead(301, { location: publicPath + '/docs/changelog.md', 'cache-control': 'public, max-age=3600' }); return res.end() }
+    if (sub === '/robots.txt') return send(res, 200, robots, 'text/plain; charset=utf-8', { 'cache-control': 'public, max-age=3600' })
+    // The listed tokens come from the registries in memory, so the sitemap follows a listing within PAGE_CACHE_MS.
+    if (sub === '/sitemap.xml') {
+      const build = () => sitemapXml(sitemapUrls({ site, docs: docs.keys(), released: releasedIso, symbols: Object.fromEntries(Object.keys(CHAINS).map((c) => [c, (registries.get(c)?.records || []).map((r) => r.symbol).filter(Boolean)])) }))
+      return send(res, 200, cachedPage('/sitemap.xml', build), 'application/xml; charset=utf-8', { 'cache-control': 'public, max-age=3600' })
+    }
     if (sub === '/llms.txt') return send(res, 200, llms, 'text/plain; charset=utf-8', { 'cache-control': 'public, max-age=3600', 'access-control-allow-origin': '*' })
     if (sub === '/llms-full.txt') return send(res, 200, llmsFull, 'text/plain; charset=utf-8', { 'cache-control': 'public, max-age=3600', 'access-control-allow-origin': '*' })
     if (sub === '/docs' || sub === '/docs/' || sub.startsWith('/docs/')) {
@@ -501,8 +556,10 @@ export function createStocksWeb ({
       // A browser gets the page; an agent, curl or ?format=md gets the markdown. Varies by Accept, so it is not shared-cached.
       const wantsHtml = rel.endsWith('.md') && url.searchParams.get('format') !== 'md' && /text\/html/.test(String(req.headers.accept || ''))
       if (wantsHtml) analytics.load(clientIp(req), req.headers, '/docs/' + rel)
-      if (wantsHtml) return send(res, 200, docsPages.render(rel), 'text/html; charset=utf-8', { 'cache-control': 'private, max-age=300', vary: 'Accept' })
-      return send(res, 200, docs.get(rel), rel.endsWith('.json') ? 'application/schema+json; charset=utf-8' : 'text/markdown; charset=utf-8', { 'cache-control': 'private, max-age=300', vary: 'Accept', 'access-control-allow-origin': '*' })
+      if (wantsHtml) return send(res, 200, docPage(rel), 'text/html; charset=utf-8', { 'cache-control': 'private, max-age=300', vary: 'Accept' })
+      // The markdown is the same page for an agent: a search engine that gets it is pointed at the HTML one.
+      const md = rel.endsWith('.md') ? { link: `<${docUrl(site, rel)}>; rel="canonical"` } : {}
+      return send(res, 200, docs.get(rel), rel.endsWith('.json') ? 'application/schema+json; charset=utf-8' : 'text/markdown; charset=utf-8', { 'cache-control': 'private, max-age=300', vary: 'Accept', 'access-control-allow-origin': '*', ...md })
     }
     // The badge: an image other pages embed. It answers from memory, is cached at the CDN and is not rate limited per
     // address of the requester, because image proxies fetch it from a handful of addresses. It is always 200: a broken
@@ -525,11 +582,11 @@ export function createStocksWeb ({
     }
     if (sub === '/status') {
       analytics.load(clientIp(req), req.headers, '/status')
-      return send(res, 200, cachedPage('/status', () => statusPage({ chains: statusNumbers(), now: now(), version: appVersion, assets: { css: `style.css?v=${version('/style.css')}`, docsCss: `docs.css?v=${version('/docs.css')}`, beacon: `beacon.js?v=${version('/beacon.js')}` } })), 'text/html; charset=utf-8', { 'cache-control': 'no-store' })
+      return send(res, 200, cachedPage('/status', () => withPageHead('/status', statusPage({ chains: statusNumbers(), now: now(), version: appVersion, assets: { css: `style.css?v=${version('/style.css')}`, docsCss: `docs.css?v=${version('/docs.css')}`, beacon: `beacon.js?v=${version('/beacon.js')}` } }), STATUS_DESCRIPTION)), 'text/html; charset=utf-8', { 'cache-control': 'no-store' })
     }
     if (sub === '/history') {
       analytics.load(clientIp(req), req.headers, '/history')
-      return send(res, 200, cachedPage('/history', () => historyPage({ store: history, chains: Object.keys(CHAINS), now: now(), version: appVersion, assets: { css: `style.css?v=${version('/style.css')}`, docsCss: `docs.css?v=${version('/docs.css')}`, beacon: `beacon.js?v=${version('/beacon.js')}` } })), 'text/html; charset=utf-8', { 'cache-control': 'public, max-age=300' })
+      return send(res, 200, cachedPage('/history', () => withPageHead('/history', historyPage({ store: history, chains: Object.keys(CHAINS), now: now(), version: appVersion, assets: { css: `style.css?v=${version('/style.css')}`, docsCss: `docs.css?v=${version('/docs.css')}`, beacon: `beacon.js?v=${version('/beacon.js')}` } }))), 'text/html; charset=utf-8', { 'cache-control': 'public, max-age=300' })
     }
     if (!sub.startsWith('/api/')) return send(res, 404, { error: 'not found' })
 
@@ -577,7 +634,7 @@ export function createStocksWeb ({
         if (chain && c !== chain) continue
         const j = impostors.get(c)
         const recent = j?.items ? j.items.filter((i) => i.first_seen_at && Date.parse(i.first_seen_at) >= from) : null
-        out[c] = j?.items ? { generated_at: j.generated_at, counts: j.counts, listed: j.listed, note: j.note, window_days: BULK_WINDOW_DAYS, in_window: recent.length, items: recent.slice(0, limit), older: FULL_ARCHIVE } : { error: j?.error || 'not loaded' }
+        out[c] = j?.items ? { generated_at: j.generated_at, counts: j.counts, listed: j.listed, note: j.note, untrusted_text: UNTRUSTED_TEXT_NOTE, window_days: BULK_WINDOW_DAYS, in_window: recent.length, items: recent.slice(0, limit), older: FULL_ARCHIVE } : { error: j?.error || 'not loaded' }
       }
       return send(res, 200, { chains: out }, undefined, { 'cache-control': 'public, max-age=300' })
     }

@@ -1,4 +1,4 @@
-# Stock Token Passport
+# Proof of Stock
 
 **Is this token the issuer's tokenized stock, and how far does the chain trade from the issuer's price?**
 
@@ -23,7 +23,7 @@ Every answer carries its time and source. It never trades and gives no advice.
 | Terminal-style site | `apps/stocks-web.mjs`, `apps/stocks-web/` |
 | `GET /verify`, `GET /badge.svg` | the one-bit check and an embeddable badge (`evm/core/stocks/verify.mjs`) |
 | Public MCP server (Streamable HTTP, stateless) | `apps/stocks-mcp-http.mjs`; tools `find_stock_token`, `list_stock_tokens`, `stock_passport`, `verify_stock_tokens`, `recent_impostors` |
-| Pre-trade guard for agents (AgentKit action) | `packages/stockofproof-guard/` |
+| Pre-trade guard for agents (AgentKit action) | `packages/proofofstock-guard/` |
 | Recorder (every 15 min) and impostor list (every 6 h) | `scripts/stocks/stock-peg.mjs`, `scripts/stocks/impostor-list.mjs` |
 
 ## Layout

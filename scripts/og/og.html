@@ -1,0 +1,45 @@
+<!doctype html>
+<!-- scripts/og/og.html — the source of apps/stocks-web/og.png (1200×630), the image a shared link shows on X, Farcaster,
+     Telegram and Slack. The site's own look: black, Base blue, a terminal window. Re-render with scripts/og/render.sh. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Martian+Mono:wght@300;400;600&amp;family=Onest:wght@400;500;700&amp;display=swap">
+<style>
+  html, body { margin: 0; width: 1200px; height: 630px; overflow: hidden; }
+  body { background: #050608; color: #f2f4f8; font-family: 'Onest', system-ui, sans-serif; position: relative; }
+  .grid { position: absolute; inset: 0; background-image: linear-gradient(#ffffff08 1px, transparent 1px), linear-gradient(90deg, #ffffff08 1px, transparent 1px); background-size: 40px 40px; }
+  .glow { position: absolute; border-radius: 50%; filter: blur(90px); }
+  .glow.a { width: 620px; height: 420px; left: -160px; top: -180px; background: #0052ff55; }
+  .glow.b { width: 520px; height: 380px; right: -140px; bottom: -200px; background: #0052ff40; }
+  .wrap { position: absolute; inset: 56px 64px; display: flex; flex-direction: column; }
+  .brand { display: flex; align-items: center; gap: 16px; font: 600 22px 'Martian Mono', monospace; letter-spacing: .02em; }
+  .logo { width: 44px; height: 44px; border-radius: 10px; background: #0052ff; display: grid; place-items: center; }
+  .kicker { margin-left: auto; font: 400 16px 'Martian Mono', monospace; color: #8b94a8; }
+  h1 { margin: 44px 0 0; font: 700 68px/1.05 'Onest', sans-serif; letter-spacing: -.02em; }
+  h1 em { font-style: normal; color: #4d8bff; }
+  .term { margin-top: 40px; background: #0b0d12; border: 1px solid #1d2433; border-radius: 14px; padding: 22px 26px; font: 400 21px/1.75 'Martian Mono', monospace; }
+  .p { color: #4d8bff; }
+  .ok { color: #4fd18b; } .bad { color: #ff6b6b; } .dim { color: #8b94a8; }
+  .foot { margin-top: auto; display: flex; align-items: baseline; gap: 28px; font: 400 18px 'Martian Mono', monospace; color: #8b94a8; }
+  .foot b { color: #f2f4f8; font-weight: 600; font-size: 22px; }
+</style>
+</head>
+<body>
+  <div class="grid"></div><div class="glow a"></div><div class="glow b"></div>
+  <div class="wrap">
+    <div class="brand">
+      <span class="logo"><svg width="28" height="28" viewBox="0 0 32 32"><path d="M8 11l6 5-6 5" stroke="#fff" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/><path d="M16 22h8" stroke="#fff" stroke-width="3" stroke-linecap="round"/></svg></span>
+      Proof of Stock
+      <span class="kicker">Base · Robinhood Chain</span>
+    </div>
+    <h1>Is this stock token the issuer's?<br><em>Check before you trade it.</em></h1>
+    <div class="term">
+      <div><span class="p">❯</span> NVDA <span class="dim">on Base</span></div>
+      <div><span class="ok">✓ in the Coinbase registry</span> <span class="dim">· issuer price, its age, premium</span></div>
+      <div><span class="bad">✗ 0x… "NVDA" is not the issuer's token</span> <span class="dim">· see the listed contract</span></div>
+    </div>
+    <div class="foot"><b>proofofstock.xyz</b><span>site · MCP server for agents · HTTP API</span></div>
+  </div>
+</body>
+</html>

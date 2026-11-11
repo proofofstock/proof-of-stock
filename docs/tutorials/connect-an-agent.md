@@ -1,8 +1,8 @@
-v0.3.0 · updated 2026-11-10
+v0.4.0 · updated 2026-11-11
 
 # Connect an agent and read your first passport
 
-In five minutes you will connect an AI agent to the public Stock Token Passport server and read the passport of one
+In five minutes you will connect an AI agent to the public Proof of Stock server and read the passport of one
 real tokenized stock: `SNDKc`, a Coinbase-listed token on Base.
 
 The server is public, read-only and needs no key:
@@ -19,7 +19,7 @@ Pick one client in step 1. Step 2 is the same for all of them.
 
 1. Open **Settings → Connectors**.
 2. Choose **Add custom connector**.
-3. Name it `Stock Token Passport` and paste `https://proofofstock.xyz/mcp` as the URL.
+3. Name it `Proof of Stock` and paste `https://proofofstock.xyz/mcp` as the URL.
 4. Save. In a new chat, turn the connector on.
 
 ### Claude Code
@@ -61,7 +61,7 @@ curl -s https://proofofstock.xyz/mcp \
   -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"tutorial","version":"0"}}}' | jq .result.serverInfo
 ```
 
-You should see the server's name, `stock-token-passport`.
+You should see the server's name, `proof-of-stock`.
 
 List the tools:
 
@@ -167,6 +167,8 @@ reference, with the age of each number. Next:
 - [Compare one stock across Base and Robinhood Chain](../how-to/compare-venues.md)
 - [Why the numbers are computed the way they are](../explanation/methodology.md)
 
-The server allows 60 requests per minute per client; a passport costs 3 of them. Over that it answers 429; wait a minute.
+The server allows 60 units per minute per client address (an IPv6 client by its /56), shared with the HTTP API: most
+calls cost 1, `stock_passport` 3, `verify_stock_tokens` ⌈n/10⌉ for n addresses. Over that it answers 429 with
+`Retry-After: 60`.
 
 [Not investment advice](../legal.md)

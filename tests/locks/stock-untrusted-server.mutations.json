@@ -1,0 +1,22 @@
+{
+  "_finding": "The server published the impostor list's symbol and name as the file held them. It publishes labels, and keeps the text as written only for the passport's resemblance check, which a cut name would have changed.",
+  "target": "apps/stocks-web.mjs",
+  "runner": [
+    "node",
+    "apps/untrusted-text.test.mjs"
+  ],
+  "mutations": [
+    {
+      "name": "the list is published as written",
+      "find": "symbol: symbolLabel(i.symbol), name: nameLabel(i.name), same_deployer_impostors",
+      "replace": "same_deployer_impostors",
+      "expect": "FAIL /api/impostors: labels, and the note before the items"
+    },
+    {
+      "name": "the passport resembles by the cut label",
+      "find": "    return impostors.get(chain)?.asWritten?.get(address) || {}",
+      "replace": "    return impostors.get(chain)?.byAddress?.get(address) || {}",
+      "expect": "FAIL a long name known only from the impostor list: resembles is decided on the full name"
+    }
+  ]
+}

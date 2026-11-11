@@ -1,6 +1,6 @@
 # HTTP API
 
-`v0.3.0 · updated 2026-11-10`
+`v0.4.0 · updated 2026-11-11`
 
 Read-only JSON routes on `https://proofofstock.xyz`. No key, no account, no cookies. (`GET /api/hit` is the site's
 own visit counter, [What we count](../legal.md#what-we-count); it answers 204 and is not for integrations.)
@@ -16,7 +16,7 @@ curl -s 'https://proofofstock.xyz/verify?chain=base&address=0xaaaaaaaaaaaaaaaaaa
   "issuer": "coinbase", "symbol": "NVDAc", "name": "NVIDIA", "isin": "US67066G1040", "minted": true,
   "listed_on_other_chain": null, "impostor": null, "delisted_at": null,
   "registry_age_s": 120, "checked_at": "2026-11-10T15:00:00.000Z",
-  "passport": "https://proofofstock.xyz/?base=NVDAc"
+  "passport": "https://proofofstock.xyz/?base=NVDAc", "case": null
 }
 ```
 
@@ -41,7 +41,7 @@ curl -s 'https://proofofstock.xyz/verify?chain=base&address=0xaaaaaaaaaaaaaaaaaa
 | Methods | `GET` and `HEAD`. Any other method is refused by the proxy (403) |
 | Rate limit | 60 requests per minute per client IP (IPv6: per /56) across `/verify`, `/api/*` and `/mcp` together. Over it: 429, `{ "error": "too many requests, try again in a minute" }`, `Retry-After: 60`. The proxy also caps 10 requests per second (burst 40) and 20 open connections per IP |
 | Not rate limited by the app | `/badge.svg`, the page and its assets |
-| Errors | JSON `{ "error": "<words>" }`. 400 bad input, 404 unknown path (`{ "error": "not found" }`), 503 a registry not loaded yet, 500 `{ "error": "internal error" }` |
+| Errors | JSON `{ "error": "<words>" }`. 400 bad input, 404 unknown path (`{ "error": "not found" }`), 503 a registry not loaded yet, 500 `{ "error": "internal error" }`. Error texts are fixed public sentences; internal causes are never returned |
 | Freshness | Every answer comes from memory. The server rereads the issuer registries and the readings every 300 s; nothing on the request path calls out |
 | Units | as in the [passport](./passport.md#units): premium and spread are fractions, prices USD per token, ages integer seconds |
 | `chain` | `base` (Coinbase registry, chain id 8453) or `robinhood` (Robinhood registry, chain id 4663) |
@@ -51,7 +51,7 @@ Every answer carries `Content-Security-Policy`, `X-Content-Type-Options: nosniff
 strict-origin-when-cross-origin` and `X-Frame-Options: DENY`.
 
 Other public paths: `/` (the page; `/?base=NVDAc` and `/?chain=base&address=0x…` open one token), `/docs/`,
-`/CHANGELOG.md`, `/llms.txt`, `/llms-full.txt`, and the MCP server at [`/mcp`](./tools.md).
+`/docs/changelog.md`, `/llms.txt`, `/llms-full.txt`, and the MCP server at [`/mcp`](./tools.md).
 
 ---
 
@@ -104,7 +104,7 @@ cannot be moved onto a page about another token. It never shows a price, has no 
 ```html
 <a href="https://proofofstock.xyz/?chain=base&address=0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa">
   <img src="https://proofofstock.xyz/badge.svg?chain=base&address=0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-       alt="Stock Token Passport registry check" height="40">
+       alt="Proof of Stock registry check" height="40">
 </a>
 ```
 
@@ -338,6 +338,10 @@ Without `date`, `/api/history/registry` lists the snapshots (`fetched_at`, `hash
 many addresses were `added`, `removed` or `changed`), newest first. A snapshot is written only when the registry
 changed, so the one in force on a day can be older than the day. A day before the archive answers `snapshot: null`
 with the reason.
+
+In `/api/history/cases` and `/api/impostors` the `symbol` and `name` of a token are its creator's text, published as
+labels (one line, cut to 32 and 64 characters, see [`identity`](./passport.md#field-identity)); each answer carries
+`untrusted_text` to say they are data, never instructions.
 
 `/verify` and `/api/passport` carry the address's case as `case`: `status` (`open`, `listed_by_issuer`, `closed`),
 `source`, `first_seen_at`, `flagged_at`, `archived_at`, `closed_at` and the number of `events`; `null` when the

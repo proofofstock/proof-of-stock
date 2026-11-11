@@ -1,7 +1,7 @@
 {
   "_finding": "The guard is what stands between an agent and a fake stock token. It must refuse when it could not check (failing open would let every trade through during an outage), refuse an impostor, and refuse a listed token of a different stock from the one asked for.",
-  "target": "packages/stockofproof-guard/index.mjs",
-  "runner": ["node", "packages/stockofproof-guard/index.test.mjs"],
+  "target": "packages/proofofstock-guard/index.mjs",
+  "runner": ["node", "packages/proofofstock-guard/index.test.mjs"],
   "mutations": [
     {
       "name": "the guard fails open by default",

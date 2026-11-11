@@ -1,4 +1,4 @@
-# @stockofproof/guard
+# @proofofstock/guard
 
 A pre-trade check for agents that buy tokenized stocks on **Base** (Coinbase's tokens) and **Robinhood Chain**
 (Robinhood's). Before a swap, the guard asks one question: is this exact contract on the issuer's own registry? The
@@ -12,7 +12,7 @@ answer comes from [proofofstock.xyz](https://proofofstock.xyz).
 ## Use
 
 ```js
-import { createGuard } from '@stockofproof/guard'
+import { createGuard } from '@proofofstock/guard'
 
 const guard = createGuard()
 const d = await guard.beforeBuy({ chain: 'base', tokenAddress: '0x35b7…f703', claimedSymbol: 'SNDKc' })
@@ -37,7 +37,7 @@ if (!d.allow) {
 ```js
 import { customActionProvider } from '@coinbase/agentkit'
 import { z } from 'zod'
-import { guardAction } from '@stockofproof/guard/agentkit'
+import { guardAction } from '@proofofstock/guard/agentkit'
 
 const g = guardAction()
 const stockGuard = customActionProvider({

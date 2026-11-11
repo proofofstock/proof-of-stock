@@ -1,4 +1,4 @@
-// @stockofproof/guard/agentkit — the guard as an action an AgentKit agent can call before a swap.
+// @proofofstock/guard/agentkit — the guard as an action an AgentKit agent can call before a swap.
 //
 // This file does not import AgentKit: it exports the action's name, description, a JSON schema of its input and the
 // function, so it drops into `customActionProvider` with whatever schema library the agent uses (AgentKit's examples

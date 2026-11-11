@@ -30,7 +30,7 @@ const body = (r) => JSON.parse(r.result.content[0].text)
 console.log('protocol')
 {
   const init = await handle({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: PROTOCOL_VERSION, capabilities: {}, clientInfo: { name: 't', version: '0' } } }, opts)
-  check('initialize names the protocol and offers tools', init.result.protocolVersion === PROTOCOL_VERSION && init.result.capabilities.tools && init.result.serverInfo.name === 'stock-token-passport-stdio')
+  check('initialize names the protocol and offers tools', init.result.protocolVersion === PROTOCOL_VERSION && init.result.capabilities.tools && init.result.serverInfo.name === 'proof-of-stock-stdio')
   check('the initialized notification gets no reply', (await handle({ jsonrpc: '2.0', method: 'notifications/initialized' }, opts)) === null)
   const list = await handle({ jsonrpc: '2.0', id: 2, method: 'tools/list' }, opts)
   check('three tools, each with an input schema', list.result.tools.length === 3 && list.result.tools.every((t) => t.inputSchema && t.inputSchema.type === 'object'))

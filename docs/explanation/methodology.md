@@ -1,4 +1,4 @@
-v0.3.0 · updated 2026-11-10
+v0.4.0 · updated 2026-11-11
 
 # Methodology: where the data comes from and what counts as issuer-listed
 
@@ -19,7 +19,7 @@ This page explains why each of those layers works the way it does. The field-by-
 | Registry | Coinbase Tokenized Stocks API, `GET https://api.coinbase.com/v1/tokenized-stocks`, every page | Robinhood `GET https://api.robinhood.com/rhj/assets`, the deployments whose `chainId` is 4663 |
 | Reference | `nav_price` from the same Coinbase records: a net asset value per token, total return | `tokenBid` / `tokenAsk` from `GET https://api.robinhood.com/rhj/prices`, mid of the two |
 | Pools | DexScreener `token-pairs/v1/base/<address>` | DexScreener `token-pairs/v1/robinhood/<address>` |
-| Pools, second source | GeckoTerminal, only when DexScreener lists exactly 30 pairs | the same |
+| Pools, second source | GeckoTerminal, only when DexScreener lists 30 pairs (its cap), and not in the last 90 s of a run's time limit | the same |
 
 None of these needs a key. The code is `evm/core/stocks/registries.mjs`, `scripts/stocks/stock-peg.mjs` and
 `scripts/stocks/gecko-pools.mjs`.
@@ -111,6 +111,8 @@ A pool prices the stock token only when **all** of these hold:
    addresses come from the chain descriptor (`evm/chains/<chain>/descriptor.mjs`) and every passport lists them in
    `sources.pools_counted.paired_with_addresses`.
 3. The pool holds at least **$10,000** of liquidity, as the source reports it.
+4. The source gives a usable price for the token on its side of the pool (base side: `priceUsd`; quote side:
+   GeckoTerminal's `quotePriceUsd`, else `priceUsd / priceNative`).
 
 Of the pools that pass, the deepest one sets the price.
 
@@ -212,9 +214,10 @@ One window is quarantined today:
 
 | Window (UTC) | What went wrong | Which rows | Fixed by |
 |---|---|---|---|
-| 2026-11-09 17:30 to 19:55 | the recorder priced stock tokens from memecoin pools, which is circular (see above) | rows of that span with a premium whose deepest pool was not against `USDC`, `USDBC`, `DAI`, `WETH`, `USDG` or `ETH` | #809, which prices only against dollar stables or WETH by address |
+| 2026-11-09 17:30 to 19:55 | the recorder priced stock tokens from memecoin pools, which is circular (see above) | rows of that span with a premium whose deepest pool was not against `USDC`, `USDBC`, `DAI`, `WETH`, `USDG` or `ETH` | the same day: the recorder now prices only against dollar stables or WETH, matched by address |
 
-Rows of that window that were priced against one of those assets are kept.
+Rows of that window that were priced against one of those assets are kept. This filter matches the pool by
+`quote_symbol`, because rows of that span store no quote address.
 
 ## Known limitations
 
@@ -237,6 +240,9 @@ Rows of that window that were priced against one of those assets are kept.
   and stays unpublished until its precision is measured.
 - **Delisting is tracked per process.** `delisted_at` is set only for addresses that left the registry since the site
   last started.
+- **An outside token's name is its creator's text.** It is compared after normalization (NFKC, invisible characters
+  removed), so those are not a way past the comparison; look-alike letters from another alphabet still are. It is
+  published as a short one-line label and never put into a sentence the service says.
 - **Rate limits.** Per client address (an IPv6 client is keyed by its /56), 60 units per minute, shared by `/api/*`,
   `/verify` and `/mcp`. A passport costs 3 units, and a `verify_stock_tokens` call of n addresses ⌈n/10⌉ units. Over the limit the answer is
   429 with `Retry-After: 60`. The proxy in front also caps bursts. `/badge.svg` is not limited per client, because

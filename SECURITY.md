@@ -10,7 +10,7 @@ In scope:
 
 - the site and its JSON API at https://proofofstock.xyz;
 - the public MCP server at https://proofofstock.xyz/mcp;
-- the `@stockofproof/guard` package (`packages/stockofproof-guard`);
+- the `@proofofstock/guard` package (`packages/proofofstock-guard`);
 - the code in this repository.
 
 Most valuable to us: a passport, guard or MCP answer that calls an impostor genuine (or a genuine token an impostor),

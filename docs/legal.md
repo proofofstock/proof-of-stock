@@ -1,9 +1,9 @@
-v0.3.0 · updated 2026-11-10
+v0.4.0 · updated 2026-11-11
 
 # Legal
 
-This is the one canonical text for the Stock Token Passport: the site at proofofstock.xyz, its HTTP API, its MCP
-server and the `@stockofproof/guard` package. Other pages link here instead of repeating it.
+This is the one canonical text for Proof of Stock: the site at proofofstock.xyz, its HTTP API, its MCP
+server and the `@proofofstock/guard` package. Other pages link here instead of repeating it.
 
 ## Not investment advice
 
@@ -13,7 +13,7 @@ stated time. What you do with it is your decision.
 
 ## No affiliation
 
-The Stock Token Passport is not affiliated with, endorsed by or sponsored by Coinbase or Robinhood. It reads their
+Proof of Stock is not affiliated with, endorsed by or sponsored by Coinbase or Robinhood. It reads their
 public APIs. "Issuer-listed" means the address appears on the issuer's public registry as we last read it. It does
 not mean the issuer has verified, approved or reviewed anything here. Coinbase, Robinhood, their product names and the
 tickers they use are their trademarks, and the names and tickers of the underlying companies belong to those

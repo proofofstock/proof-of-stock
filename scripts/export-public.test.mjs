@@ -32,6 +32,13 @@ if (!fs.existsSync(path.join(ROOT, '.git'))) {
   console.log('\n0 passed, 0 failed')
   process.exit(0)
 }
+// The public copy has no deny list (the export removes it): nothing to check against there, so this suite says so and
+// passes. The private repository, where the export runs, has it.
+if (!fs.existsSync(path.join(ROOT, 'scripts/public-deny.txt'))) {
+  console.log('  skip no scripts/public-deny.txt (the public copy): the export is checked in the private repository')
+  console.log('\n0 passed, 0 failed')
+  process.exit(0)
+}
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'export-check-'))
 const repo = path.join(tmp, 'repo')
 const ENV = { ...process.env, GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@example.invalid', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@example.invalid' }

@@ -36,7 +36,7 @@ export function statusPage ({ chains, now, version, assets }) {
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Status · Stock Token Passport</title>
+  <title>Status · Proof of Stock</title>
   <meta name="theme-color" content="#050608">
   <meta http-equiv="refresh" content="60">
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -48,7 +48,7 @@ export function statusPage ({ chains, now, version, assets }) {
 </head>
 <body class="dx">
   <header class="dx-bar">
-    <a class="dx-brand" href="./"><span class="dx-logo" aria-hidden="true"><span class="i i-chev"></span></span><span>Stock Token Passport</span><span class="dx-docs">Status</span></a>
+    <a class="dx-brand" href="./"><span class="dx-logo" aria-hidden="true"><span class="i i-chev"></span></span><span>Proof of Stock</span><span class="dx-docs">Status</span></a>
     <span></span>
     <nav class="dx-links"><a href="./"><span class="ic ic-terminal" aria-hidden="true"></span>Terminal</a><a href="docs/"><span class="ic ic-doc" aria-hidden="true"></span>Docs</a></nav>
     <a class="dx-cta" href="docs/tutorials/connect-an-agent.md"><span aria-hidden="true">+</span> Connect an agent</a>

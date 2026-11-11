@@ -17,7 +17,9 @@ import path from 'node:path'
 import crypto from 'node:crypto'
 
 export const HISTORY_DIR = 'history'
-export const CASE_RULE_VERSION = 'impostor-strong-v1' // evm/core/stocks/impostor.mjs resemblance(), strong kinds only
+// v2 (11.11.2026): the symbol and name are compared after untrusted-text.mjs normalizeUntrusted() (NFKC, invisible
+// characters removed), so a look-alike written with those is now a case. v1 compared the text as written.
+export const CASE_RULE_VERSION = 'impostor-strong-v2' // evm/core/stocks/impostor.mjs resemblance(), strong kinds only
 export const BACKFILL_SOURCE = 'first_seen_at from our collector history (static day files), archived when the case archive began'
 
 const day = (ms) => new Date(ms).toISOString().slice(0, 10)

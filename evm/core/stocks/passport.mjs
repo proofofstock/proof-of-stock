@@ -12,6 +12,7 @@
 // ⚠ RIGHTS COME FROM THE PROSPECTUS, NOT FROM THE CONTRACT. The passport says who issued the token and points at the
 // issuer; it never states what a holder is entitled to.
 
+import { symbolLabel, nameLabel, UNTRUSTED_TEXT_NOTE } from './untrusted-text.mjs'
 import { usEquitySession } from './market-session.mjs'
 import { resemblance } from './impostor.mjs'
 
@@ -75,7 +76,9 @@ export function buildPassport ({ address, chainId, registry, readings = [], iden
 
   if (!rec) {
     notes.push('not_in_registry')
-    return { ...base, in_registry: false, issuer: null, resembles: resemblance({ address: addr, ...identity }, registry), identity: { symbol: identity.symbol ?? null, name: identity.name ?? null }, latest: null, series: null, notes }
+    return { ...base, in_registry: false, issuer: null, resembles: resemblance({ address: addr, ...identity }, registry),
+      // ⚠ The creator's own text: shown as a label (one line, cut), never as written. resemblance() above reads the full text.
+      untrusted_text: UNTRUSTED_TEXT_NOTE, identity: { symbol: symbolLabel(identity.symbol), name: nameLabel(identity.name) }, latest: null, series: null, notes }
   }
 
   // Coinbase lists many tokens before any is minted on Base: no supply, no NAV, no pool, and the recorder skips them.

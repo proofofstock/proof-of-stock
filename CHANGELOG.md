@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to the Stock Token Passport. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
+All notable changes to Proof of Stock. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versioning: [SemVer](https://semver.org/).
 
 - **Major:** a breaking change to an answer's shape: a field removed or renamed, a unit changed, an enum value removed,
@@ -11,6 +11,30 @@ Versioning: [SemVer](https://semver.org/).
 The version is in `package.json`, and the site footer, the MCP `serverInfo.version` and the docs headers show it.
 
 ## [Unreleased]
+
+### Security
+- **A token's own symbol and name are treated as a stranger's text.** For a token outside the issuer registry they are published as one-line labels (invisible and control characters removed, cut to 32 and 64 characters), never put into a sentence the service says (the MCP lead of `recent_impostors`, an impostor page's title and link preview), and every answer that carries them says so in `untrusted_text`. The MCP server's instructions say the same. An agent reading our answers could otherwise be handed instructions through a token's name.
+- **The impostor rule compares normalized text:** an invisible character or a full-width letter in a symbol was a way past the exact comparison. Rule version `impostor-strong-v2`.
+
+### Added
+- **Search engines, AI crawlers and link previews** (from an 11.11 audit of the live site: no robots rules, no sitemap, no canonical link, a text-only preview on `/` and none elsewhere, no structured data):
+  - `/robots.txt` allows every page and keeps `/api/`, `/verify` and `/mcp` out; it names `/sitemap.xml`, which lists the home, the docs, `/status`, `/history` and one short link per issuer-listed token (`/?base=NVDAc`), from the registries in memory.
+  - Every page names its canonical link (the docs home is `/docs/`; a token is its short link), and a markdown docs page points at its HTML one with a `Link` header. JSON answers carry `X-Robots-Tag: noindex`, and so does the empty passport of an address that is neither listed nor a listed impostor.
+  - A 1200×630 preview image in the site's style (`/og.png`, from `scripts/og/og.html`) and a large Twitter card on every page; the docs, `/status` and `/history` get Open Graph tags too, and `/status` a description.
+  - JSON-LD: the organisation (Proof of Stock, hello@proofofstock.xyz), the site, the web app and the MCP server on the home; a TechArticle per docs page; a WebPage elsewhere. A PNG icon (`/logo.png`, also `/favicon.ico`).
+  - `/llms.txt` starts with where an agent begins: the MCP server, the HTTP API, the passport schema, the guard and `/llms-full.txt`.
+  - **The site is named Proof of Stock** in every `<title>`, link preview, the JSON-LD and `/llms.txt` (was Stock Token Passport); a token's page keeps its ticker and chain first (`NVDAc (NVIDIA) on Base: … · Proof of Stock`).
+
+### Changed
+- **The name is Proof of Stock** on every page, in MCP (`serverInfo.name: proof-of-stock`) and in `server.json`; the guard is `@proofofstock/guard` (not published yet). The rights line says the code is MIT.
+- **The first screen says what the site is:** "Is this stock token the real one?", one sentence on what it checks, and chips "biggest gaps now" and "known fakes". A passport opens with the verdict in words and when the issuer list was read; "reference" is "issuer price" and "difference" is "on-chain vs issuer", with what + means and the reading's age. The greeting says how many listed tokens have prices. The colour legend matches the colours (green above the issuer, red below). Errors are sentences (no connection, too many checks). A section says what the service cannot do: it only reads.
+- **Accessibility:** faint text at 4.7:1 contrast, the headline is the page's h1, the chain switch is toggle buttons, the typed greeting is announced once.
+- **The changelog is a docs page:** `/docs/changelog.md`, in the docs menu under Releases; the footer version links there and `/CHANGELOG.md` redirects to it.
+
+### Fixed
+- **The same share on the other chain shows no price older than the passport's window**, like the passport's own `latest` (it could show one up to 72 h old).
+- **The site:** the status bar showed when the server last read its files as the age of the readings; it now shows when a price was last read. A pasted address gets the chart and the by-session table, as a ticker search does. Aerodrome pools are named.
+- **The docs match the code:** `latest` follows `hours`, `no_readings` after 72 h without a reading, the `case` field, `internal error` on MCP, `window_days` and `older` on the impostor list, the rate limit in units, GeckoTerminal's trigger, the fourth pool rule; the alert script in "Alert when the gap is wide" no longer crashes at its first alert.
 
 ## [0.4.0] - 2026-11-11
 

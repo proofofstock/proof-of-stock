@@ -8,6 +8,7 @@
 // ⚠ A BACKFILLED FACT IS SHOWN AS ONE. A case archived from the collector's older history says "first seen by our
 //   collector", never "flagged by us", and carries no flag time.
 
+import { symbolLabel, nameLabel, UNTRUSTED_TEXT_NOTE } from '../evm/core/stocks/untrusted-text.mjs'
 import fs from 'node:fs'
 import path from 'node:path'
 import { replayCases, HISTORY_DIR } from '../evm/core/stocks/history.mjs'
@@ -27,7 +28,7 @@ const files = (dir, prefix) => { try { return fs.readdirSync(dir).filter((f) => 
 const rowsOf = (file) => fs.readFileSync(file, 'utf8').split('\n').filter(Boolean).flatMap((l) => { try { return [JSON.parse(l)] } catch { return [] } })
 
 /** What the public sees of a case event: the evidence and how it was learned, nothing internal. */
-export const publicEvent = (e) => ({ event: e.event, at: e.at, source: e.source, address: e.address, symbol: e.symbol ?? null, name: e.name ?? null,
+export const publicEvent = (e) => ({ event: e.event, at: e.at, source: e.source, address: e.address, symbol: symbolLabel(e.symbol), name: nameLabel(e.name),
   kind: e.kind, imitates_symbol: e.registry_symbol ?? null, listed_address: e.registry_address ?? null,
   first_seen_at: e.first_seen_at ?? null, flagged_at: e.flagged_at ?? null, ...(e.previous_kind ? { previous_kind: e.previous_kind } : {}) })
 
@@ -69,7 +70,7 @@ export function createHistoryStore ({ roots, now = () => Date.now(), log = () =>
     const counts = { open: s.open.size, opened: 0, listed: 0, gone: 0, kind_changed: 0, backfilled: 0 }
     for (const e of s.events) { counts[e.event] = (counts[e.event] || 0) + 1; if (e.source === 'backfilled') counts.backfilled++ }
     const page = list.slice(0, limit)
-    return { chain, archive_started_at: s.startedAt, counts, window_days: BULK_WINDOW_DAYS, window_from: new Date(from).toISOString(), count: list.length, events: page.map(publicEvent), older: FULL_ARCHIVE, error: s.error }
+    return { chain, archive_started_at: s.startedAt, counts, window_days: BULK_WINDOW_DAYS, window_from: new Date(from).toISOString(), count: list.length, untrusted_text: UNTRUSTED_TEXT_NOTE, events: page.map(publicEvent), older: FULL_ARCHIVE, error: s.error }
   }
 
   /** One address's case: its events and a plain summary, or null when it was never a case. */
@@ -118,7 +119,7 @@ export function historyPage ({ store, chains, now, version, assets }) {
     return `<section class="hs-chain"><h2>${esc(chainName)}</h2>
   <div class="hs-stats"><div><b>${cs.counts.open}</b><span>open cases</span></div><div><b>${cs.counts.listed}</b><span>later listed by ${esc(issuer)}</span></div><div><b>${reg.count}</b><span>registry snapshot${reg.count === 1 ? '' : 's'}</span></div><div><b>${esc(cs.archive_started_at ? cs.archive_started_at.slice(0, 10) : 'not yet')}</b><span>${cs.archive_started_at ? 'case archive began' : 'case archive starts with the next impostor run'}</span></div></div>
   <h3>Registry snapshots</h3><ul class="hs-list">${regRows || '<li class="hs-empty">No snapshot recorded yet.</li>'}</ul>
-  <h3>Cases of the last ${BULK_WINDOW_DAYS} days, newest first</h3><ul class="hs-list">${evRows || `<li class="hs-empty">No new case in the last ${BULK_WINDOW_DAYS} days. The impostor list is archived every 6 hours.</li>`}</ul>
+  <h3>Cases of the last ${BULK_WINDOW_DAYS} days, newest first</h3><ul class="hs-list">${evRows || `<li class="hs-empty">No new case in the last ${BULK_WINDOW_DAYS} days. The open cases counted above were first seen earlier. The impostor list is archived every 6 hours.</li>`}</ul>
   <p class="hs-more">Events of the last ${BULK_WINDOW_DAYS} days. Every address keeps its whole case: open its passport or <a href="docs/reference/http-api.md#route-verify">/verify</a>. ${esc(FULL_ARCHIVE)}.</p>
 </section>`
   }).join('')
@@ -127,7 +128,7 @@ export function historyPage ({ store, chains, now, version, assets }) {
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>History · Stock Token Passport</title>
+  <title>History · Proof of Stock</title>
   <meta name="description" content="What each issuer listed and which contracts imitated their stock tokens, dated, append-only.">
   <meta name="theme-color" content="#08090c">
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -139,7 +140,7 @@ export function historyPage ({ store, chains, now, version, assets }) {
 </head>
 <body class="dx">
   <header class="dx-bar">
-    <a class="dx-brand" href="./"><span class="dx-logo" aria-hidden="true"><span class="i i-chev"></span></span><span>Stock Token Passport</span><span class="dx-docs">History</span></a>
+    <a class="dx-brand" href="./"><span class="dx-logo" aria-hidden="true"><span class="i i-chev"></span></span><span>Proof of Stock</span><span class="dx-docs">History</span></a>
     <span></span>
     <nav class="dx-links"><a href="./"><span class="ic ic-terminal" aria-hidden="true"></span>Terminal</a><a href="status"><span class="ic ic-pulse" aria-hidden="true"></span>Status</a><a href="docs/"><span class="ic ic-doc" aria-hidden="true"></span>Docs</a></nav>
     <a class="dx-cta" href="docs/tutorials/connect-an-agent.md"><span aria-hidden="true">+</span> Connect an agent</a>

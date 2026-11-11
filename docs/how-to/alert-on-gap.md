@@ -1,4 +1,4 @@
-v0.3.0 · updated 2026-11-10
+v0.4.0 · updated 2026-11-11
 
 # Alert when the on-chain price drifts from the issuer's reference
 
@@ -52,6 +52,7 @@ async function check () {
     for (const row of c.rows) {
       const key = `${chain}:${row.address}`
       const refAgeS = row.reference_age_s
+      const readingAgeS = Math.round((now - Date.parse(row.observed_at)) / 1000)
       const fresh = refAgeS != null && refAgeS <= MAX_REFERENCE_AGE_S
       const wide = Math.abs(row.premium) > THRESHOLD
 

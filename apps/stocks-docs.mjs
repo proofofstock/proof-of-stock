@@ -17,22 +17,23 @@ const HTTP = /^(GET|POST|PUT|DELETE|PATCH)\s+(\S+)$/
 
 // The catalogs, in reading order, and the icon of each page (docs.css .ic-*). A page not listed falls back to "doc".
 const SECTIONS = [
-  { label: 'Overview', match: (k) => !k.includes('/') && k !== 'legal.md' },
+  { label: 'Overview', match: (k) => !k.includes('/') && k !== 'legal.md' && k !== 'changelog.md' },
   { label: 'Get started', match: (k) => k.startsWith('tutorials/') },
   { label: 'Guides', match: (k) => k.startsWith('how-to/') },
   { label: 'Reference', match: (k) => k.startsWith('reference/') && k.endsWith('.md') },
   { label: 'Understand', match: (k) => k.startsWith('explanation/') },
   { label: 'Legal', match: (k) => k === 'legal.md' },
+  { label: 'Releases', match: (k) => k === 'changelog.md' },
 ]
 const ICON = {
   'README.md': 'home', 'tutorials/connect-an-agent.md': 'plug', 'how-to/check-before-listing.md': 'shield', 'how-to/alert-on-gap.md': 'bell',
   'how-to/compare-venues.md': 'scale', 'reference/passport.md': 'id', 'reference/tools.md': 'terminal', 'reference/http-api.md': 'globe',
-  'explanation/methodology.md': 'bulb', 'legal.md': 'doc',
+  'explanation/methodology.md': 'bulb', 'legal.md': 'doc', 'changelog.md': 'doc',
 }
 const SHORT = {
   'tutorials/connect-an-agent.md': 'Connect an agent', 'how-to/check-before-listing.md': 'Check before listing', 'how-to/alert-on-gap.md': 'Alert on a gap',
   'how-to/compare-venues.md': 'Compare venues', 'reference/passport.md': 'The passport', 'reference/tools.md': 'MCP tools', 'reference/http-api.md': 'HTTP API',
-  'explanation/methodology.md': 'Methodology', 'legal.md': 'Legal',
+  'explanation/methodology.md': 'Methodology', 'legal.md': 'Legal', 'changelog.md': 'Changelog',
 }
 const ORDER = ['README.md', 'tutorials/connect-an-agent.md', 'how-to/check-before-listing.md', 'how-to/alert-on-gap.md', 'how-to/compare-venues.md',
   'reference/passport.md', 'reference/tools.md', 'reference/http-api.md', 'explanation/methodology.md', 'legal.md']
@@ -126,7 +127,7 @@ export function createDocsRenderer ({ docs, version, released, assets, sourceUrl
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>${esc(plainTitle(md))} · Stock Token Passport Docs</title>
+  <title>${esc(plainTitle(md))} · Proof of Stock Docs</title>
   <meta name="description" content="${esc(leadOf(md) || plainTitle(md))}">
   <meta name="theme-color" content="#08090c">
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230052ff'/%3E%3Cpath d='M8 11l6 5-6 5' stroke='%23ffffff' stroke-width='3' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
@@ -141,7 +142,7 @@ export function createDocsRenderer ({ docs, version, released, assets, sourceUrl
 </head>
 <body class="dx" id="top">
   <header class="dx-bar">
-    <a class="dx-brand" href="${toRoot}"><span class="dx-logo" aria-hidden="true"><span class="i i-chev"></span></span><span>Stock Token Passport</span><span class="dx-docs">Docs</span></a>
+    <a class="dx-brand" href="${toRoot}"><span class="dx-logo" aria-hidden="true"><span class="i i-chev"></span></span><span>Proof of Stock</span><span class="dx-docs">Docs</span></a>
     <label class="dx-search"><span class="ic ic-search" aria-hidden="true"></span><input id="dx-q" type="search" placeholder="Search" autocomplete="off" spellcheck="false" aria-label="Search the docs"><kbd>⌘K</kbd><div id="dx-res" class="dx-res" hidden></div></label>
     <nav class="dx-links">
       <a href="${site}"><span class="ic ic-terminal" aria-hidden="true"></span>Terminal</a>
@@ -157,7 +158,7 @@ export function createDocsRenderer ({ docs, version, released, assets, sourceUrl
       <div class="dx-crumbs">${section ? esc(section.label) : 'Docs'}<span class="dx-ver"><span class="beta-tag">beta</span>v${esc(version)} · ${esc(released)}</span></div>
       <article class="prose">${body}</article>
       ${pager}
-      <footer class="dx-foot"><span>© 2026 Stock Token Passport. All rights reserved.</span><span><a href="${href('legal.md')}">Not investment advice</a> · <a href="?format=md">View as markdown</a>${sourceUrl ? ` · <a href="${esc(sourceUrl)}" target="_blank" rel="noopener noreferrer">Source on GitHub</a>` : ''}</span></footer>
+      <footer class="dx-foot"><span>© 2026 Proof of Stock. Code under the MIT licence.</span><span><a href="${href('legal.md')}">Not investment advice</a> · <a href="?format=md">View as markdown</a>${sourceUrl ? ` · <a href="${esc(sourceUrl)}" target="_blank" rel="noopener noreferrer">Source on GitHub</a>` : ''}</span></footer>
     </main>
     ${tocHtml}
   </div>
@@ -173,12 +174,12 @@ export function createDocsRenderer ({ docs, version, released, assets, sourceUrl
     const never = [
       ['Trade for you.', 'Every tool is read-only. Nothing here buys, sells or swaps.'],
       ['Ask for keys or a wallet.', 'No account, no wallet connection, no seed phrase. Ever.'],
-      ['Sell a token.', 'There is no Stock Token Passport token. Any one is fake.'],
+      ['Sell a token.', 'There is no Proof of Stock token. Any one is fake.'],
       ['Tell you what to buy.', 'Facts with their time and source. Not advice.'],
     ].map(([t, d]) => `<div class="never-item"><span class="ic ic-no" aria-hidden="true"></span><div><b>${esc(t)}</b><span>${esc(d)}</span></div></div>`).join('')
-    return `<h1>Welcome to Stock Token Passport</h1>
+    return `<h1>Welcome to Proof of Stock</h1>
 <p class="lede">Check whether a token is the issuer's tokenized stock, what the issuer prices it at and how fresh that is, and how far the chain trades from it. Base and Robinhood Chain, for people, agents and code.</p>
-<div class="never"><div class="never-head"><span class="ic ic-shield" aria-hidden="true"></span><b>Stay safe: Stock Token Passport will never</b></div><div class="never-grid">${never}</div><div class="never-foot"><span class="ic ic-check" aria-hidden="true"></span>A token is the issuer's only if its exact contract is in the issuer's registry. A name proves nothing.</div></div>
+<div class="never"><div class="never-head"><span class="ic ic-shield" aria-hidden="true"></span><b>Stay safe: Proof of Stock will never</b></div><div class="never-grid">${never}</div><div class="never-foot"><span class="ic ic-check" aria-hidden="true"></span>A token is the issuer's only if its exact contract is in the issuer's registry. A name proves nothing.</div></div>
 <h2 id="three-questions">Three questions, three answers</h2>
 <div class="qa">
   <a class="qa-item" href="how-to/check-before-listing.md"><span class="qa-q">Is this the real stock token?</span><code>/verify</code><code>verify_stock_tokens</code></a>

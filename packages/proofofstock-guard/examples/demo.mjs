@@ -1,9 +1,9 @@
-// packages/stockofproof-guard/examples/demo.mjs — the contest demo, against the live endpoint.
+// packages/proofofstock-guard/examples/demo.mjs — the contest demo, against the live endpoint.
 //
 // An agent is asked to buy SNDKc on Base and is handed an impostor's contract. The guard refuses it and names the
 // issuer-listed contract; the agent checks that one and proceeds. Nothing is traded: the "swap" here only prints.
 //
-// Run (needs outbound HTTPS): node packages/stockofproof-guard/examples/demo.mjs
+// Run (needs outbound HTTPS): node packages/proofofstock-guard/examples/demo.mjs
 
 import { createGuard } from '../index.mjs'
 

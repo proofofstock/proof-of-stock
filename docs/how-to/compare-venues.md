@@ -1,4 +1,4 @@
-v0.3.0 · updated 2026-11-10
+v0.4.0 · updated 2026-11-11
 
 # Compare one stock across Base and Robinhood Chain
 

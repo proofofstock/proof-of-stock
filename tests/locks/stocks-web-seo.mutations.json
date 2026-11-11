@@ -1,0 +1,34 @@
+{
+  "_finding": "Search engines and link previews (11.11 audit): no robots rules or sitemap, no canonical link, no preview image, no JSON-LD. The site now names its canonical link on every page, keeps JSON answers and the empty passport of an unknown address out of the index, and serves robots.txt and a sitemap built from the docs and the registries.",
+  "target": "apps/stocks-web.mjs",
+  "runner": [
+    "node",
+    "apps/stocks-web.test.mjs"
+  ],
+  "mutations": [
+    {
+      "name": "JSON answers lose their noindex",
+      "find": "...(/json/.test(type) ? { 'x-robots-tag': 'noindex' } : {}),",
+      "replace": "",
+      "expect": "FAIL JSON answers say noindex; pages do not"
+    },
+    {
+      "name": "an unknown address is indexed",
+      "find": "robots: named && !record && !impostor ? 'noindex' : undefined",
+      "replace": "robots: undefined",
+      "expect": "FAIL an address that is neither listed nor a listed impostor is noindex"
+    },
+    {
+      "name": "the sitemap forgets the listed tokens",
+      "find": "(registries.get(c)?.records || []).map((r) => r.symbol)",
+      "replace": "[].map((r) => r.symbol)",
+      "expect": "FAIL ...and one passport per listed token by its short link"
+    },
+    {
+      "name": "the docs home is canonical at README.md",
+      "find": "const html = docsPages.render(rel), url = docUrl(site, rel)",
+      "replace": "const html = docsPages.render(rel), url = `${site}/docs/${rel}`",
+      "expect": "FAIL the docs home is canonical at /docs/, not /docs/README.md"
+    }
+  ]
+}

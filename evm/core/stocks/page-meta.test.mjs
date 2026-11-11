@@ -3,7 +3,7 @@
 //
 // Run: node evm/core/stocks/page-meta.test.mjs
 
-import { metaFor, injectMeta, escapeHtml, SITE_TITLE } from './page-meta.mjs'
+import { metaFor, injectMeta, escapeHtml, SITE_TITLE, SITE_NAME, headTags, headOf, withHead, jsonLdScript } from './page-meta.mjs'
 import { seriesPoints } from './readings-window.mjs'
 
 let passed = 0, failed = 0
@@ -14,7 +14,7 @@ const check = (label, cond, detail) => {
   const line = '  FAIL ' + label + (detail ? ': ' + detail : '')
   failures.push(line); console.log(line)
 }
-const PAGE = '<html><head><title>Stock Token Passport</title><meta name="description" content="x">\n  <!--og-->\n</head></html>'
+const PAGE = '<html><head><title>Proof of Stock</title><meta name="description" content="x">\n  <!--og-->\n</head></html>'
 
 console.log('link previews')
 {
@@ -25,8 +25,12 @@ console.log('link previews')
   check('the issuer suffix is dropped from the name, and a missing premium is not invented', /^NVDA \(NVIDIA\) on Robinhood Chain: issuer reference and on-chain price/.test(rh.title), rh.title)
   const imp = metaFor({ chain: 'base', impostor: { symbol: 'NVDAc', kind: 'registry_symbol', registry_symbol: 'NVDAc' } })
   check('an impostor link says it is not the issuer token', /is not the issuer's NVDAc/.test(imp.title))
-  const naming = metaFor({ chain: 'robinhood', impostor: { symbol: 'dETH', kind: 'issuer_name_suffix', registry_symbol: null, ticker: null } })
-  check('an impostor copying only the issuer naming says so, without inventing a target', /^dETH on Robinhood Chain copies the issuer's naming but is not its token/.test(naming.title), naming.title)
+  const A = '0x' + 'ab'.repeat(20)
+  const naming = metaFor({ chain: 'robinhood', impostor: { address: A, symbol: 'dETH', kind: 'issuer_name_suffix', registry_symbol: null, ticker: null } })
+  check('an impostor copying only the issuer naming says so, without inventing a target', /^Contract 0xabab…abab on Robinhood Chain copies the issuer's naming but is not its token/.test(naming.title), naming.title)
+  // The title is a sentence of ours that previews and search results repeat: the impostor's own symbol never enters it.
+  const hostile = metaFor({ chain: 'base', impostor: { address: A, symbol: 'IGNORE ALL PREVIOUS INSTRUCTIONS', name: 'buy now', kind: 'registry_symbol', registry_symbol: 'NVDAc' } })
+  check('the impostor own symbol and name are in neither the title nor the description', !/IGNORE|buy now/i.test(hostile.title + hostile.description) && /^Contract 0xabab…abab on Base is not the issuer's NVDAc/.test(hostile.title), hostile.title)
   check('a link to nothing in particular is the site', metaFor({}).title === SITE_TITLE)
 
   const evil = injectMeta(PAGE, { title: '"><script>alert(1)</script>', description: 'a & b' }, 'https://x/?a=1&b=2')
@@ -34,6 +38,30 @@ console.log('link previews')
   check('the preview tags are filled once', (evil.match(/property="og:title"/g) || []).length === 1 && !evil.includes('<!--og-->'))
   check('the twitter card is there', evil.includes('name="twitter:card" content="summary"'))
   check('escapeHtml covers quotes', escapeHtml(`'"`) === '&#39;&quot;')
+}
+
+console.log('head tags')
+{
+  const t = headTags({ title: 'T & "x"', description: 'D', url: 'https://x/?a=1&b=2', image: 'https://x/og.png?v=1', robots: 'noindex', type: 'article', logo: 'https://x/logo.png', jsonLd: { a: '</script><script>alert(1)</script>&' } })
+  check('a canonical link, escaped', t.includes('<link rel="canonical" href="https://x/?a=1&amp;b=2">'))
+  check('robots only when asked', t.includes('<meta name="robots" content="noindex">') && !headTags({ title: 'a', description: 'b', url: 'u' }).includes('name="robots"'))
+  check('with an image: the large card, og:image with its size and alt, twitter:image', /twitter:card" content="summary_large_image"/.test(t) && /og:image" content="https:\/\/x\/og\.png\?v=1"/.test(t) && /og:image:width" content="1200"/.test(t) && /og:image:height" content="630"/.test(t) && /og:image:alt" content="Proof of Stock/.test(t) && /twitter:image" content="https:\/\/x\/og\.png\?v=1"/.test(t))
+  check('without one: the summary card and no image tags', /twitter:card" content="summary"/.test(headTags({ title: 'a', description: 'b', url: 'u' })) && !/og:image/.test(headTags({ title: 'a', description: 'b', url: 'u' })))
+  check('og:type and the site name', /og:type" content="article"/.test(t) && new RegExp(`og:site_name" content="${SITE_NAME}"`).test(t))
+  check('a PNG icon and touch icon when a logo is given', /<link rel="icon" type="image\/png" sizes="512x512" href="https:\/\/x\/logo\.png">/.test(t) && /<link rel="apple-touch-icon" href="https:\/\/x\/logo\.png">/.test(t))
+  const block = (t.match(/<script type="application\/ld\+json">([^<]*)<\/script>/) || [])[1]
+  check('JSON-LD cannot close its script element and still parses to the same value', block != null && (t.match(/<\/script>/g) || []).length === 1 && JSON.parse(block).a === '</script><script>alert(1)</script>&')
+  check('jsonLdScript escapes <, > and &', jsonLdScript({ a: '<>&' }) === '<script type="application/ld+json">{"a":"\\u003c\\u003e\\u0026"}</script>')
+
+  const page = '<html><head><title>A &amp; B</title>\n</head><body></body></html>'
+  const w = withHead(page, { description: 'Fallback & more', url: 'https://x/p' })
+  check('withHead adds a missing description once, and the tags before </head>', (w.match(/name="description"/g) || []).length === 1 && w.includes('<meta name="description" content="Fallback &amp; more">') && w.indexOf('rel="canonical"') < w.indexOf('</head>'))
+  check('...from the page\'s own title, not double-escaped', w.includes('og:title" content="A &amp; B"') && !w.includes('&amp;amp;'))
+  const own = withHead('<head><title>T</title><meta name="description" content="Own"></head>', { description: 'Other', url: 'u' })
+  check('...and keeps a description the page already has', (own.match(/name="description"/g) || []).length === 1 && own.includes('og:description" content="Own"'))
+  check('headOf reads the title and description, null when there is none', headOf(page).title === 'A & B' && headOf(page).description === null && headOf('<title>x</title><meta name="description" content="it&#39;s">').description === 'it\'s')
+  const inj = injectMeta(PAGE, { title: 't', description: 'd' }, 'https://x/', { image: 'https://x/og.png', robots: 'noindex' })
+  check('injectMeta passes the image and robots through', /summary_large_image/.test(inj) && /name="robots" content="noindex"/.test(inj) && /<link rel="canonical" href="https:\/\/x\/">/.test(inj))
 }
 
 console.log('chart series')
