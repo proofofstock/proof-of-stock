@@ -42,5 +42,19 @@ check('an impostor is a distinctive copy, not a shared ticker', /distinctive sym
 check('not advice', /not investment advice/i.test(all))
 check('no other contact than hello@', (all.match(/[\w.+-]+@[\w.-]+/g) || []).length === 0 && (section.match(/[\w.+-]+@[\w.-]+\.\w+/g) || []).every((e) => e === 'hello@proofofstock.xyz'))
 
+console.log('the footer: the project\'s own profiles')
+{
+  const foot = (html.match(/<footer class="foot">[\s\S]*?<\/footer>/) || [''])[0]
+  const links = [...foot.matchAll(/<a class="foot-ic" href="([^"]+)"([^>]*)>/g)].map((m) => [m[1], m[2]])
+  check('X and Telegram, in that order; the email is not in the footer (owner, 11.11: spam)', JSON.stringify(links.map(([h]) => h)) === JSON.stringify(['https://x.com/proofofstock', 'https://t.me/proofofstock1']) && !/mailto:/.test(foot))
+  check('each has a label a screen reader says, and its icon is hidden from it', links.every(([, at]) => /aria-label="[^"]+"/.test(at)) && (foot.match(/class="i i-(x|tg)" aria-hidden="true"/g) || []).length === 2)
+  check('the outside ones open apart and pass no opener or referrer', links.filter(([h]) => h.startsWith('https:')).every(([, at]) => /target="_blank"/.test(at) && /rel="me noopener noreferrer"/.test(at)))
+  const css = fs.readFileSync(new URL('./stocks-web/style.css', import.meta.url), 'utf8')
+  const iconSrc = (k) => decodeURIComponent((css.match(new RegExp('\\.i-' + k + ' \\{ --i: url\\("data:image/svg\\+xml,([^"]+)"\\)')) || [])[1] || '')
+  check('the icons are drawn here in the site\'s style: inline masks on the 16-unit grid, no image file, no third party', ['x', 'tg'].every((k) => /viewBox='0 0 16 16'/.test(iconSrc(k)) && /stroke-linecap='round'/.test(iconSrc(k))))
+  const { PROFILES } = await import('./stocks-seo.mjs')
+  check('the organisation names the same profiles as sameAs', JSON.stringify(PROFILES) === JSON.stringify(['https://x.com/proofofstock', 'https://t.me/proofofstock1']))
+}
+
 console.log(`\n${passed} passed, ${failed} failed`)
 if (failed) { for (const x of failures) console.log(x); process.exit(1) }

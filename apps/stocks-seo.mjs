@@ -3,11 +3,14 @@
 //
 // Pure: the server (apps/stocks-web.mjs) passes in what it holds (origin, docs, registry symbols, release date).
 //
-// ⚠ THE ONLY CONTACT IS hello@proofofstock.xyz. No person, host or other project is named here.
+// ⚠ THE ONLY CONTACT IS hello@proofofstock.xyz, and the only profiles the project's own (PROFILES). No person, host or
+//   other project is named here.
 
 import { SITE_NAME, SITE_DESCRIPTION } from '../evm/core/stocks/page-meta.mjs'
 
 export const CONTACT_EMAIL = 'hello@proofofstock.xyz'
+// The project's own profiles (owner, 11.11): shown in the footer and as the organisation's sameAs.
+export const PROFILES = Object.freeze(['https://x.com/proofofstock', 'https://t.me/proofofstock1'])
 
 /** The crawlers named in robots.txt, by company: search, AI training and AI answer-time fetchers. */
 export const AI_CRAWLERS = Object.freeze([
@@ -92,6 +95,7 @@ function siteNodes (site, { logo }) {
       '@type': 'Organization', '@id': `${site}/#organization`, name: SITE_NAME, url: `${site}/`, email: CONTACT_EMAIL,
       logo: { '@type': 'ImageObject', url: logo, width: 512, height: 512 },
       contactPoint: { '@type': 'ContactPoint', email: CONTACT_EMAIL, contactType: 'customer support', availableLanguage: 'en' },
+      sameAs: [...PROFILES],
     },
     { '@type': 'WebSite', '@id': `${site}/#website`, name: SITE_NAME, alternateName: 'proofofstock.xyz', url: `${site}/`, inLanguage: 'en', publisher: { '@id': `${site}/#organization` } },
   ]

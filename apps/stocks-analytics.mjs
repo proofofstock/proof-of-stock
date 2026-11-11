@@ -2,6 +2,8 @@
 // stored address. Three kinds of row, appended per UTC day to <dir>/hits-YYYY-MM-DD.jsonl:
 //   load  the server sent a page (/, a docs page, /history, /status), with the requester's class: browser, bot or tool
 //   view / hide   apps/stocks-web/beacon.js: a page was shown, or hidden after N visible seconds
+//   act   an action on the page, as a KIND from ACTIONS (which button, which kind of search and whether it found
+//         anything, which question opened, how far down the page): never the text typed, never a position on screen
 //   mcp   an MCP call: the JSON-RPC method and, for tools/call, the tool name
 //
 // ⚠ A VISITOR IS A DAILY PSEUDONYM, NOT A PERSON ID. It is sha256(salt + address + user agent), where the salt is random,
@@ -34,14 +36,34 @@ export const BEACONS_PER_VISITOR_DAY = 400
 // bounded and a client rotating its user agent cannot reopen the cap.
 export const VISITORS_MAX = 50000
 
+/**
+ * The actions a beacon may report, and the values each may carry. A value outside its list drops the row: nothing the
+ * visitor typed can reach the file. Search is a kind and an outcome ("ticker:one"), not the query.
+ */
+export const ACTIONS = Object.freeze({
+  chip: /^(NVDA|TSLA|AAPL|MSTR|CRCL|now|impostors|help)$/, // the buttons under the headline (data-run)
+  command: /^(help|how|clear|now|matrix|impostors|chain|pick)$/, // typed into the terminal
+  search: /^(ticker|name|isin):(none|one|many|error)$|^address:(listed|impostor|unlisted|error)$/,
+  tab: /^(base|robinhood|all)$/,
+  copy: /^(mcp-url|mcp-cc|mcp-json|address)$/,
+  faq: /^q[1-9]$/, // which question was opened, by its place
+  section: /^(checks|why|agents|faq|foot)$/, // scrolled into view, once per page view
+  out: /^(gecko|explorer|github|registry|other)$/, // a link to another site
+})
+
 export const uaClass = (ua) => !ua ? 'tool' : BOT_UA.test(ua) ? 'bot' : /mozilla\//i.test(ua) ? 'browser' : 'tool'
 
 /** Parses and checks a beacon query; null when it is not one we take. */
 export function parseHit (sp, chains, isPage = () => true) {
   const event = sp.get('k')
-  if (event !== 'view' && event !== 'hide') return null
+  if (event !== 'view' && event !== 'hide' && event !== 'act') return null
   const page = String(sp.get('p') || '')
   if (!PAGE.test(page) || !isPage(page)) return null
+  if (event === 'act') {
+    const x = String(sp.get('x') || ''), v = String(sp.get('v') || '')
+    if (!Object.hasOwn(ACTIONS, x) || !ACTIONS[x].test(v)) return null
+    return { event, page, action: x, value: v }
+  }
   const t = Math.floor(Number(sp.get('t')))
   const chain = chains.includes(sp.get('c')) ? sp.get('c') : null
   const a = String(sp.get('a') || '').toLowerCase()

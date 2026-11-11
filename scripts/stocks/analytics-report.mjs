@@ -15,11 +15,14 @@ const median = (a) => { if (!a.length) return null; const s = [...a].sort((x, y)
 const top = (m, n = 10) => [...m.entries()].sort((a, b) => b[1] - a[1]).slice(0, n)
 const inc = (m, k, by = 1) => m.set(k, (m.get(k) || 0) + by)
 
+const ACTION_LABEL = { section: 'scrolled to', chip: 'buttons under the headline', search: 'searches (kind:outcome)', command: 'commands typed', faq: 'questions opened', copy: 'copied', out: 'links out', tab: 'chain switch' }
+
 /** One day's rows → its summary. Exported for the tests. */
 export function summarise (rows) {
   const people = new Set(), loads = new Map(), loadVisitors = new Map()
   const views = new Map(), timeByVisitorPage = new Map(), tokens = new Map(), refs = new Map(), countries = new Map()
   const mcpCalls = new Map(), mcpClients = new Map(), mcpVisitors = new Set()
+  const actions = new Map() // action → Map(value → people who did it); a person counts once per action and value
   for (const r of rows) {
     if (r.kind === 'load') { inc(loads, r.ua_class); if (!loadVisitors.has(r.ua_class)) loadVisitors.set(r.ua_class, new Set()); loadVisitors.get(r.ua_class).add(r.visitor) }
     else if ((r.kind === 'view' || r.kind === 'hide') && r.ua_class === 'browser') {
@@ -33,6 +36,9 @@ export function summarise (rows) {
         const k = r.visitor + ' ' + r.page
         timeByVisitorPage.set(k, (timeByVisitorPage.get(k) || 0) + (r.visible_s || 0))
       }
+    } else if (r.kind === 'act' && r.ua_class === 'browser') {
+      if (!actions.has(r.action)) actions.set(r.action, new Map())
+      const m = actions.get(r.action); if (!m.has(r.value)) m.set(r.value, new Set()); m.get(r.value).add(r.visitor)
     } else if (r.kind === 'mcp') {
       mcpVisitors.add(r.visitor)
       inc(mcpCalls, r.tool ? `tools/call ${r.tool}` : r.method)
@@ -56,6 +62,7 @@ export function summarise (rows) {
     loads: Object.fromEntries(loads), bots: loadVisitors.get('bot')?.size || 0, tools: loadVisitors.get('tool')?.size || 0,
     views: top(views, 15), time_by_page: [...timeByPage.entries()].map(([p, a]) => [p, a.length, median(a), Math.max(...a)]).sort((a, b) => b[1] - a[1]).slice(0, 15),
     tokens: top(tokens, 15), refs: top(refs), countries: top(countries),
+    actions: Object.fromEntries([...actions.entries()].map(([a, m]) => [a, [...m.entries()].map(([v, s]) => [v, s.size]).sort((x, y) => y[1] - x[1])])),
     mcp_clients: mcpVisitors.size, mcp_calls: top(mcpCalls, 15), mcp_client_names: top(mcpClients),
   }
 }
@@ -77,6 +84,7 @@ export function report ({ dir, days = 7, today = new Date().toISOString().slice(
       `- **passports opened:** ${list(s.tokens)}`,
       `- **came from:** ${list(s.refs)}`,
       `- **countries (people):** ${list(s.countries)}`,
+      ...['section', 'chip', 'search', 'command', 'faq', 'copy', 'out', 'tab'].map((a) => `- **${ACTION_LABEL[a]}** (people): ${list(s.actions[a] || [])}`),
       `- **MCP:** ${s.mcp_clients} clients; calls: ${list(s.mcp_calls)}; client names: ${list(s.mcp_client_names)}`, '')
   }
   return out.join('\n')

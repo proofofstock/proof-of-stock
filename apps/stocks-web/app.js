@@ -118,12 +118,18 @@
   }
 
   // ---------- commands ----------
-  function run (raw) {
+  // What the visitor did, as a kind, for our own counter (beacon.js; the server keeps only known kinds). Never the text.
+  const act = (x, v) => { try { document.dispatchEvent(new CustomEvent('pos:act', { detail: { x, v } })) } catch (_) {} }
+  const COUNTED = { help: 'help', '?': 'help', how: 'how', clear: 'clear', cls: 'clear', now: 'now', matrix: 'matrix', fakes: 'impostors', impostors: 'impostors', both: 'chain', all: 'chain', base: 'chain', robinhood: 'chain' }
+
+  function run (raw, typed = false) { // typed: written in the prompt; a button or a tab is counted as that control
     const input = String(raw || '').trim()
     if (!input) return
     if (past[past.length - 1] !== input) past.push(input)
     hpos = past.length
     const cmd = input.toLowerCase()
+    if (typed && COUNTED[cmd]) act('command', COUNTED[cmd])
+    else if (typed && /^\d{1,2}$/.test(cmd) && lastList.length) act('command', 'pick')
     if (cmd === 'help' || cmd === '?') return help(input)
     if (cmd === 'how') return how(input)
     if (cmd === 'clear' || cmd === 'cls') { log().replaceChildren(); return }
@@ -180,6 +186,7 @@
     try {
       const r = await api(`api/find?q=${encodeURIComponent(q)}${chain !== 'all' ? '&chain=' + encodeURIComponent(chain) : ''}`)
       out.replaceChildren()
+      act('search', (/^[A-Za-z]{2}[A-Za-z0-9]{9}\d$/.test(q) ? 'isin' : r.match === 'fuzzy' || (!r.matches.length && /\s|^.{7,}$/.test(q)) ? 'name' : 'ticker') + ':' + (!r.matches.length ? 'none' : r.matches.length === 1 ? 'one' : 'many'))
       if (!r.matches.length) {
         out.append(line(`No issuer stock token matches “${q}”${chain !== 'all' ? ' on ' + CHAIN_LABEL[chain] : ''}.`, 'muted'))
         const acts = h('div', { class: 'actions' })
@@ -196,7 +203,7 @@
           h('span', { class: 'nm' }, mark(m.chain), (m.name || '').replace(/\s+Robinhood Token$/i, ''), m.minted === false ? h('span', { class: 'faint' }, ' · not minted yet') : m.has_reference_price ? '' : h('span', { class: 'faint' }, ' · no issuer price')),
           h('span', { class: 'addr' }, m.address))))))
       if (r.more) out.append(line(`${r.more} more. Narrow the search.`, 'faint'))
-    } catch (e) { out.replaceChildren(line(e.message, 'err')) }
+    } catch (e) { act('search', (/^[A-Za-z]{2}[A-Za-z0-9]{9}\d$/.test(q) ? 'isin' : /\s|^.{7,}$/.test(q) ? 'name' : 'ticker') + ':error'); out.replaceChildren(line(e.message, 'err')) }
   }
 
   // An address's archived case (GET /api/history/cases): when we first saw it imitating, and whether the issuer later
@@ -233,6 +240,7 @@
     out.replaceChildren(line('checking ' + address + '', 'faint typing'))
     const got = await Promise.all(chains.map((c) => api(`api/passport?chain=${c}&address=${address}&series=1`).catch(() => null)))
     const pick = got.find((p) => p && p.in_registry) || got.find((p) => p && p.resembles) || got.find(Boolean)
+    act('search', 'address:' + (!pick ? 'error' : pick.in_registry ? 'listed' : pick.impostor_listing || pick.resembles ? 'impostor' : 'unlisted'))
     if (!pick) return out.replaceChildren(line('Could not check this address right now.', 'err'))
     syncUrl(pick.in_registry && pick.issuer ? { listedOn: pick.chain, symbol: pick.issuer.symbol } : { chain: pick.chain, address })
     out.replaceChildren(render(pick))
@@ -634,7 +642,7 @@
   // ---------- wiring ----------
   document.addEventListener('DOMContentLoaded', () => {
     const input = $('#cmd')
-    $('#prompt').addEventListener('submit', (e) => { e.preventDefault(); const v = input.value; input.value = ''; run(v) })
+    $('#prompt').addEventListener('submit', (e) => { e.preventDefault(); const v = input.value; input.value = ''; run(v, true) })
     input.addEventListener('keydown', (e) => {
       if (e.key === 'ArrowUp' && past.length) { hpos = Math.max(0, hpos - 1); input.value = past[hpos]; e.preventDefault() }
       if (e.key === 'ArrowDown' && past.length) { hpos = Math.min(past.length, hpos + 1); input.value = past[hpos] || ''; e.preventDefault() }

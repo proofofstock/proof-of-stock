@@ -304,6 +304,12 @@ a.btn { text-decoration: none; display: inline-block; }
 .foot-bottom { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 16px; padding-top: 14px; border-top: 1px dashed var(--line); color: var(--faint); font: 11.5px/1.4 var(--mono); }
 .foot-meta { display: inline-flex; gap: 16px; }
 .beta-tag { display: inline-block; margin-right: 8px; padding: 1px 7px; border: 1px solid color-mix(in srgb, var(--warn) 55%, transparent); border-radius: 999px; color: var(--warn); font: 600 10px/1.5 var(--mono); letter-spacing: .08em; text-transform: uppercase; vertical-align: 1px; }
+/* X and Telegram: square keys in the footer's own glass and line, the icon in the site's stroke; the accent on hover. */
+.i-x { --i: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M2.6 2.6h3.1l7.7 10.8h-3.1z'/%3E%3Cpath d='M13.2 2.6L8.9 7.5M7.1 9.6l-4.3 3.8'/%3E%3C/svg%3E"); } .i-tg { --i: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M14.1 2.3L1.9 7.2l4.5 1.7 1.7 4.6 2.4-3 3.1 2.3z'/%3E%3Cpath d='M6.4 8.9l7.7-6.6'/%3E%3C/svg%3E"); }
+.foot-social { display: flex; gap: 6px; margin-top: 10px; }
+.foot-ic { width: 30px; height: 30px; display: grid; place-items: center; border: 1px solid var(--line); border-radius: 8px; background: var(--glass-2); color: var(--dim); font-size: 15px; transition: color .15s, border-color .15s, background .15s, transform .15s; }
+.foot-ic:hover, .foot-ic:focus-visible { color: var(--accent-hi); border-color: var(--accent-hi); background: color-mix(in srgb, var(--accent) 12%, var(--glass-2)); transform: translateY(-1px); outline: none; }
+@media (prefers-reduced-motion: reduce) { .foot-ic { transition: none; } .foot-ic:hover { transform: none; } }
 .foot-legal { color: var(--dim); border-bottom: 1px dotted transparent; transition: color .15s, border-color .15s; }
 .foot-legal:hover, .foot-legal:focus-visible { color: var(--accent-hi); border-bottom-color: var(--accent-hi); outline: none; }
 

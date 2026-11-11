@@ -12,6 +12,13 @@ The version is in `package.json`, and the site footer, the MCP `serverInfo.versi
 
 ## [Unreleased]
 
+### Added
+- **The footer links the project on X (@proofofstock) and on Telegram (t.me/proofofstock1)**, with icons drawn in the site's own line style; the organisation's JSON-LD names the same profiles as `sameAs`.
+- **The visit counter sees what people do, as kinds of action:** which button under the headline, what kind of search (ticker, name, ISIN, address) and whether it found anything, typed commands, which question opened, which sections were scrolled into view, what was copied, which kind of outside link was followed, the chain switch. A fixed list of kinds and values; never the text typed, no recording, no third party (docs/legal.md). The daily report has a line per kind.
+
+### Security
+- **Both CIs name every GitHub Action by its commit** (`actions/checkout` and `actions/setup-node` v4.4.0), not by a tag that can be moved; a test keeps it so.
+
 ### Changed
 - **robots.txt names the search and AI crawlers** of OpenAI, Anthropic, Google, Perplexity, Meta, Apple, Amazon, Mistral, Microsoft, Common Crawl, DuckDuckGo and Cohere, with the same rules as every other crawler: the pages, docs and llms.txt open, the JSON API and /mcp out.
 

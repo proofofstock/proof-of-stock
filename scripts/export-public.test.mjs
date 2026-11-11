@@ -75,6 +75,10 @@ try {
     check('it stops before git init', !fs.existsSync(path.join(r.dest, '.git')))
     check('the deny list is not exported', !fs.existsSync(path.join(r.dest, DENY)))
     const ci = fs.readFileSync(path.join(r.dest, '.github/workflows/ci.yml'), 'utf8')
+    // A tag can be moved to other code; a commit cannot. Both CIs name every action by its commit.
+    const usesOf = (y) => [...y.matchAll(/^\s*-?\s*uses:\s*(\S+)/gm)].map((m) => m[1])
+    const priv = fs.readFileSync(path.join(repo, '.github/workflows/ci.yml'), 'utf8')
+    check('every action in both CIs is pinned to a commit', [...usesOf(ci), ...usesOf(priv)].length >= 3 && [...usesOf(ci), ...usesOf(priv)].every((u) => /@[0-9a-f]{40}$/.test(u)), JSON.stringify([...usesOf(ci), ...usesOf(priv)]))
     check('the public CI runs on hosted runners', /runs-on: ubuntu-latest/.test(ci) && !/self-hosted/i.test(ci))
     for (const f of ['docs/stocks-truth-layer-tz.md', 'docs/stocks-passport-agent.md']) {
       const p = path.join(r.dest, f)

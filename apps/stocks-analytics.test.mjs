@@ -28,6 +28,10 @@ console.log('what a beacon may carry')
   check('a docs page is a page', parseHit(sp('k=view&p=/docs/reference/tools.md'), CH)?.page === '/docs/reference/tools.md')
   check('an unknown event or page is refused', parseHit(sp('k=click&p=/'), CH) === null && parseHit(sp('k=view&p=/api/find'), CH) === null && parseHit(sp('k=view&p=/../etc'), CH) === null && parseHit(sp('k=view&p=https://evil'), CH) === null)
   check('a token without a known chain, or a malformed one, is dropped', parseHit(sp(`k=view&p=/&c=solana&a=${A}`), CH).token === null && parseHit(sp('k=view&p=/&c=base&a=0x12'), CH).token === null)
+  check('an action of a known kind and value is taken', JSON.stringify(parseHit(sp('k=act&p=/&x=search&v=ticker:none'), CH)) === JSON.stringify({ event: 'act', page: '/', action: 'search', value: 'ticker:none' }))
+  check('...every kind the beacon and the terminal send', ['chip=NVDA', 'command=pick', 'search=address:impostor', 'tab=all', 'copy=mcp-cc', 'faq=q6', 'section=foot', 'out=gecko'].every((kv) => { const [x, v] = kv.split('='); return parseHit(sp(`k=act&p=/&x=${x}&v=${encodeURIComponent(v)}`), CH)?.action === x }))
+  check('an action never carries text: an unknown kind, a free value or a query is dropped', parseHit(sp('k=act&p=/&x=typed&v=nvda'), CH) === null && parseHit(sp('k=act&p=/&x=search&v=NVIDIA+Corp'), CH) === null && parseHit(sp('k=act&p=/&x=chip&v=<b>'), CH) === null && parseHit(sp('k=act&p=/&x=faq&v=q10'), CH) === null && parseHit(sp('k=act&p=/&x=__proto__&v=x'), CH) === null)
+  check('an action on a page the site does not have is dropped', parseHit(sp('k=act&p=/api/find&x=chip&v=NVDA'), CH) === null)
   check('a referrer that is not a host name is dropped', parseHit(sp('k=view&p=/&r=<script>'), CH).ref_host === null)
   check('user agents are classed', uaClass(CHROME) === 'browser' && uaClass('Googlebot/2.1') === 'bot' && uaClass('Mozilla/5.0 HeadlessChrome/120') === 'bot' && uaClass('curl/8.5') === 'bot' && uaClass('') === 'tool' && uaClass('Go-http-client/2.0') === 'bot')
 }
@@ -171,6 +175,11 @@ console.log('the report')
     R({ kind: 'load', visitor: 'p3', ua_class: 'browser', page: '/' }),
     R({ kind: 'load', visitor: 'b1', ua_class: 'bot', page: '/' }),
     R({ kind: 'view', visitor: 'h1', ua_class: 'bot', page: '/' }),
+    R({ kind: 'act', visitor: 'p1', ua_class: 'browser', page: '/', action: 'chip', value: 'NVDA' }),
+    R({ kind: 'act', visitor: 'p1', ua_class: 'browser', page: '/', action: 'chip', value: 'NVDA' }),
+    R({ kind: 'act', visitor: 'p2', ua_class: 'browser', page: '/', action: 'chip', value: 'NVDA' }),
+    R({ kind: 'act', visitor: 'p2', ua_class: 'browser', page: '/', action: 'section', value: 'faq' }),
+    R({ kind: 'act', visitor: 'h1', ua_class: 'bot', page: '/', action: 'chip', value: 'now' }),
     R({ kind: 'mcp', visitor: 'm1', ua_class: 'tool', method: 'initialize', tool: null, client: 'claude-code' }),
     R({ kind: 'mcp', visitor: 'm1', ua_class: 'tool', method: 'tools/call', tool: 'verify_stock_tokens', client: null }),
   ]
@@ -183,6 +192,8 @@ console.log('the report')
   fs.writeFileSync(path.join(dir, 'hits-2026-11-10.jsonl'), rows.map((r) => JSON.stringify(r)).join('\n') + '\n')
   const md = report({ dir, days: 2, today: '2026-11-10' })
   check('the report has a section per day and says when a day has no file', /## 2026-11-09\n\nno file/.test(md) && /## 2026-11-10/.test(md) && /\*\*people:\*\* 2/.test(md))
+  check('actions count people, once each, and never a bot', JSON.stringify(s.actions.chip) === JSON.stringify([['NVDA', 2]]) && JSON.stringify(s.actions.section) === JSON.stringify([['faq', 1]]))
+  check('the report has a line per kind of action', md.includes('**buttons under the headline** (people): NVDA 2') && md.includes('**scrolled to** (people): faq 1') && md.includes('**searches (kind:outcome)** (people): —'))
   check('the report prints no pseudonym', !/\bp1\b|\bm1\b/.test(md))
 }
 
@@ -194,11 +205,14 @@ console.log('the beacon in a page')
   const A = '0x' + 'a1'.repeat(20), B = '0x' + 'b2'.repeat(20)
   const sent = []
   let clock = 1_000_000
+  const listeners = {}
+  class FakeEl { constructor (sel, data) { this.sel = sel; this.dataset = data || {} } closest (q) { return q.split(',').some((p) => p.trim() === this.sel) ? this : null } }
   const loc = { host: 'proofofstock.xyz', pathname: '/', search: `?chain=base&address=${A}`, get href () { return 'https://proofofstock.xyz' + this.pathname + this.search } }
   const history = { pushState (_s, _t, url) { const u = new URL(url, loc.href); loc.pathname = u.pathname; loc.search = u.search }, replaceState (s, t, url) { this.pushState(s, t, url) } }
   const ctx = vm.createContext({
     URL, URLSearchParams, location: loc, history,
-    document: { currentScript: { src: 'https://proofofstock.xyz/beacon.js' }, visibilityState: 'visible', referrer: '', addEventListener () {} },
+    document: { currentScript: { src: 'https://proofofstock.xyz/beacon.js' }, visibilityState: 'visible', referrer: '', addEventListener (t, fn) { (listeners[t] ||= []).push(fn) }, querySelectorAll: () => [], querySelector: () => null },
+    Element: FakeEl,
     addEventListener () {}, fetch: (u) => { sent.push(Object.fromEntries(new URL(u).searchParams)); return Promise.resolve() },
     Date: { now: () => clock }, Math,
   })
@@ -210,6 +224,17 @@ console.log('the beacon in a page')
   check('the beacon counts the first passport when it is shown', sent[0]?.k === 'view' && sent[0].a === A)
   check('moving to another passport closes the first one with ITS address and seconds', hideA && hideA.a === A && hideA.t === '30', JSON.stringify(hideA))
   check('...and opens the second one', sent.at(-1)?.k === 'view' && sent.at(-1).a === B)
+  // Actions: what the terminal says (pos:act) and clicks on known controls go out as kinds, with the page.
+  listeners['pos:act'][0]({ detail: { x: 'search', v: 'ticker:one' } })
+  const s1 = sent.at(-1)
+  check('an action from the terminal goes out as act, its kind and value, with the page', s1.k === 'act' && s1.x === 'search' && s1.v === 'ticker:one' && s1.p === '/' && !('a' in s1), JSON.stringify(s1))
+  listeners.click[0]({ target: new FakeEl('.hero [data-run]', { run: 'NVDA' }) })
+  check('a button under the headline goes out as chip', sent.at(-1).k === 'act' && sent.at(-1).x === 'chip' && sent.at(-1).v === 'NVDA')
+  listeners.click[0]({ target: new FakeEl('[data-copy]', { copy: 'mcp-url' }) })
+  check('a copy button goes out as copy', sent.at(-1).x === 'copy' && sent.at(-1).v === 'mcp-url')
+  const n = sent.length
+  listeners.click[0]({ target: new FakeEl('p') })
+  check('a click on anything else sends nothing', sent.length === n)
 }
 
 console.log(`\n${passed} passed, ${failed} failed`)
