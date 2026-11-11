@@ -9,13 +9,43 @@ Type=oneshot
 User=root
 Group=root
 WorkingDirectory=/opt/stp/current
-ExecStart=/bin/sh -c 'rc=0; /usr/bin/node scripts/stocks/stock-peg.mjs --chain=base --root=/var/lib/stp/base || rc=1; /usr/bin/node scripts/stocks/stock-peg.mjs --chain=robinhood --root=/var/lib/stp/robinhood || rc=1; exit $rc'
+# Each chain gets a deadline (unix seconds) short of TimeoutStartSec, so a slow run stops itself and still writes its run
+# row instead of being killed (scripts/stocks/stock-peg.mjs header). Robinhood runs second and is the long one, so Base
+# must finish by 4 min and Robinhood by 9; the last minute is for a request in flight at the deadline. "$$" is systemd's
+# escape for a literal "$" passed to the shell, "%%" for a literal "%".
+ExecStart=/bin/sh -c 'rc=0; end=$$(( $$(date +%%s) + 540 )); /usr/bin/node scripts/stocks/stock-peg.mjs --chain=base --root=/var/lib/stp/base --deadline=$$(( end - 300 )) || rc=1; /usr/bin/node scripts/stocks/stock-peg.mjs --chain=robinhood --root=/var/lib/stp/robinhood --deadline=$$end || rc=1; exit $$rc'
 Nice=15
 IOSchedulingClass=idle
 MemoryAccounting=true
 MemoryMax=256M
 CPUQuota=25%
 TimeoutStartSec=10min
+NoNewPrivileges=true
+# Root only to read the dataset (one root directory belongs to the collector's own user): its one capability is to READ
+# past file permissions. It writes only under each chain's stock-peg/ (readings, history, the impostor and names files);
+# the rest of the file system, the dataset included, is read-only. Checked on the host on 11.11 with systemd-run and
+# these properties: stock-peg/ and history/ writable, the dataset root, /opt/stp and /etc not, static/ readable.
+CapabilityBoundingSet=CAP_DAC_READ_SEARCH
+AmbientCapabilities=
+ProtectSystem=strict
+ReadWritePaths=/var/lib/stp/base/stock-peg /var/lib/stp/robinhood/stock-peg
+ProtectHome=read-only
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources @mount @reboot @swap @raw-io @module @debug @cpu-emulation @obsolete
 StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=stp-peg

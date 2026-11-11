@@ -1,9 +1,10 @@
 // apps/stocks-analytics.test.mjs — the visit counter: what a beacon may carry, what a row holds, the daily pseudonym,
 // the off switch, the wiring in the site, and the report.
 import fs from 'node:fs'
+import vm from 'node:vm'
 import os from 'node:os'
 import path from 'node:path'
-import { createAnalytics, parseHit, uaClass } from './stocks-analytics.mjs'
+import { createAnalytics, parseHit, uaClass, DAY_CAP_BYTES, KEEP_DAYS, LOADS_PER_VISITOR_DAY, BEACONS_PER_VISITOR_DAY } from './stocks-analytics.mjs'
 import { createStocksWeb } from './stocks-web.mjs'
 import { summarise, report } from '../scripts/stocks/analytics-report.mjs'
 
@@ -40,7 +41,7 @@ console.log('what a row holds')
   an.load('198.51.100.7', h, '/')
   an.hit('198.51.100.7', h, parseHit(sp(`k=view&p=/&c=base&a=${A}`), CH))
   an.hit('198.51.100.7', h, parseHit(sp('k=hide&p=/&t=42'), CH))
-  an.mcp('203.0.113.5', { 'user-agent': 'claude-code/2' }, JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'verify_stock_tokens', arguments: { addresses: [A] } } }))
+  an.mcp('203.0.113.5', { 'user-agent': 'claude-code/2' }, JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'verify_stock_tokens', arguments: { addresses: [A] } } }), ['verify_stock_tokens'])
   an.mcp('203.0.113.5', { 'user-agent': 'claude-code/2' }, '{not json')
   const rows = rowsOf(dir)
   const text = fs.readFileSync(path.join(dir, 'hits-2026-11-10.jsonl'), 'utf8')
@@ -56,6 +57,59 @@ console.log('what a row holds')
   const b = createAnalytics({ dir, now: () => t - 86400e3, log: () => {} })
   b.load('198.51.100.7', h, '/')
   check('a restart is a new salt too: the pseudonym cannot be recomputed', rowsOf(dir).filter((r) => r.at.startsWith('2026-11-10')).at(-1).visitor !== rows[0].visitor)
+}
+
+console.log('what an MCP row may hold')
+{
+  const dir = path.join(tmp, 'mcp')
+  const an = createAnalytics({ dir, now: () => Date.parse('2026-11-10T10:00:00Z'), log: () => {} })
+  const H = { 'user-agent': 'x/1' }
+  an.mcp('1.1.1.1', H, JSON.stringify([{ jsonrpc: '2.0', id: 1, method: 'ping' }, { jsonrpc: '2.0', id: 2, method: 'ping' }]), [])
+  an.mcp('1.1.1.1', H, JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'my phone is +90 555 0000' }), [])
+  an.mcp('1.1.1.1', H, JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'free text of my choosing' } }), ['stock_passport'])
+  an.mcp('1.1.1.1', H, JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { clientInfo: { name: 'call me +90 555 0000' } } }), [])
+  an.mcp('1.1.1.1', H, JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { clientInfo: { name: 'claude-code' } } }), [])
+  const rows = fs.existsSync(dir) ? rowsOf(dir) : []
+  const text = rows.map((r) => JSON.stringify(r)).join('\n')
+  check('a batch writes nothing', rows.length === 4, String(rows.length))
+  check('a method or tool the server does not define is stored as "other"', rows[0].method === 'other' && rows[1].tool === 'other')
+  check('a client name that is not a short plain word is "other"; a plain one is kept', rows[2].client === 'other' && rows[3].client === 'claude-code')
+  check('no text the caller chose is stored', !/555|phone|choosing/.test(text))
+}
+
+console.log('the counter stays bounded')
+{
+  const dir = path.join(tmp, 'cap')
+  fs.mkdirSync(dir, { recursive: true })
+  fs.writeFileSync(path.join(dir, 'hits-2026-01-01.jsonl'), '{}\n')
+  fs.writeFileSync(path.join(dir, 'hits-2026-11-01.jsonl'), '{}\n')
+  fs.writeFileSync(path.join(dir, 'hits-2026-11-10.jsonl'), 'x'.repeat(DAY_CAP_BYTES - 100))
+  const msgs = []
+  const an = createAnalytics({ dir, now: () => Date.parse('2026-11-10T10:00:00Z'), log: (m) => msgs.push(m) })
+  for (let i = 0; i < 5; i++) an.load('1.2.3.4', { 'user-agent': CHROME }, '/')
+  const size = fs.statSync(path.join(dir, 'hits-2026-11-10.jsonl')).size
+  check('a day file stops at its cap, said once', size <= DAY_CAP_BYTES && msgs.filter((m) => /reached/.test(m)).length === 1, `${size} ${msgs}`)
+  check(`day files older than ${KEEP_DAYS} days are deleted; recent ones kept`, !fs.existsSync(path.join(dir, 'hits-2026-01-01.jsonl')) && fs.existsSync(path.join(dir, 'hits-2026-11-01.jsonl')))
+  check('a beacon may only name a page the site has', parseHit(sp('k=view&p=/docs/made/up.md'), CH, (p) => p === '/') === null && parseHit(sp('k=view&p=/'), CH, (p) => p === '/') !== null)
+}
+
+{
+  let t = Date.parse('2026-11-10T10:00:00Z')
+  const dir = path.join(tmp, 'per-visitor')
+  const an = createAnalytics({ dir, now: () => t, log: () => {} })
+  const h = { 'user-agent': CHROME }
+  for (let i = 0; i < LOADS_PER_VISITOR_DAY + 50; i++) an.load('1.2.3.4', h, '/')
+  for (let i = 0; i < BEACONS_PER_VISITOR_DAY + 50; i++) an.hit('1.2.3.4', h, parseHit(sp('k=view&p=/'), CH))
+  an.load('5.6.7.8', h, '/')
+  let rows = rowsOf(dir)
+  const loads = () => rows.filter((r) => r.kind === 'load').length
+  check('one client re-requesting a page stops at its daily cap of loads', rows.filter((r) => r.kind === 'load').length === LOADS_PER_VISITOR_DAY + 1)
+  check('its beacons stop at their own cap', rows.filter((r) => r.kind === 'view').length === BEACONS_PER_VISITOR_DAY)
+  check('another visitor is still counted', new Set(rows.filter((r) => r.kind === 'load').map((r) => r.visitor)).size === 2)
+  t += 86400e3
+  an.load('1.2.3.4', h, '/')
+  rows = rowsOf(dir)
+  check('the cap starts over the next day', fs.existsSync(path.join(dir, 'hits-2026-11-11.jsonl')) && loads() === LOADS_PER_VISITOR_DAY + 2)
 }
 
 console.log('the off switch')
@@ -88,8 +142,14 @@ console.log('in the site')
   const r = await get(`/stocks/api/hit?k=view&p=/&c=base&a=${A}`)
   check('a beacon is answered 204, not cached', r.status === 204 && r.headers.get('cache-control') === 'no-store')
   check('a bad beacon is answered 204 too, and not written', (await get('/stocks/api/hit?k=nope')).status === 204)
+  check('a beacon naming a docs page that does not exist is not written', (await get('/stocks/api/hit?k=view&p=/docs/nope/nope.md')).status === 204)
+  const mcpPost = (body) => fetch(`http://127.0.0.1:${port}/stocks/mcp`, { method: 'POST', headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream' }, body })
+  await mcpPost(JSON.stringify(Array.from({ length: 50 }, (_, i) => ({ jsonrpc: '2.0', id: i, method: 'm' }))))
+  await mcpPost(JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'ping' }))
   await app.stop()
   const rows = rowsOf(dir)
+  check('a rejected MCP batch writes no row; an accepted request writes one', rows.filter((x) => x.kind === 'mcp').length === 1 && rows.find((x) => x.kind === 'mcp').method === 'ping')
+  check('only real pages were counted from beacons', rows.filter((x) => x.kind === 'view').every((x) => x.page === '/'))
   check('the site wrote loads and the one good beacon', rows.filter((x) => x.kind === 'view').length === 1 && rows.filter((x) => x.kind === 'load').length >= 3)
   const page = fs.readFileSync(new URL('./stocks-web/beacon.js', import.meta.url), 'utf8')
   check('the counter sets no cookie and keeps nothing in the browser', !/document\.cookie|localStorage|sessionStorage|indexedDB/.test(page) && /credentials: 'omit'/.test(page))
@@ -127,5 +187,30 @@ console.log('the report')
 }
 
 fs.rmSync(tmp, { recursive: true, force: true })
+console.log('the beacon in a page')
+{
+  // beacon.js run in a fake page: a passport A is shown for a while, then the terminal moves the URL to passport B.
+  const src = fs.readFileSync(new URL('./stocks-web/beacon.js', import.meta.url), 'utf8')
+  const A = '0x' + 'a1'.repeat(20), B = '0x' + 'b2'.repeat(20)
+  const sent = []
+  let clock = 1_000_000
+  const loc = { host: 'proofofstock.xyz', pathname: '/', search: `?chain=base&address=${A}`, get href () { return 'https://proofofstock.xyz' + this.pathname + this.search } }
+  const history = { pushState (_s, _t, url) { const u = new URL(url, loc.href); loc.pathname = u.pathname; loc.search = u.search }, replaceState (s, t, url) { this.pushState(s, t, url) } }
+  const ctx = vm.createContext({
+    URL, URLSearchParams, location: loc, history,
+    document: { currentScript: { src: 'https://proofofstock.xyz/beacon.js' }, visibilityState: 'visible', referrer: '', addEventListener () {} },
+    addEventListener () {}, fetch: (u) => { sent.push(Object.fromEntries(new URL(u).searchParams)); return Promise.resolve() },
+    Date: { now: () => clock }, Math,
+  })
+  ctx.window = ctx
+  vm.runInContext(src, ctx)
+  clock += 30_000
+  ctx.history.pushState(null, '', `/?chain=base&address=${B}`)
+  const hideA = sent.find((e) => e.k === 'hide')
+  check('the beacon counts the first passport when it is shown', sent[0]?.k === 'view' && sent[0].a === A)
+  check('moving to another passport closes the first one with ITS address and seconds', hideA && hideA.a === A && hideA.t === '30', JSON.stringify(hideA))
+  check('...and opens the second one', sent.at(-1)?.k === 'view' && sent.at(-1).a === B)
+}
+
 console.log(`\n${passed} passed, ${failed} failed`)
 if (failed) { for (const x of failures) console.log(x); process.exit(1) }

@@ -27,8 +27,35 @@ MemoryAccounting=true
 MemoryMax=384M
 CPUQuota=50%
 NoNewPrivileges=true
-ProtectSystem=full
+# Root only to read the dataset. Its one capability is to READ past file permissions (one dataset directory belongs to
+# the collector's own user); it cannot write past them, bind a privileged port, change owners or load anything into
+# the kernel. The file system is read-only except its own counter directory.
+# Not a dedicated user: that needs group read on the dataset, and one dataset directory is the collector's own, which
+# this site must not re-own or re-permission.
+CapabilityBoundingSet=CAP_DAC_READ_SEARCH
+AmbientCapabilities=
+# It sees only its own processes in /proc, and what it writes (the counter files) is readable by root alone.
+ProtectProc=invisible
+UMask=0077
+ProtectSystem=strict
+ReadWritePaths=/var/lib/stp-analytics
+ProtectHome=read-only
 PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources @mount @reboot @swap @raw-io @module @debug @cpu-emulation @obsolete
 StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=stp-web

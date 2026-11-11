@@ -15,7 +15,12 @@
 // (evm/core/stocks/peg.mjs decides what counts). On Base only tokens with supply are read: an unminted token has no
 // pool, and asking for it 227 times a run is a cost with no reading in it.
 //
-// Usage: node scripts/stocks/stock-peg.mjs --chain=base|robinhood --root=<dataset-v2 root> [--pace-ms=250]
+// Usage: node scripts/stocks/stock-peg.mjs --chain=base|robinhood --root=<dataset-v2 root> [--pace-ms=250] [--deadline=<unix s>]
+//
+// ⚠ THE DEADLINE KEEPS THE RUN ROW. systemd kills the unit at TimeoutStartSec, and a killed run writes nothing about
+// itself. With --deadline (deployment/systemd/stp-peg.service passes one, short of the timeout) the run stops topping up
+// full pool lists from GeckoTerminal (≥4.5 s each) SUPPLEMENT_STOP_MS before it, stops reading tokens at it, and writes
+// its run row either way: what was skipped is counted, a stop is in `aborted` and fails the unit (runExitCode).
 
 import fs from 'node:fs'
 import path from 'node:path'
@@ -36,11 +41,13 @@ import { recordRegistry } from '../../evm/core/stocks/history.mjs'
 export function referenceAssetsOf (d) {
   return new Set([...(d.stableAssets || []), d.wrappedNative].filter(Boolean).map((a) => String(a).toLowerCase()))
 }
-export const CHAINS = Object.freeze({
+// No prototype: a ?chain= of "constructor" or "__proto__" must not find an inherited member (it used to answer 500).
+export const CHAINS = Object.freeze(Object.assign(Object.create(null), {
   base: { issuer: 'coinbase', read: readCoinbase, slug: 'base', gecko: 'base', chainId: BASE_DESCRIPTOR.chainId, explorer: BASE_DESCRIPTOR.explorer?.webUrl || null, referenceAssets: referenceAssetsOf(BASE_DESCRIPTOR) },
   robinhood: { issuer: 'robinhood', read: readRobinhood, slug: 'robinhood', gecko: 'robinhood', chainId: ROBINHOOD_DESCRIPTOR.chainId, explorer: ROBINHOOD_DESCRIPTOR.explorer?.webUrl || null, referenceAssets: referenceAssetsOf(ROBINHOOD_DESCRIPTOR) },
-})
+}))
 const PAIR_TIMEOUT_MS = 15_000
+export const SUPPLEMENT_STOP_MS = 90_000 // no GeckoTerminal top-ups this close to the deadline
 const day = (ms) => new Date(ms).toISOString().slice(0, 10)
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
@@ -68,6 +75,7 @@ export function unchangedSince (state, address, reference, atIso) {
 }
 
 export async function runStockPeg ({ chain, root, fetchImpl = fetch, now = () => Date.now(), paceMs = 250, geckoPaceMs = 4500, log = console.log,
+  deadline = null, // ms since epoch, or null for none; see the header
   onHistoryError = () => { process.exitCode = 1 } }) {
   const C = CHAINS[chain]
   if (!C) throw new Error(`unknown chain ${chain}: expected one of ${Object.keys(CHAINS).join(', ')}`)
@@ -103,11 +111,14 @@ export async function runStockPeg ({ chain, root, fetchImpl = fetch, now = () =>
     const wanted = records.filter((r) => r.chain_id === C.chainId && r.supplied)
     run.tokens_considered = wanted.length
     for (const rec of wanted) {
+      if (deadline != null && now() >= deadline) { run.aborted = `time budget: stopped before token ${run.rows_written + run.rows_invalid + 1} of ${wanted.length}`; break }
       let pairs = null, pairError = null
       try { pairs = await readPairs(fetchImpl, C.slug, rec.address) } catch (e) { pairError = String(e && e.message || e).slice(0, 200); run.pair_read_errors++ }
       // A full DexScreener list may be hiding pools: ask GeckoTerminal for more, and keep the first list if it refuses.
       let source = 'dexscreener', stillCapped = null
-      if (pairs && pairs.length >= DEXSCREENER_PAIR_CAP && C.gecko) {
+      if (pairs && pairs.length >= DEXSCREENER_PAIR_CAP && C.gecko && deadline != null && now() >= deadline - SUPPLEMENT_STOP_MS) {
+        run.supplement_skipped = (run.supplement_skipped || 0) + 1
+      } else if (pairs && pairs.length >= DEXSCREENER_PAIR_CAP && C.gecko) {
         try {
           if (geckoPaceMs > 0) await sleep(geckoPaceMs)
           const g = await readGeckoPools(fetchImpl, C.gecko, rec.address, { paceMs: geckoPaceMs })
@@ -149,13 +160,20 @@ export async function runStockPeg ({ chain, root, fetchImpl = fetch, now = () =>
   const v = validateV2('stock-peg-run', run)
   if (!v.valid) log(`[stock-peg] invalid run row: ${JSON.stringify(v.errors).slice(0, 300)}`)
   fs.appendFileSync(path.join(outDir, `stock-peg-runs-${day(started)}.jsonl`), JSON.stringify(run) + '\n')
-  log('[stock-peg] ' + JSON.stringify({ chain, registry: run.registry, tokens: run.tokens_considered, written: run.rows_written, invalid: run.rows_invalid, refused: run.refused, pair_read_errors: run.pair_read_errors }))
+  log('[stock-peg] ' + JSON.stringify({ chain, registry: run.registry, tokens: run.tokens_considered, written: run.rows_written, invalid: run.rows_invalid, refused: run.refused, pair_read_errors: run.pair_read_errors, supplement_skipped: run.supplement_skipped || 0, aborted: run.aborted ?? null }))
   return run
 }
 
+/**
+ * A run that could not read its issuer's list, died midway or wrote an invalid row exits non-zero, so systemd marks it
+ * failed and the alarm sees it. A run that died after the registry read used to exit 0 with half its prices missing.
+ */
+export const runExitCode = (run) => (!run.registry.complete || run.aborted || run.rows_invalid > 0 ? 1 : 0)
+
 if (isEntryPoint(import.meta.url)) {
   const arg = (k) => (process.argv.find((a) => a.startsWith(`--${k}=`)) || '').slice(k.length + 3) || null
-  const run = await runStockPeg({ chain: arg('chain'), root: arg('root') || 'data/dataset-v2', paceMs: Number(arg('pace-ms') ?? 250) })
-  // A run that could not read its issuer's list exits non-zero, so systemd marks it failed and the alarm sees it.
-  if (!run.registry.complete) process.exitCode = 1
+  const dl = arg('deadline')
+  if (dl != null && !(Number(dl) > 0)) throw new Error(`--deadline must be unix seconds, got ${dl}`)
+  const run = await runStockPeg({ chain: arg('chain'), root: arg('root') || 'data/dataset-v2', paceMs: Number(arg('pace-ms') ?? 250), deadline: dl != null ? Number(dl) * 1000 : null })
+  process.exitCode = runExitCode(run)
 }

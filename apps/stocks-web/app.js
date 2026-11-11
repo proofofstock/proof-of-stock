@@ -95,6 +95,8 @@
   }
 
   // ---------- chain and URL ----------
+  // The last text search, repeated when the chain is switched from the tabs; an address is answered on every chain.
+  let lastQuery = null
   function setChain (c, push) {
     chain = c
     for (const t of document.querySelectorAll('.tab')) t.setAttribute('aria-selected', String(t.dataset.chain === c))
@@ -169,6 +171,7 @@
   // ---------- search ----------
   async function lookup (q) {
     const out = block(q)
+    lastQuery = ADDRESS.test(q) ? null : q
     if (ADDRESS.test(q)) return passportAnywhere(q.toLowerCase(), out)
     out.append(line('searching ' + (chain === 'all' ? 'both chains' : CHAIN_LABEL[chain]) + '', 'faint typing'))
     syncUrl({ q })
@@ -214,7 +217,7 @@
     syncUrl({ chain: c, address })
     out.replaceChildren(line('checking ' + address + ' on ' + (CHAIN_LABEL[c] || c) + '', 'faint typing'))
     try {
-      const p = await api(`api/passport?chain=${encodeURIComponent(c)}&address=${encodeURIComponent(address)}`)
+      const p = await api(`api/passport?chain=${encodeURIComponent(c)}&address=${encodeURIComponent(address)}&series=1`)
       out.replaceChildren(render(p))
       if (p.in_registry && p.issuer && p.issuer.symbol) syncUrl({ listedOn: c, symbol: p.issuer.symbol })
     } catch (e) { out.replaceChildren(line(e.message, 'err')) }
@@ -322,13 +325,13 @@
   function officialLinks (p) {
     if (!p.links) return null
     // A token not minted yet has no pool: only its contract is worth opening.
-    return h('div', { class: 'actions' }, p.issuer && p.issuer.minted === false ? null : ext(p.links.dex, 'chart & pools on DexScreener'), p.links.explorer ? ext(p.links.explorer, 'contract on ' + host(p.links.explorer)) : null)
+    return h('div', { class: 'actions' }, p.issuer && p.issuer.minted === false ? null : ext(p.links.dex, 'chart & pools on GeckoTerminal'), p.links.explorer ? ext(p.links.explorer, 'contract on ' + host(p.links.explorer)) : null)
   }
   // `strong`: the token copies a listed symbol or the issuer's naming — an impostor. Otherwise it only borrows a ticker,
   // and is called what it is: a token outside the registry. A token that resembles nothing (USDC, WETH) gets plain links.
   function impostorLinks (p, imitated, strong) {
     if (!p.links) return null
-    if (!imitated) return h('div', { class: 'actions' }, ext(p.links.dex, 'token on DexScreener'), p.links.explorer ? ext(p.links.explorer, 'contract on ' + host(p.links.explorer)) : null)
+    if (!imitated) return h('div', { class: 'actions' }, ext(p.links.dex, 'token on GeckoTerminal'), p.links.explorer ? ext(p.links.explorer, 'contract on ' + host(p.links.explorer)) : null)
     const what = strong ? 'impostor' : 'token'
     const box = h('div', { class: 'actions' })
     const ask = (href, label) => h('button', { type: 'button', class: 'btn danger', onclick: () => {
@@ -337,18 +340,18 @@
         h('div', { class: 'actions' }, h('a', { class: 'btn danger', href, target: '_blank', rel: 'noopener noreferrer nofollow' }, `I understand, open the ${what}`, h('span', { class: 'i i-ext', 'aria-hidden': 'true' })),
           h('button', { type: 'button', class: 'btn', onclick: () => box.replaceChildren(...buttons()) }, 'cancel'))))
     } }, label)
-    const buttons = () => [ask(p.links.dex, what + ' on DexScreener'), p.links.explorer ? ask(p.links.explorer, what + ' contract on ' + host(p.links.explorer)) : null].filter(Boolean)
+    const buttons = () => [ask(p.links.dex, what + ' on GeckoTerminal'), p.links.explorer ? ask(p.links.explorer, what + ' contract on ' + host(p.links.explorer)) : null].filter(Boolean)
     box.append(...buttons())
     return box
   }
-  // A pool row's dex name opens that very pool on DexScreener, where its live price and trades are. A pool address is
+  // A pool row's dex name opens that very pool on GeckoTerminal, where its live price and trades are. A pool address is
   // 20 bytes on v2/v3 pools and 32 bytes on v4 pool ids; anything else stays plain text rather than a guessed link.
   const DEX_LABEL = { uniswap: 'Uniswap', aerodrome: 'Aerodrome', 'aero-slipstream-base': 'Aerodrome Slipstream', 'uniswap-v4-base': 'Uniswap v4', 'uniswap-v3-base': 'Uniswap v3', pancakeswap: 'PancakeSwap' }
   function poolLink (chain, x) {
     const name = DEX_LABEL[x.dex_id] || x.dex_id || '?'
     const id = String(x.pair_address || '')
     if (!/^0x([0-9a-f]{40}|[0-9a-f]{64})$/i.test(id) || !CHAINS.includes(chain)) return name
-    return h('a', { class: 'pool-link', href: `https://dexscreener.com/${chain}/${id.toLowerCase()}`, target: '_blank', rel: 'noopener noreferrer nofollow', title: 'Open this pool on DexScreener' }, name, h('span', { class: 'i i-ext', 'aria-hidden': 'true' }))
+    return h('a', { class: 'pool-link', href: `https://www.geckoterminal.com/${chain}/pools/${id.toLowerCase()}`, target: '_blank', rel: 'noopener noreferrer nofollow', title: 'Open this pool on GeckoTerminal' }, name, h('span', { class: 'i i-ext', 'aria-hidden': 'true' }))
   }
   const fold = (title, ...body) => h('details', { class: 'more' }, h('summary', null, title), h('div', { class: 'inner' }, ...body))
   const table = (head, rows) => h('table', { class: 'tbl' }, h('thead', null, h('tr', null, head.map((x) => h('th', null, x)))), h('tbody', null, rows))
@@ -548,7 +551,7 @@
       items = items.slice(0, 24)
     } catch (_) { if (!tapeKeys) el.replaceChildren(h('span', { class: 'faint' }, 'live tape unavailable')); return }
     if (!items.length) { if (!tapeKeys) el.replaceChildren(h('span', { class: 'faint' }, 'no priced readings yet')); return }
-    const keys = items.map(tapeKey).join('|')
+    const keys = items.map(tapeKey).sort().join('|')
     if (keys === tapeKeys) {
       // Same tokens: change only the numbers, and flash the ones that moved.
       for (const it of items) {
@@ -631,7 +634,13 @@
       if (e.key === 'ArrowUp' && past.length) { hpos = Math.max(0, hpos - 1); input.value = past[hpos]; e.preventDefault() }
       if (e.key === 'ArrowDown' && past.length) { hpos = Math.min(past.length, hpos + 1); input.value = past[hpos] || ''; e.preventDefault() }
     })
-    for (const t of document.querySelectorAll('.tab')) t.addEventListener('click', () => { setChain(t.dataset.chain, true); input.focus() })
+    for (const t of document.querySelectorAll('.tab')) t.addEventListener('click', () => {
+      if (t.dataset.chain === chain) return input.focus()
+      const again = lastQuery
+      run(t.dataset.chain === 'all' ? 'both' : t.dataset.chain)
+      if (again) lookup(again)
+      input.focus()
+    })
     // A plain click on the feed puts the cursor back in the prompt, but never after the reader selected text: that click
     // ends a selection, and moving focus would wipe it. A press that moved more than a few pixels is a drag, not a click.
     let down = null

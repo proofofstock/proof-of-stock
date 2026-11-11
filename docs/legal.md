@@ -42,12 +42,13 @@ you may hold or trade a tokenized stock is a matter between you, the issuer and 
 - Public data on the site, the API and the MCP server is free to read.
 - Automated use must respect the published rate limits (see
   [Known limitations](explanation/methodology.md#known-limitations)).
-- Licence: to be decided. The owner will set it later.
+- The code is under the MIT licence. The data the site serves is free to read and to quote with its time and source.
 
 ## What we count
 
-The site counts its own visits, with no cookie, no third party and no stored address
-(`apps/stocks-analytics.mjs`, `apps/stocks-web/beacon.js`). For each visit we keep:
+The site counts its own visits, with no cookie, no third-party counter and no stored address
+(`apps/stocks-analytics.mjs`, `apps/stocks-web/beacon.js`). One thing is not ours: the pages load two fonts from Google
+Fonts, so your browser asks Google for them. For each visit we keep:
 
 - which page was shown, and for how many seconds it was on screen;
 - which passport was open, and the host name of the site that linked here, if any;
@@ -56,7 +57,7 @@ The site counts its own visits, with no cookie, no third party and no stored add
 
 A visitor is a pseudonym: a hash of the address and the browser string with a random key that is held only in memory and
 replaced every day. Nobody, us included, can turn it back into an address, and the same person is a new visitor the
-next day. The counts are for us; nothing is sold or shared.
+next day. The counts are for us; nothing is sold or shared. A day's file is deleted after 180 days.
 
 ## Contact
 

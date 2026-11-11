@@ -42,7 +42,8 @@ export async function buildImpostorList ({ chain, root, fetchImpl = fetch, now =
   let tornFiles = 0
   for (const f of dayFiles(root, 'static', 'token-static-')) {
     try {
-      await eachJsonl(f, (o) => {
+      // A damaged line in the middle may be a token this list now misses: the file counts as torn, so no case closes.
+      const bad = await eachJsonl(f, (o) => {
         const a = String(o.token_address || '').toLowerCase()
         if (!/^0x[0-9a-f]{40}$/.test(a) || regSet.has(a)) return
         const at = Date.parse(o.observed_at)
@@ -53,6 +54,7 @@ export async function buildImpostorList ({ chain, root, fetchImpl = fetch, now =
         if (t.deployer == null && o.deployer) t.deployer = String(o.deployer).toLowerCase()
         if (Number.isFinite(at) && (t.first == null || at < t.first)) t.first = at
       })
+      if (bad) tornFiles++
     } catch (_) { tornFiles++ }
   }
   // Most tokens reach token-static before their deployer is known; the deployer backfill writes it later to its own

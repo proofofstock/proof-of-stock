@@ -10,11 +10,11 @@
 //   GET /stocks/api/matrix             every share (ISIN) listed on both Base and Robinhood: each venue's premium, the gap
 //   GET /stocks/api/status             what the server holds: registry and readings age per chain
 //   GET /stocks/history                the dated, append-only archive: registry snapshots and impostor cases (apps/stocks-history.mjs)
-//   GET /stocks/api/history/cases?chain[&since&event&limit&cursor]   case events, newest first
+//   GET /stocks/api/history/cases?chain[&since&event&limit]          case events, newest first, at most 50, no paging
 //   GET /stocks/api/history/registry?chain[&date]                    snapshot index, or the snapshot in force on a day
 //   GET /stocks/api/hit?k&p[&t&c&a&s&r]  the page's own visit counter (apps/stocks-web/beacon.js, apps/stocks-analytics.mjs); 204
 //   POST /stocks/mcp                   the same passport as a public MCP server (apps/stocks-mcp-http.mjs)
-//   GET /healthz                       for the unit, not proxied
+//   GET /healthz                       for the deploy gate, not proxied: 200 once at least one issuer registry is loaded, else 503
 //
 // ⚠ NOTHING ON THE REQUEST PATH WALKS THE DATASET OR CALLS OUT. Registries are refreshed in the background every 5
 // minutes and the readings window is held in memory (evm/core/stocks/readings-window.mjs); a request reads both from
@@ -53,7 +53,7 @@ import { createMcpHttp, SUPPORTED_VERSIONS } from './stocks-mcp-http.mjs'
 import { verifyToken, badgeSvg, badgeState } from '../evm/core/stocks/verify.mjs'
 import { createDocsRenderer } from './stocks-docs.mjs'
 import { statusPage } from './stocks-status.mjs'
-import { createHistoryStore, historyPage } from './stocks-history.mjs'
+import { createHistoryStore, historyPage, BULK_WINDOW_DAYS, BULK_MAX, FULL_ARCHIVE } from './stocks-history.mjs'
 import { createAnalytics, parseHit } from './stocks-analytics.mjs'
 import { findAcross, sameStockElsewhere, overview, matrix, isinsOfTicker, MATRIX_VENUES } from '../evm/core/stocks/cross-chain.mjs'
 
@@ -77,6 +77,7 @@ export const SECURITY_HEADERS = Object.freeze({
   'x-frame-options': 'DENY',
 })
 const REGISTRY_TTL_MS = 5 * 60e3
+export const PAGE_CACHE_MS = 30e3 // /status and /history: one build per this long
 const RATE = { perMinute: 60 }
 const ADDRESS = /^0x[0-9a-fA-F]{40}$/
 const MCP_MAX_BODY = 16 * 1024
@@ -115,17 +116,24 @@ export function llmsTxt (docs, origin, version) {
 }
 
 /** How many rate-limit units an MCP message costs: a verify batch of n addresses is ⌈n/10⌉, anything else 1. */
+// ⚠ THE RECORDER'S PRICE HISTORY IS OURS, A PASSPORT IS NOT A DOWNLOAD. A passport shows at most PUBLIC_HOURS of
+//   readings, its chart points only when asked (series=1), and costs PASSPORT_UNITS of the per-minute limit, so walking
+//   every token every day to rebuild the dataset takes hours instead of minutes. The site keeps 72 h for its own stats.
+export const PUBLIC_HOURS = 24
+export const PASSPORT_UNITS = 3
 export function batchUnits (raw) {
   try {
     const m = JSON.parse(raw)
+    if (m && m.method === 'tools/call' && m.params && m.params.name === 'stock_passport') return PASSPORT_UNITS
     const a = m && m.method === 'tools/call' && m.params && m.params.name === 'verify_stock_tokens' && m.params.arguments && m.params.arguments.addresses
     return Array.isArray(a) ? Math.max(1, Math.ceil(a.length / 10)) : 1
   } catch (_) { return 1 }
 }
 
 /**
- * The rate-limit key of a client address. IPv6 clients are keyed by their /64: one host usually holds a whole /64, and
- * keyed per address it could make itself any number of clients. IPv4 (and IPv4-mapped IPv6) stays per address.
+ * The rate-limit key of a client address. IPv6 clients are keyed by their /56, the block an ISP gives one customer: keyed
+ * per /64, one free /48 is 65,536 clients and fills the limiter table; per /56 it is 256. IPv4 (and IPv4-mapped IPv6)
+ * stays per address.
  */
 export function clientKey (ip) {
   const s = String(ip || '').toLowerCase()
@@ -133,7 +141,9 @@ export function clientKey (ip) {
   const [head, tail = ''] = s.split('::')
   const h = head ? head.split(':') : [], t = tail ? tail.split(':') : []
   const full = s.includes('::') ? [...h, ...Array(Math.max(0, 8 - h.length - t.length)).fill('0'), ...t] : h
-  return full.slice(0, 4).map((x) => x.replace(/^0+(?=.)/, '') || '0').join(':') + '::/64'
+  const q = full.slice(0, 4).map((x) => parseInt(x || '0', 16) || 0)
+  q[3] &= 0xff00
+  return q.map((x) => x.toString(16)).join(':') + '::/56'
 }
 
 export function createStocksWeb ({
@@ -151,7 +161,7 @@ export function createStocksWeb ({
   const names = new Map() // chain → Map(address → { symbol, name }), from stock-names.json
   const impostors = new Map() // chain → the parsed impostors.json, or { error }
   const buckets = new Map() // ip → { minute, n }
-  const history = createHistoryStore({ roots })
+  const history = createHistoryStore({ roots, now, log })
   const analytics = createAnalytics({ now, log, ...analyticsOpts })
   const docs = loadDocs()
   const changelog = (() => { try { return fs.readFileSync(path.join(path.dirname(DOCS_DIR), 'CHANGELOG.md'), 'utf8') } catch (_) { return '# Changelog\n' } })()
@@ -184,6 +194,15 @@ export function createStocksWeb ({
     .replace('<!--source-->', sourceUrl ? `<a class="foot-link" href="${sourceUrl}" target="_blank" rel="noopener noreferrer"><span class="i i-gh" aria-hidden="true"></span>GitHub</a>` : ''))
   docsPages = createDocsRenderer({ docs, version: appVersion, released, sourceUrl, base: publicPath, assets: { css: `style.css?v=${version('/style.css')}`, docsCss: `docs.css?v=${version('/docs.css')}`, docsJs: `docs.js?v=${version('/docs.js')}`, beacon: `beacon.js?v=${version('/beacon.js')}` } })
 
+  // ⚠ A RAW ERROR NEVER REACHES A RESPONSE. A file system or fetch error can carry an internal path or a piece of a file;
+  //   what is public is a fixed sentence, the original goes to the journal (once per change, not every refresh).
+  const lastLogged = new Map()
+  const internal = (where, e, said) => { const m = String(e && e.message || e).slice(0, 300); if (lastLogged.get(where) !== m) { lastLogged.set(where, m); log(`[${where}] ${m}`) } return said }
+  const unavailable = (m) => Object.assign(new Error(m), { public: true }) // our own sentence: safe to show an MCP client
+  // /status and /history are built from in-memory state that changes at most once a refresh: one build serves every
+  // request for PAGE_CACHE_MS, so a client hammering them costs a map lookup, not a render.
+  const pageCache = new Map()
+  const cachedPage = (key, build) => { const c = pageCache.get(key); if (c && now() - c.at < PAGE_CACHE_MS) return c.html; const html = build(); pageCache.set(key, { at: now(), html }); return html }
   async function refreshRegistry (chain) {
     const C = CHAINS[chain]
     try {
@@ -197,15 +216,20 @@ export function createStocksWeb ({
       registries.set(chain, { records, at: now(), error: null })
     } catch (e) {
       const prev = registries.get(chain)
-      registries.set(chain, { records: prev?.records || null, at: prev?.at || null, error: String(e && e.message || e).slice(0, 200) })
+      registries.set(chain, { records: prev?.records || null, at: prev?.at || null, error: internal(`registry ${chain}`, e, 'the issuer registry could not be read') })
     }
   }
   // The impostor list is written by its own timer; read it whole, keep the last good copy if a read fails.
   function refreshImpostors (chain) {
     try {
       const j = JSON.parse(fs.readFileSync(path.join(roots[chain], 'stock-peg', 'impostors.json'), 'utf8'))
-      impostors.set(chain, { ...j, byAddress: new Map((j.items || []).map((i) => [i.address, i])) })
-    } catch (e) { if (!impostors.get(chain)?.items) impostors.set(chain, { error: e.code === 'ENOENT' ? 'not generated yet' : String(e.message).slice(0, 120) }) }
+      // A deployer's address is the collector's work and is not published; how many listed impostors share it is.
+      const byDeployer = new Map()
+      for (const i of j.items || []) if (i.deployer) byDeployer.set(i.deployer, (byDeployer.get(i.deployer) || 0) + 1)
+      const pub = (i) => { const { deployer, ...rest } = i; return { ...rest, same_deployer_impostors: deployer ? byDeployer.get(deployer) - 1 : null } }
+      const items = (j.items || []).map(pub)
+      impostors.set(chain, { ...j, items, byAddress: new Map(items.map((i) => [i.address, i])) })
+    } catch (e) { if (!impostors.get(chain)?.items) impostors.set(chain, { error: e.code === 'ENOENT' ? 'not generated yet' : internal(`impostors ${chain}`, e, 'unreadable') }) }
   }
   // The names file: written by the same timer, read whole, the last good copy kept.
   function refreshNames (chain) {
@@ -249,6 +273,8 @@ export function createStocksWeb ({
   }
 
   let sweptMinute = -1
+  const SPILL_SHARDS = 4096, spill = new Uint32Array(SPILL_SHARDS)
+  let spillMinute = -1
   function limited (ipRaw, units = 1) {
     const ip = clientKey(ipRaw)
     const minute = Math.floor(now() / 60e3)
@@ -258,8 +284,18 @@ export function createStocksWeb ({
         // Past the cap, drop the buckets of earlier minutes, at most once a minute: walking a map full of current
         // buckets on every new client is quadratic, and a crowd of fresh addresses would stall the process.
         if (sweptMinute !== minute) { sweptMinute = minute; for (const [k, v] of buckets) if (v.minute !== minute) buckets.delete(k) }
-        // Still full of this minute's clients: a new one waits for the next minute rather than growing the map.
-        if (buckets.size >= BUCKETS_MAX) return true
+        // Still full of this minute's clients: a new one is counted in a shared counter picked by a hash of its key,
+        // never untracked (that let it make unlimited requests) and never refused outright (that would let anyone
+        // holding many addresses, an IPv6 /32 is 16M /56s, lock every new visitor out). A shard is shared by few
+        // clients unless the table is under attack, and nginx still limits each address.
+        if (buckets.size >= BUCKETS_MAX) {
+          if (spillMinute !== minute) { spillMinute = minute; spill.fill(0) }
+          let h = 2166136261
+          for (let i = 0; i < ip.length; i++) h = Math.imul(h ^ ip.charCodeAt(i), 16777619)
+          const s = (h >>> 0) % SPILL_SHARDS
+          spill[s] = Math.min(spill[s] + units, 0xffffffff)
+          return spill[s] > RATE.perMinute
+        }
       }
       buckets.set(ip, { minute, n: units })
       return units > RATE.perMinute
@@ -291,7 +327,7 @@ export function createStocksWeb ({
     if (!reg?.records) return { status: 503, body: { error: 'the issuer registry is not loaded yet', detail: reg?.error ?? null } }
     if (!ADDRESS.test(String(address || ''))) return { status: 400, body: { error: 'address must be 0x followed by 40 hex characters' } }
     const addr = String(address).toLowerCase()
-    const hours = Math.min(windowH, Math.max(1, Number(hoursArg) || windowH))
+    const hours = Math.min(PUBLIC_HOURS, windowH, Math.max(1, Number(hoursArg) || PUBLIC_HOURS))
     const inRegistry = reg.records.some((r) => r.address === addr)
     const w = windows[chain].get()
     const identity = inRegistry ? {} : nameOf(chain, addr)
@@ -299,16 +335,17 @@ export function createStocksWeb ({
     const elsewhere = inRegistry ? sameStockElsewhere(loaded().byChain, chain, addr, now()) : []
     const listed = inRegistry ? null : impostors.get(chain)?.byAddress?.get(addr) || null
     const points = inRegistry && w.window ? seriesPoints(w.window.byToken.get(addr)).filter(([t]) => t >= now() - hours * 3600e3) : []
-    // Where a reader can look for themselves: the token on DexScreener (its deepest pool when we know it) and the contract
+    // Where a reader can look for themselves: the token on GeckoTerminal (CoinGecko's DEX charts; its deepest pool when we
+    // know it) and the contract
     // on the chain's public explorer. An impostor gets the same links; the page warns before it opens them.
     const C = CHAINS[chain]
     const links = {
-      dex: `https://dexscreener.com/${C.slug}/${(inRegistry && p.latest && /^0x[0-9a-f]{40}$/.test(String(p.latest.dex_pool)) ? p.latest.dex_pool : addr)}`,
+      dex: inRegistry && p.latest && /^0x[0-9a-f]{40}$/.test(String(p.latest.dex_pool)) ? `https://www.geckoterminal.com/${C.gecko}/pools/${p.latest.dex_pool}` : `https://www.geckoterminal.com/${C.gecko}/tokens/${addr}`,
       explorer: C.explorer ? `${C.explorer}/token/${addr}` : null,
     }
     const sources = { ...SOURCES[chain], dex: 'DexScreener token-pairs, completed from GeckoTerminal pools when DexScreener lists 30', recorded_every_s: RECORDER_CADENCE_S,
       pools_counted: { min_liquidity_usd: MIN_POOL_LIQUIDITY_USD, paired_with_addresses: [...(C.referenceAssets || [])], rule: 'a pool prices the token only against the chain\'s dollar stablecoins or wrapped ETH, matched by address; the deepest one is used' } }
-    return { status: 200, body: { ...p, chain, links, sources, same_stock_elsewhere: elsewhere, series_points: points, impostor_listing: listed ? { first_seen_at: listed.first_seen_at, deployer: listed.deployer } : null, case: caseSummary(chain, addr), readings_loaded: Boolean(w.window), registry_age_s: Math.round((now() - reg.at) / 1000) } }
+    return { status: 200, body: { ...p, chain, links, sources, same_stock_elsewhere: elsewhere, series_points: points, impostor_listing: listed ? { first_seen_at: listed.first_seen_at, same_deployer_impostors: listed.same_deployer_impostors ?? null } : null, case: caseSummary(chain, addr), readings_loaded: Boolean(w.window), registry_age_s: Math.round((now() - reg.at) / 1000) } }
   }
 
   /** What the server holds, per chain, with ages: the numbers behind /api/status and /status. */
@@ -320,7 +357,7 @@ export function createStocksWeb ({
       if (w.window) for (const e of w.window.byToken.values()) if (e.latestAt > (newest ?? -Infinity)) newest = e.latestAt
       const impAt = imp && imp.generated_at ? Date.parse(imp.generated_at) : NaN
       return [c, { registry_records: r?.records?.length ?? null, registry_age_s: r?.at ? Math.round((now() - r.at) / 1000) : null, registry_error: r?.error ?? null,
-        readings_tokens: w.window ? w.window.byToken.size : null, readings_age_s: w.window ? Math.round((now() - w.window.loaded_at) / 1000) : null, readings_error: w.error,
+        readings_tokens: w.window ? w.window.byToken.size : null, readings_age_s: w.window ? Math.round((now() - w.window.loaded_at) / 1000) : null, readings_error: w.error ? internal(`readings ${c}`, w.error, 'the readings could not be read') : null,
         newest_reading_at: newest == null ? null : new Date(newest).toISOString(), newest_reading_age_s: newest == null ? null : Math.round((now() - newest) / 1000),
         impostors_listed: imp && imp.items ? imp.items.length : null, impostors_age_s: Number.isFinite(impAt) ? Math.round((now() - impAt) / 1000) : null }]
     }))
@@ -355,11 +392,12 @@ export function createStocksWeb ({
   /** The impostor list, newest first, optionally since a time: what an agent polls for new look-alikes. */
   function recentImpostors (chain, since) {
     const j = impostors.get(chain)
-    if (!j || !j.items) throw new Error(`the ${chain} impostor list is ${j?.error || 'not loaded'}`)
-    const t = since ? Date.parse(since) : null
-    const items = j.items.filter((i) => t == null || (i.first_seen_at && Date.parse(i.first_seen_at) >= t))
+    if (!j || !j.items) throw unavailable(`the ${chain} impostor list is ${j?.error || 'not loaded'}`)
+    const from = now() - BULK_WINDOW_DAYS * 86400e3
+    const t = Math.max(from, since ? Date.parse(since) : from)
+    const items = j.items.filter((i) => i.first_seen_at && Date.parse(i.first_seen_at) >= t)
       .sort((a, b) => String(b.first_seen_at).localeCompare(String(a.first_seen_at)))
-    return { chain, generated_at: j.generated_at, since: since || null, count: items.length, note: j.note, items: items.slice(0, 50).map((i) => ({ address: i.address, symbol: i.symbol, name: i.name, kind: i.kind, imitates_symbol: i.registry_symbol ?? null, listed_address: i.registry_address ?? null, first_seen_at: i.first_seen_at })) }
+    return { chain, generated_at: j.generated_at, since: since || null, window_days: BULK_WINDOW_DAYS, count: items.length, older: FULL_ARCHIVE, note: j.note, items: items.slice(0, BULK_MAX).map((i) => ({ address: i.address, symbol: i.symbol, name: i.name, kind: i.kind, imitates_symbol: i.registry_symbol ?? null, listed_address: i.registry_address ?? null, first_seen_at: i.first_seen_at })) }
   }
 
   /** The Base ↔ Robinhood matrix from memory, or null with the chains whose registry has not loaded. */
@@ -376,7 +414,7 @@ export function createStocksWeb ({
    */
   function matrixFor ({ isin, symbol } = {}) {
     const m = matrixOf()
-    if (!m.body) throw new Error(`the ${m.missing.join(' and ')} registry is not loaded yet`)
+    if (!m.body) throw unavailable(`the ${m.missing.join(' and ')} registry is not loaded yet`)
     const named = isin != null || symbol != null
     let rows = m.body.rows
     let symbolIsins = null
@@ -390,11 +428,12 @@ export function createStocksWeb ({
   const sourceOf = (c) => { const r = registries.get(c); return { generated_at: new Date(now()).toISOString(), source: `${CHAINS[c].issuer} issuer registry`, registry_age_s: r?.at ? Math.round((now() - r.at) / 1000) : null } }
   const mcp = createMcpHttp({
     chains: Object.keys(CHAINS),
-    maxHours: windowH,
-    find: (c, q) => { const { byChain } = loaded(); if (!byChain[c]) throw new Error(`the ${c} registry is not loaded yet`); return { ...findAcross({ [c]: byChain[c] }, q), ...sourceOf(c) } },
+    log,
+    maxHours: Math.min(PUBLIC_HOURS, windowH),
+    find: (c, q) => { const { byChain } = loaded(); if (!byChain[c]) throw unavailable(`the ${c} registry is not loaded yet`); return { ...findAcross({ [c]: byChain[c] }, q), ...sourceOf(c) } },
     list: (c) => {
       const recs = registries.get(c)?.records
-      if (!recs) throw new Error(`the ${c} registry is not loaded yet`)
+      if (!recs) throw unavailable(`the ${c} registry is not loaded yet`)
       const tokens = recs.map((r) => ({ symbol: r.symbol, name: r.name ?? null, address: r.address, isin: r.isin, multiplier: r.multiplier, has_reference_price: r.reference?.price_usd > 0, minted: r.supplied !== false }))
       return { chain: c, issuer: CHAINS[c].issuer, ...sourceOf(c), count: tokens.length, minted: tokens.filter((t) => t.minted).length, with_reference_price: tokens.filter((t) => t.has_reference_price).length, tokens }
     },
@@ -431,16 +470,22 @@ export function createStocksWeb ({
     // A batch verify is several lookups: it counts one unit per ten addresses beyond the first ten.
     const extra = batchUnits(raw) - 1
     if (extra > 0 && limited(clientIp(req), extra)) return send(res, 429, { jsonrpc: '2.0', id: null, error: { code: -32000, message: 'too many requests, try again in a minute' } }, undefined, { ...MCP_HEADERS, 'retry-after': '60' })
-    analytics.mcp(clientIp(req), req.headers, raw)
     const { status, json } = await mcp.handle(raw)
+    if (status < 400) analytics.mcp(clientIp(req), req.headers, raw, mcp.toolNames)
     return json == null ? send(res, status, '', 'text/plain', MCP_HEADERS) : send(res, status, json, undefined, MCP_HEADERS)
   }
 
   async function route (req, res) {
-    const url = new URL(req.url, 'http://local')
+    let url
+    try { url = new URL(req.url, 'http://local') } catch (_) { return send(res, 404, { error: 'not found' }) }
     if (url.pathname === BASE_PATH + '/mcp') return routeMcp(req, res)
     if (req.method !== 'GET' && req.method !== 'HEAD') return send(res, 405, { error: 'method not allowed' }, undefined, { allow: 'GET, HEAD' })
-    if (url.pathname === '/healthz') return send(res, 200, { ok: true })
+    // A release that cannot read any issuer registry answers every lookup with 503: it must fail the deploy gate, not pass.
+    if (url.pathname === '/healthz') {
+      const chains = Object.fromEntries(Object.keys(CHAINS).map((c) => [c, Boolean(registries.get(c)?.records)]))
+      const ok = Object.values(chains).some(Boolean)
+      return send(res, ok ? 200 : 503, { ok, registries: chains }, undefined, { 'cache-control': 'no-store' })
+    }
     // The page's relative URLs need the trailing slash; the bare prefix redirects to it, keeping the query.
     if (url.pathname === BASE_PATH) return send(res, 301, { moved: BASE_PATH + '/' }, undefined, { location: BASE_PATH + '/' + url.search })
     if (!url.pathname.startsWith(BASE_PATH + '/')) return send(res, 404, { error: 'not found' })
@@ -480,19 +525,19 @@ export function createStocksWeb ({
     }
     if (sub === '/status') {
       analytics.load(clientIp(req), req.headers, '/status')
-      return send(res, 200, statusPage({ chains: statusNumbers(), now: now(), version: appVersion, assets: { css: `style.css?v=${version('/style.css')}`, docsCss: `docs.css?v=${version('/docs.css')}`, beacon: `beacon.js?v=${version('/beacon.js')}` } }), 'text/html; charset=utf-8', { 'cache-control': 'no-store' })
+      return send(res, 200, cachedPage('/status', () => statusPage({ chains: statusNumbers(), now: now(), version: appVersion, assets: { css: `style.css?v=${version('/style.css')}`, docsCss: `docs.css?v=${version('/docs.css')}`, beacon: `beacon.js?v=${version('/beacon.js')}` } })), 'text/html; charset=utf-8', { 'cache-control': 'no-store' })
     }
     if (sub === '/history') {
       analytics.load(clientIp(req), req.headers, '/history')
-      return send(res, 200, historyPage({ store: history, chains: Object.keys(CHAINS), now: now(), version: appVersion, assets: { css: `style.css?v=${version('/style.css')}`, docsCss: `docs.css?v=${version('/docs.css')}`, beacon: `beacon.js?v=${version('/beacon.js')}` } }), 'text/html; charset=utf-8', { 'cache-control': 'public, max-age=300' })
+      return send(res, 200, cachedPage('/history', () => historyPage({ store: history, chains: Object.keys(CHAINS), now: now(), version: appVersion, assets: { css: `style.css?v=${version('/style.css')}`, docsCss: `docs.css?v=${version('/docs.css')}`, beacon: `beacon.js?v=${version('/beacon.js')}` } })), 'text/html; charset=utf-8', { 'cache-control': 'public, max-age=300' })
     }
     if (!sub.startsWith('/api/')) return send(res, 404, { error: 'not found' })
 
-    if (limited(clientIp(req))) return send(res, 429, { error: 'too many requests, try again in a minute' }, undefined, { 'retry-after': '60' })
+    if (limited(clientIp(req), sub === '/api/passport' ? PASSPORT_UNITS : 1)) return send(res, 429, { error: 'too many requests, try again in a minute' }, undefined, { 'retry-after': '60' })
 
     const chain = url.searchParams.get('chain')
     if (sub === '/api/hit') {
-      const hit = parseHit(url.searchParams, Object.keys(CHAINS))
+      const hit = parseHit(url.searchParams, Object.keys(CHAINS), (p) => p === '/' || p === '/history' || p === '/status' || (p.startsWith('/docs/') && docs.has(p.slice(6))))
       if (hit) analytics.hit(clientIp(req), req.headers, hit)
       return send(res, 204, '', 'text/plain', { 'cache-control': 'no-store' })
     }
@@ -514,7 +559,7 @@ export function createStocksWeb ({
       if (since && !Number.isFinite(Date.parse(since))) return send(res, 400, { error: 'since must be an ISO time' }, undefined, cors)
       const event = url.searchParams.get('event')
       if (event && !['opened', 'kind_changed', 'listed', 'gone'].includes(event)) return send(res, 400, { error: 'event must be one of opened, kind_changed, listed, gone' }, undefined, cors)
-      const opts = { since, event, limit: Math.min(200, Math.max(1, Number(url.searchParams.get('limit')) || 50)), cursor: Math.max(0, Math.floor(Number(url.searchParams.get('cursor')) || 0)) }
+      const opts = { since, event, limit: Math.min(BULK_MAX, Math.max(1, Number(url.searchParams.get('limit')) || BULK_MAX)) }
       const out = chains.map((c) => history.cases(c, opts))
       return send(res, 200, chain ? out[0] : { chains: Object.fromEntries(chains.map((c, i) => [c, out[i]])) }, undefined, { ...cors, 'cache-control': 'public, max-age=300' })
     }
@@ -525,12 +570,14 @@ export function createStocksWeb ({
     }
     if (sub === '/api/impostors') {
       if (chain && !CHAINS[chain]) return send(res, 400, { error: `chain must be one of ${Object.keys(CHAINS).join(', ')}` })
-      const limit = Math.min(100, Math.max(1, Number(url.searchParams.get('limit')) || 30))
+      const limit = Math.min(BULK_MAX, Math.max(1, Number(url.searchParams.get('limit')) || 30))
+      const from = now() - BULK_WINDOW_DAYS * 86400e3
       const out = {}
       for (const c of Object.keys(CHAINS)) {
         if (chain && c !== chain) continue
         const j = impostors.get(c)
-        out[c] = j?.items ? { generated_at: j.generated_at, counts: j.counts, listed: j.listed, note: j.note, items: j.items.slice(0, limit) } : { error: j?.error || 'not loaded' }
+        const recent = j?.items ? j.items.filter((i) => i.first_seen_at && Date.parse(i.first_seen_at) >= from) : null
+        out[c] = j?.items ? { generated_at: j.generated_at, counts: j.counts, listed: j.listed, note: j.note, window_days: BULK_WINDOW_DAYS, in_window: recent.length, items: recent.slice(0, limit), older: FULL_ARCHIVE } : { error: j?.error || 'not loaded' }
       }
       return send(res, 200, { chains: out }, undefined, { 'cache-control': 'public, max-age=300' })
     }
@@ -547,6 +594,8 @@ export function createStocksWeb ({
     }
     if (sub === '/api/passport') {
       const r = await passportOf(chain, url.searchParams.get('address'), url.searchParams.get('hours'))
+      // The chart's points only for a caller that draws them.
+      if (r.status === 200 && url.searchParams.get('series') !== '1') { const { series_points: _sp, ...rest } = r.body; r.body = rest }
       return send(res, r.status, r.body, undefined, r.status === 200 ? { 'cache-control': 'public, max-age=60' } : r.status === 503 ? { 'retry-after': '30' } : {})
     }
     return send(res, 404, { error: 'not found' })

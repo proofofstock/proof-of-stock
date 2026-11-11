@@ -167,6 +167,6 @@ reference, with the age of each number. Next:
 - [Compare one stock across Base and Robinhood Chain](../how-to/compare-venues.md)
 - [Why the numbers are computed the way they are](../explanation/methodology.md)
 
-The server allows 60 requests per minute per client. Over that it answers 429; wait a minute.
+The server allows 60 requests per minute per client; a passport costs 3 of them. Over that it answers 429; wait a minute.
 
 [Not investment advice](../legal.md)

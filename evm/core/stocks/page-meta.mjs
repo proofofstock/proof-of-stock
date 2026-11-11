@@ -53,7 +53,7 @@ export function injectMeta (html, { title, description }, url) {
     `<meta name="twitter:card" content="summary">`, `<meta name="twitter:title" content="${t}">`, `<meta name="twitter:description" content="${d}">`,
   ].join('\n  ')
   return String(html)
-    .replace(/<title>[^<]*<\/title>/, `<title>${t}</title>`)
-    .replace(/<meta name="description" content="[^"]*">/, `<meta name="description" content="${d}">`)
-    .replace('<!--og-->', tags)
+    .replace(/<title>[^<]*<\/title>/, () => `<title>${t}</title>`)
+    .replace(/<meta name="description" content="[^"]*">/, () => `<meta name="description" content="${d}">`)
+    .replace('<!--og-->', () => tags)
 }

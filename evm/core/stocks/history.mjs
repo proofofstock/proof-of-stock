@@ -23,8 +23,9 @@ export const BACKFILL_SOURCE = 'first_seen_at from our collector history (static
 const day = (ms) => new Date(ms).toISOString().slice(0, 10)
 const histDir = (root) => path.join(root, 'stock-peg', HISTORY_DIR)
 
+// ⚠ An unreadable archive is not an empty one: an empty one would make the next run backfill every open case again.
 function readRows (dir, prefix) {
-  let names; try { names = fs.readdirSync(dir) } catch { return [] }
+  let names; try { names = fs.readdirSync(dir) } catch (e) { if (e && e.code === 'ENOENT') return []; throw e }
   const rows = []
   for (const f of names.filter((n) => n.startsWith(prefix) && n.endsWith('.jsonl')).sort()) {
     for (const l of fs.readFileSync(path.join(dir, f), 'utf8').split('\n')) {
@@ -37,7 +38,15 @@ function readRows (dir, prefix) {
 function append (dir, prefix, atMs, rows) {
   if (!rows.length) return
   fs.mkdirSync(dir, { recursive: true })
-  fs.appendFileSync(path.join(dir, `${prefix}${day(atMs)}.jsonl`), rows.map((r) => JSON.stringify(r)).join('\n') + '\n')
+  const file = path.join(dir, `${prefix}${day(atMs)}.jsonl`)
+  // A run killed mid-write leaves a torn last line with no newline. Appending straight after it would glue the new row
+  // onto it and lose the row too; a newline first keeps the torn line apart (readRows skips it) and the new row whole.
+  let lead = ''
+  try {
+    const fd = fs.openSync(file, 'r')
+    try { const size = fs.fstatSync(fd).size; if (size > 0) { const b = Buffer.alloc(1); fs.readSync(fd, b, 0, 1, size - 1); if (b[0] !== 0x0a) lead = '\n' } } finally { fs.closeSync(fd) }
+  } catch (e) { if (!e || e.code !== 'ENOENT') throw e }
+  fs.appendFileSync(file, lead + rows.map((r) => JSON.stringify(r)).join('\n') + '\n')
 }
 
 // ---------------------------------------------------------------------------------------------------------------- H1

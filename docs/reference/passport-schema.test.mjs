@@ -136,11 +136,13 @@ console.log('an issuer-listed token (Base)')
   check('the same share elsewhere is matched by ISIN', p.same_stock_elsewhere.length === 1 && p.same_stock_elsewhere[0].chain === 'robinhood' && p.same_stock_elsewhere[0].address === N)
   check('...and its reference age is measured now, not at its reading', p.same_stock_elsewhere[0].latest.reference_age_s === 960, String(p.same_stock_elsewhere[0].latest.reference_age_s))
   check('a Coinbase token says minted true', p.issuer.minted === true)
-  check('the HTTP answer carries series_points', p.series_points.length === 3 && p.series_points.every((x) => x.length === 3))
+  check('the HTTP answer carries no series_points unless asked', !('series_points' in p))
+  const ps = (await passport('base', A, '&series=1')).body
+  check('with series=1 it carries series_points and still validates', validate(ps) && ps.series_points.length === 3 && ps.series_points.every((x) => x.length === 3))
   check('impostor_listing and resembles are null for a listed token', p.impostor_listing === null && p.resembles === null)
-  check('the DEX link points at the deepest pool', p.links.dex === `https://dexscreener.com/base/${POOL_A}`)
+  check('the DEX link points at the deepest pool on GeckoTerminal', p.links.dex === `https://www.geckoterminal.com/base/pools/${POOL_A}`)
   check('the pool rule lists the chain\'s reference assets by address', p.sources.pools_counted.paired_with_addresses.includes(USDC_BASE))
-  const short = await passport('base', A, '&hours=1')
+  const short = await passport('base', A, '&hours=1&series=1')
   check('hours narrows series and series_points alike', short.body.series.window_h === 1 && short.body.series.readings === 2 && short.body.series_points.length === 2 && short.body.series_points.every(([t]) => t >= NOW - 3600e3) && validate(short.body), errorsOf())
 }
 
@@ -178,7 +180,7 @@ console.log('an impostor')
   check('200 and validates', status === 200 && validate(p), errorsOf())
   check('the not-in-registry shape: no issuer, no reference key, no latest, no series', p.in_registry === false && p.issuer === null && !('reference' in p) && p.latest === null && p.series === null)
   check('resembles names what it imitates', p.resembles.kind === 'registry_symbol' && p.resembles.registry_address === A)
-  check('impostor_listing carries the list entry', p.impostor_listing.first_seen_at === '2026-11-09T08:00:00.000Z' && p.impostor_listing.deployer === DEPLOYER)
+  check('impostor_listing carries the list entry, and the deployer address appears nowhere', p.impostor_listing.first_seen_at === '2026-11-09T08:00:00.000Z' && p.impostor_listing.same_deployer_impostors === 0 && !JSON.stringify(p).includes(DEPLOYER))
   check('notes is not_in_registry alone', JSON.stringify(p.notes) === '["not_in_registry"]')
 }
 
@@ -187,7 +189,7 @@ console.log('an unknown token')
   const { status, body: p } = await passport('base', U)
   check('200 and validates', status === 200 && validate(p), errorsOf())
   check('no name, no resemblance, no listing', p.identity.symbol === null && p.identity.name === null && p.resembles === null && p.impostor_listing === null)
-  check('nothing elsewhere and no points', p.same_stock_elsewhere.length === 0 && p.series_points.length === 0)
+  check('nothing elsewhere and no points', p.same_stock_elsewhere.length === 0 && !('series_points' in p))
 }
 
 console.log('a listed token that is not minted')

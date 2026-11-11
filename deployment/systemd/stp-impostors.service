@@ -15,6 +15,32 @@ MemoryAccounting=true
 MemoryMax=2560M
 CPUQuota=50%
 TimeoutStartSec=40min
+NoNewPrivileges=true
+# Root only to read the dataset (one root directory belongs to the collector's own user): its one capability is to READ
+# past file permissions. It writes only under each chain's stock-peg/ (readings, history, the impostor and names files);
+# the rest of the file system, the dataset included, is read-only. Checked on the host on 11.11 with systemd-run and
+# these properties: stock-peg/ and history/ writable, the dataset root, /opt/stp and /etc not, static/ readable.
+CapabilityBoundingSet=CAP_DAC_READ_SEARCH
+AmbientCapabilities=
+ProtectSystem=strict
+ReadWritePaths=/var/lib/stp/base/stock-peg /var/lib/stp/robinhood/stock-peg
+ProtectHome=read-only
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources @mount @reboot @swap @raw-io @module @debug @cpu-emulation @obsolete
 StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=stp-impostors

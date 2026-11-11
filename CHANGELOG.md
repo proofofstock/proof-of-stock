@@ -12,11 +12,31 @@ The version is in `package.json`, and the site footer, the MCP `serverInfo.versi
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-11-11
+
 ### Fixed
+- **The case archive keeps what it knows** (from the 11.11 review): an archive or stream that cannot be read is an error, not an empty one, so no run backfills every case again and the site keeps its last good copy; a damaged line in a token stream makes the list partial, so it closes no case as gone; a row appended after a torn last line is no longer lost. The recorder exits non-zero when it dies midway or writes an invalid row.
+- **The guard believes only a well-formed answer:** `listed` must be a boolean about the address asked; anything else is `unknown` and refuses the buy (a `listed: "false"` string used to allow it).
+- **Smaller fixes:** `/history` printed a literal `${BULK_WINDOW_DAYS}` when empty; a registry row without its lists stopped that chain's history; the visit counter credited a passport's seconds to the next one; the docs say a passport costs 3 units, 24 h and IPv6 /56.
+- **From a code review (11.11):** `?chain=constructor` and other Object member names are a 400 (they answered 500); no raw error text, paths included, reaches a public answer or an MCP client; a client that arrives while the rate-limit table is full keeps its 60 units a minute (it passed uncounted); `/healthz` is 503 until an issuer registry is loaded, and a deploy is refused while another runs, rolls back on a failed restart and health-checks the rollback.
 - **From a site audit:** /llms-full.txt links are absolute (relative to the one file they all 404ed); the terminal says "impostors" and "issuer-listed" instead of "fakes" and "verified"; /history says when its case archive starts instead of a dash; the guard is described as unpublished, not private; /api/status documents its impostor fields.
 - **The contact address is the project's own:** hello@proofofstock.xyz on the legal page, in place of another project's mailbox.
+- **From a code review (11.11), the server side:** one client re-requesting a page can no longer fill the visit counter's day: each daily pseudonym gets at most 200 page loads and 400 beacons a day. `/status` and `/history` are built once per 30 s instead of on every request. The recorder stops itself short of its unit's timeout (no GeckoTerminal top-ups in the last 90 s, no more tokens at the deadline) and still writes its run row, which counts what it skipped in `supplement_skipped`. nginx keys its limits by an IPv6 /56 like the app, limits connections on the older names too, and sends HSTS; the site's unit hides other processes and writes its files private.
 
 ### Changed
+- **No price older than the passport's window:** past 24 h without a reading, `latest` is `null` and `notes` carry `reading_stale`, instead of the last price the recorder left.
+- **The two timed jobs run sandboxed like the site**, CI runs with a read-only token and `npm ci` only, and the public export is dry-run on every push.
+- **⚠ Breaking: `/api/history/cases` has no cursor.** It answers the newest 50 events of the window at most; `cursor` is ignored and `next` is gone. Paging read the whole week 50 rows at a time, which the cap is there to prevent. `count` still says how many the window holds.
+- **⚠ Breaking: no deployer address in public answers.** `/api/impostors` items and the passport's `impostor_listing` carry `same_deployer_impostors` (how many other listed impostors share the deployer) instead of `deployer`. The address is the collector's work.
+- **The rate limit keys IPv6 by /56** (was /64), the block an ISP gives one customer, so one free /48 is 256 clients instead of 65,536.
+- **Switching chain from the tabs repeats the last search there**, and says so in the terminal. Before, a Base passport stayed on screen under a Robinhood link. An address search is answered on both chains anyway, so it is not repeated.
+- **The tape runs smoothly.** The background glow is a gradient instead of a 100 px blur filter that was redrawn every frame, the terminal no longer blurs the moving background behind it, and the tape no longer rebuilds itself when only the order of its tokens changes.
+- **The footer and the docs say "beta".**
+- **Charts open on GeckoTerminal** (CoinGecko's DEX charts) instead of DexScreener: `links.dex`, the passport's chart button and each pool row. DexScreener is still one of the price sources.
+- **⚠ Breaking: lists are a window, an address is answered whole.** The archive and the recorder's prices are what nobody else has, so they are no longer a download:
+  - `/api/history/cases`, `/api/impostors` and MCP `recent_impostors` list only the last 7 days, at most 50 rows; backfilled cases are not listed. They say so (`window_days`, `older`).
+  - A passport shows at most 24 h (was 72), carries `series_points` only with `series=1`, and costs 3 units of the per-minute limit.
+  - Any one address still gets its whole case and its passport; the counts cover the whole archive. The full archive is available on request.
 - **Prices are coloured by direction.** An on-chain price above the issuer's is green and one below is red; under 0.5% it stays neutral, beyond 2% it is bold. Until now the colour was the gap's size whatever its sign, so a rise showed red. The tape is labelled "vs issuer", because its number is the gap to the issuer's price, not a price change.
 - **The site is proofofstock.xyz.** Every link, the MCP URL (`https://proofofstock.xyz/mcp`), `server.json`, the docs and the guard default point there. stockofproof.xyz and tickerproof.xyz redirect every page to it, but serve `/mcp` in place, because an MCP client POSTs and a redirected POST is not reliably followed: agents set up with the old URL keep working. `deployment/nginx/proofofstock.xyz.conf` replaces `stockofproof.xyz.conf`.
 

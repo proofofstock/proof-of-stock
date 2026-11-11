@@ -74,7 +74,7 @@ export function invalid (schema, args) {
   const props = schema.properties || {}
   for (const k of schema.required || []) if (args[k] === undefined) return `${k} is required`
   for (const [k, v] of Object.entries(args)) {
-    const s = props[k]
+    const s = Object.hasOwn(props, k) ? props[k] : undefined
     if (!s) { if (schema.additionalProperties === false) return `unknown argument ${k.slice(0, 40)}`; continue }
     if (s.type === 'string') {
       if (typeof v !== 'string') return `${k} must be a string`
@@ -222,7 +222,10 @@ export function createMcpHttp (data) {
       if (args.include_series !== true && r.body) { const { series_points: _sp, ...rest } = r.body; r.body = rest }
       return text(r.body, passportLead(r.body, CHAIN_NAME[args.chain], pctOf, usdOf))
     } catch (e) {
-      return fail(String(e && e.message || e).slice(0, 200))
+      // Only our own sentences (e.public) reach the client; anything else is internal and goes to the journal.
+      if (e && e.public) return fail(e.message)
+      if (data.log) data.log(`[mcp] ${String(e && e.message || e).slice(0, 300)}`)
+      return fail('internal error')
     }
   }
 
@@ -262,5 +265,5 @@ export function createMcpHttp (data) {
       default: return error(-32601, `method not found: ${msg.method}`)
     }
   }
-  return { handle }
+  return { handle, toolNames: tools.map((t) => t.name) }
 }

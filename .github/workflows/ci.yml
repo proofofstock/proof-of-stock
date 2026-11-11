@@ -3,19 +3,22 @@ on:
   push:
     branches: [main]
   pull_request:
-# One run per branch at a time: a newer push cancels the older run on the single runner.
+permissions:
+  contents: read
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 jobs:
   test:
-    # A self-hosted runner, not GitHub-hosted minutes.
-    # It uses the host's Node; nothing here needs secrets.
-    runs-on: [self-hosted, Linux, X64, stp]
+    runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
-      - run: node -v
-      - run: npm ci --no-audit --no-fund || npm install --no-audit --no-fund
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci --no-audit --no-fund
       - run: npm test
       - run: npm run locks

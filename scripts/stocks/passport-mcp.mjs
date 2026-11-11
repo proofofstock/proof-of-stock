@@ -14,6 +14,7 @@
 // ⚠ EVERY ANSWER IS FACTS WITH THEIR TIME AND SOURCE, never advice. The passport carries not_trading_signal: true, and the
 // tool descriptions say so, so a model calling them is told the same thing a person reading them is.
 
+import fs from 'node:fs'
 import readline from 'node:readline'
 import path from 'node:path'
 import { isEntryPoint } from '../lib/invoked-directly.mjs'
@@ -21,7 +22,7 @@ import { passportFor } from './passport.mjs'
 import { CHAINS } from './stock-peg.mjs'
 
 export const PROTOCOL_VERSION = '2025-06-18'
-const SERVER_INFO = Object.freeze({ name: 'stock-token-passport-stdio', version: '0.1.0' })
+const SERVER_INFO = Object.freeze({ name: 'stock-token-passport-stdio', version: JSON.parse(fs.readFileSync(new URL('../../package.json', import.meta.url), 'utf8')).version })
 const DEFAULT_ROOT = Object.freeze({ base: '/var/lib/stp/base', robinhood: '/var/lib/stp/robinhood' })
 const CHAIN_ENUM = Object.keys(CHAINS)
 // One canonical disclaimer (docs/legal.md, served at /docs/legal.md); the tools point at it instead of repeating it.

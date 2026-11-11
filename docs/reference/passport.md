@@ -42,7 +42,7 @@ curl -s 'https://proofofstock.xyz/api/passport?chain=base&address=0xaaaaaaaaaaaa
     }
   },
   "series": {
-    "window_h": 72, "readings": 3, "with_premium": 3, "first_at": "2026-11-09T20:00:00.000Z",
+    "window_h": 24, "readings": 3, "with_premium": 3, "first_at": "2026-11-09T20:00:00.000Z",
     "premium_all": { "n": 3, "median": 0.003, "p10": 0.0025, "p90": 0.004, "min": 0.0025, "max": 0.004 },
     "premium_by_session": {
       "regular": { "n": 3, "median": 0.003, "p10": 0.0025, "p90": 0.004, "min": 0.0025, "max": 0.004 }
@@ -51,7 +51,7 @@ curl -s 'https://proofofstock.xyz/api/passport?chain=base&address=0xaaaaaaaaaaaa
   "notes": [],
   "chain": "base",
   "links": {
-    "dex": "https://dexscreener.com/base/0xa1a1…a1a1",
+    "dex": "https://www.geckoterminal.com/base/pools/0xa1a1…a1a1",
     "explorer": "https://basescan.org/token/0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
   },
   "sources": { "registry": "https://api.coinbase.com/v1/tokenized-stocks", "...": "see sources" },
@@ -90,7 +90,7 @@ Addresses are shortened with `…` here only; the API always returns 42-characte
 | `premium`, `spread`, every value in `series` and `series_points` | fraction, not percent. `0.0025` = 0.25%. `premium > 0`: the on-chain price is above the issuer's reference | `0.0025` |
 | `*_price_usd`, `bid`, `ask` | USD per **token** (not per share) | `180.45` |
 | `age_s`, `*_age_s`, `lag_s`, `cadence_s`, `recorded_every_s` | seconds, integer. What each age is measured against is stated per field | `900` |
-| `window_h` | hours | `72` |
+| `window_h` | hours | `24` |
 | `*_at`, `generated_at` | ISO 8601 UTC | `2026-11-10T14:45:00Z` |
 | `series_points[i][0]` | epoch milliseconds | `1794321900000` |
 | `multiplier` | shares per token | `1.011` |
@@ -134,13 +134,13 @@ lower-cased address is in the issuer registry the server holds for that chain (C
 | `issuer` | object or null | | not in the registry | [`issuer`](#field-issuer) |
 | `identity` | object | | never null | [`identity`](#field-identity) |
 | `reference` | object or null | | in registry: the issuer gives no reference object. Out of registry: the key is absent | [`reference`](#field-reference) |
-| `latest` | object or null | | no reading is held for this token | [`latest`](#field-latest) |
+| `latest` | object or null | | no reading is held for this token, or the newest is older than the window (24 h): then `notes` has `reading_stale` | [`latest`](#field-latest) |
 | `series` | object or null | | not in the registry | [`series`](#field-series) |
 | `notes` | string[] | | never null, may be empty | `["reading_stale"]` |
 | `resembles` | object or null | | listed, or the name resembles nothing, or no name is known | [`resembles`](#field-resembles) |
 | `impostor_listing` | object or null | | listed, or not on the impostor list | [`impostor_listing`](#field-impostor_listing) |
 | `same_stock_elsewhere` | object[] | | never null | [`same_stock_elsewhere`](#field-same_stock_elsewhere) |
-| `series_points` | array[] | | never null in HTTP. The MCP leaves it out unless `include_series: true` | [`series_points`](#field-series_points) |
+| `series_points` | array[] | | only with `series=1` over HTTP, or `include_series: true` in MCP; left out otherwise | [`series_points`](#field-series_points) |
 | `links` | object | | never null | [`links`](#field-links) |
 | `sources` | object | | never null | [`sources`](#field-sources) |
 | `readings_loaded` | boolean | | never null. `false` until the server has loaded its readings window once; until then a listed token shows `latest: null` and `no_readings` | `true` |
@@ -336,7 +336,7 @@ Statistics of the premium over the window, split by the US session each reading 
 
 | Field | Type | Unit | Null means | Example |
 |---|---|---|---|---|
-| `window_h` | number | hours | never null. `hours` from the request, clamped to 1..72 | `72` |
+| `window_h` | number | hours | never null. `hours` from the request, clamped to 1..24 | `24` |
 | `readings` | integer | | never null. Readings in the window | `3` |
 | `with_premium` | integer | | never null. Of them, with a premium | `3` |
 | `first_at` | string or null | ISO time | no reading in the window | `"2026-11-09T20:00:00.000Z"` |
@@ -361,7 +361,7 @@ The premium time series for a chart: `[epoch_ms, premium_or_null, session]`, old
 | 2 | string | `r` regular, `e` extended, `c` closed, `u` unknown |
 
 The server thins the 72 hours it holds evenly to at most 400 points, always keeping the newest (so up to 401), then
-keeps only the points inside the window set by `hours`. With `hours=24` you get the last 24 hours of that thinned
+keeps only the points inside the window set by `hours` (at most 24). With `hours=24` you get the last 24 hours of that thinned
 series. Not in the registry: `[]`.
 
 The MCP tool `stock_passport` leaves `series_points` out unless the call sets `include_series: true`. `series` is
@@ -383,7 +383,7 @@ Every gap in the answer is a code here. Codes appear in the order below, each at
 | `trading_halted` | `reference.halted` is `true` |
 | `paused` | `issuer.paused` is not empty |
 | `no_readings` | listed, not `not_minted`, and no reading is held (Robinhood tokens included, though their `issuer.minted` is `null`) |
-| `reading_stale` | `latest.age_s > 1800`: the recorder has missed two runs; `latest` is history |
+| `reading_stale` | `latest.age_s > 1800`: the recorder has missed two runs; `latest` is history. Past the window (24 h) `latest` is `null`: no price older than the window is shown |
 | `no_dex_price` | `latest.premium` is null and `premium_refused` is `pairs_unavailable`, `no_pairs` or `no_eligible_pool` |
 | `reference_spread_wide` | `latest.premium_refused` is `reference_spread_wide` |
 | `pools_capped` | `latest.pools.capped` is `true` |
@@ -420,7 +420,7 @@ kinds.
 | Field | Type | Null means | Example |
 |---|---|---|---|
 | `first_seen_at` | string or null | our dataset holds no first-seen time | `"2026-11-09T08:00:00.000Z"` |
-| `deployer` | string or null | the deployer is not known yet | `"0xdede…dede"` |
+| `same_deployer_impostors` | integer or null | the deployer is not known yet | `3`: three other listed impostors come from the same deployer |
 
 Non-null only when the token is not listed and its address is on the chain's impostor list (`impostors.json`, written
 every 6 hours). That list holds only the strong kinds, `registry_symbol` and `issuer_name_suffix`. So a token can have
@@ -464,7 +464,7 @@ prices.
 
 | Field | Type | Null means | Example |
 |---|---|---|---|
-| `dex` | string | never null. DexScreener: the deepest pool when the token is listed and has one, else the token address | `"https://dexscreener.com/base/0xa1a1…a1a1"` |
+| `dex` | string | never null. GeckoTerminal: the deepest pool when the token is listed and has one, else the token page | `"https://www.geckoterminal.com/base/pools/0xa1a1…a1a1"` |
 | `explorer` | string or null | the chain has no explorer configured | `"https://basescan.org/token/0xaaaa…aaaa"` |
 
 An impostor gets the same links. Robinhood Chain's explorer is `https://robinhoodchain.blockscout.com`.

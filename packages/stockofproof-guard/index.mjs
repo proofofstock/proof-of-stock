@@ -16,6 +16,17 @@ export const DEFAULT_ENDPOINT = 'https://proofofstock.xyz'
 const ADDRESS = /^0x[0-9a-fA-F]{40}$/
 const CHAINS = new Set(['base', 'robinhood'])
 // Coinbase's symbols carry a trailing "c" (NVDAc); Robinhood's are the bare ticker (NVDA). A claim of either is the same.
+// ⚠ AN ANSWER IS CHECKED BEFORE IT IS BELIEVED. A buy is allowed on `listed === true` for the address asked about, never
+// on a truthy field or an answer about another contract; anything malformed is "could not check", like an outage.
+const malformed = (b, address) => {
+  if (!b || typeof b !== 'object' || Array.isArray(b)) return 'the answer is not an object'
+  if (typeof b.listed !== 'boolean') return 'listed is not true or false'
+  if (String(b.address || '').toLowerCase() !== address) return 'the answer is about another address'
+  if (!Array.isArray(b.registries_checked) || !b.registries_checked.every((r) => typeof r === 'string')) return 'registries_checked is missing'
+  if (b.listed && typeof b.symbol !== 'string') return 'a listed answer has no symbol'
+  if (b.impostor != null && typeof b.impostor !== 'object') return 'impostor is not an object'
+  return null
+}
 const ticker = (s) => { const t = String(s || '').trim(); return (/^[A-Z0-9.]+c$/.test(t) ? t.slice(0, -1) : t).toUpperCase() }
 
 /**
@@ -36,7 +47,10 @@ export function createGuard ({ endpoint = DEFAULT_ENDPOINT, fetchImpl = globalTh
     try {
       const r = await fetchImpl(`${base}/verify?chain=${chain}&address=${String(address).toLowerCase()}`, { signal: AbortSignal.timeout(timeoutMs), headers: { accept: 'application/json' } })
       const body = await r.json().catch(() => null)
-      if (r.status === 200 && body) return { status: 'ok', body }
+      if (r.status === 200 && body) {
+        const bad = malformed(body, String(address).toLowerCase())
+        return bad ? { status: 'error', body: { error: `malformed answer: ${bad}` } } : { status: 'ok', body }
+      }
       if (r.status === 503) return { status: 'unavailable', body }
       return { status: 'error', body: body || { error: `HTTP ${r.status}` } }
     } catch (e) {

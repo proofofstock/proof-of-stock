@@ -20,11 +20,12 @@ npm publish               # publishConfig.access is public
 
 ```bash
 # mcp-publisher: https://github.com/modelcontextprotocol/registry/releases
-mcp-publisher login github     # device flow in the browser, as the GitHub account that owns Coconatrm
+mcp-publisher login github     # device flow in the browser, as an admin of the proofofstock organisation
 mcp-publisher publish          # run from the repository root
 ```
 
-The name `io.github.Coconatrm/stock-token-passport` is tied to that GitHub login.
+The name `io.github.proofofstock/proof-of-stock` is tied to the `proofofstock` organisation on GitHub, which holds the
+public copy of the source. Publish once the repository is public, so the listing's link works.
 
 A name on our own domain (`xyz.stockofproof/passport`) is the alternative. It needs a key pair, with the public key served at `/.well-known/mcp-registry-auth`; that is a later change.
 
@@ -36,13 +37,28 @@ smithery.ai → Add server → "URL / remote" → `https://proofofstock.xyz/mcp`
 
 ## Opening the source
 
-The site's GitHub links (a footer chip, the docs top bar and the docs footer) are wired in and hidden while the
-repository is private, so no visitor follows one to a 404. To open the source:
+This repository stays private. The public one, `proofofstock/proof-of-stock`, is a copy built by
+`scripts/export-public.sh`: the tree at a commit, internal notes replaced by a stub, as one commit with no history,
+refused if it names anything on `scripts/public-deny.txt`. CI dry-runs that export on every push.
 
-1. Make `Coconatrm/stock-token-passport` public (GitHub → Settings → Danger zone → Change visibility).
-2. Set `"stp": { "source_public": true }` in `package.json`.
-3. Optionally add `"repository"` to the guard's `package.json`, so npm links to the code.
-4. Merge and deploy. The links appear with that release.
+The site's GitHub links (a footer chip, the docs top bar and the docs footer) point at `repository.url` in
+`package.json` and stay hidden while `stp.source_public` is false, so no visitor follows one to a 404. To open:
+
+1. Export the commit that runs in production and add it on top of the public repository's `main` (no force-push: each
+   release is one new commit there, the tree exactly as exported):
+   ```bash
+   scripts/export-public.sh /tmp/pos-public <sha>
+   cd /tmp/pos-public
+   git remote add origin https://github.com/proofofstock/proof-of-stock && git fetch -q origin main
+   git reset --soft FETCH_HEAD                                 # same tree, parent = the public main
+   git -c user.name='Proof of Stock' -c user.email=hello@proofofstock.xyz commit -q -C HEAD@{1}
+   git log -1 --format='%an <%ae> / %cn <%ce>'                  # both must be Proof of Stock <hello@…>, never a person
+   git push origin HEAD:main
+   ```
+   Every commit of the public history becomes visible, so an old one must pass today's deny list too (checked 11.11).
+2. Make `proofofstock/proof-of-stock` public (Settings → Danger zone → Change visibility).
+3. Set `"stp": { "source_public": true }` in `package.json`, merge and deploy. The links appear with that release.
+4. `mcp-publisher publish` (section 2).
 
 ## Each release
 

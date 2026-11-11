@@ -29,7 +29,8 @@
     "pair_read_errors": { "type": "integer", "minimum": 0 },
     "supplemented": { "type": "integer", "minimum": 0, "description": "tokens whose pools were completed from GeckoTerminal" },
     "supplement_errors": { "type": "integer", "minimum": 0, "description": "GeckoTerminal reads that failed; those rows keep the DexScreener pools" },
-    "aborted": { "type": ["string", "null"], "description": "set when the run stopped on an error after the registry was read; the rows before it stand" }
+    "supplement_skipped": { "type": "integer", "minimum": 0, "description": "full lists not topped up from GeckoTerminal because the run was near its deadline; those rows keep the DexScreener pools" },
+    "aborted": { "type": ["string", "null"], "description": "set when the run stopped on an error or at its deadline after the registry was read; the rows before it stand" }
   },
   "additionalProperties": false
 }

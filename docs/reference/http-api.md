@@ -39,7 +39,7 @@ curl -s 'https://proofofstock.xyz/verify?chain=base&address=0xaaaaaaaaaaaaaaaaaa
 |---|---|
 | Base URL | `https://proofofstock.xyz`. The proxy maps the domain's `/` onto the app's `/stocks/`, so `/api/find` here is `/stocks/api/find` in the app |
 | Methods | `GET` and `HEAD`. Any other method is refused by the proxy (403) |
-| Rate limit | 60 requests per minute per client IP (IPv6: per /64) across `/verify`, `/api/*` and `/mcp` together. Over it: 429, `{ "error": "too many requests, try again in a minute" }`, `Retry-After: 60`. The proxy also caps 10 requests per second (burst 40) and 20 open connections per IP |
+| Rate limit | 60 requests per minute per client IP (IPv6: per /56) across `/verify`, `/api/*` and `/mcp` together. Over it: 429, `{ "error": "too many requests, try again in a minute" }`, `Retry-After: 60`. The proxy also caps 10 requests per second (burst 40) and 20 open connections per IP |
 | Not rate limited by the app | `/badge.svg`, the page and its assets |
 | Errors | JSON `{ "error": "<words>" }`. 400 bad input, 404 unknown path (`{ "error": "not found" }`), 503 a registry not loaded yet, 500 `{ "error": "internal error" }` |
 | Freshness | Every answer comes from memory. The server rereads the issuer registries and the readings every 300 s; nothing on the request path calls out |
@@ -183,15 +183,15 @@ curl -s 'https://proofofstock.xyz/api/passport?chain=base&address=0xaaaaaaaaaaaa
 |---|---|---|
 | `chain` | yes | `base` or `robinhood` |
 | `address` | yes | `0x` + 40 hex |
-| `hours` | no | window of `series`, `series_points` and `premium_at_reference_time`. Clamped to 1..72; missing, 0 or not a number means 72. Unlike the MCP tool, out-of-range values are clamped, not refused |
+| `hours` | no | window of `series`, `series_points` and `premium_at_reference_time`. Clamped to 1..24; missing, 0 or not a number means 24. Unlike the MCP tool, out-of-range values are clamped, not refused |
 
-The HTTP answer always includes `series_points`.
+`series_points` (the chart) is included only with `series=1`. A passport costs 3 units of the per-minute limit, so 20 passports a minute per client.
 
 | Status | Body | Headers |
 |---|---|---|
 | 200 | the passport | `Cache-Control: public, max-age=60` |
 | 400 | `chain must be one of base, robinhood`, or `address must be 0x followed by 40 hex characters` | |
-| 503 | `{ "error": "the issuer registry is not loaded yet", "detail": "<last refresh error or null>" }` | `Retry-After: 30` |
+| 503 | `{ "error": "the issuer registry is not loaded yet", "detail": "the issuer registry could not be read" or null }` | `Retry-After: 30` |
 
 The chain is checked first, then whether the registry is loaded, then the address: a bad address while the registry
 is loading answers 503.
@@ -275,7 +275,7 @@ curl -s 'https://proofofstock.xyz/api/impostors?chain=base&limit=5'
       "items": [{
         "address": "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee", "symbol": "NVDAc", "name": "NVIDIA", "kind": "registry_symbol",
         "ticker": "NVDA", "registry_symbol": "NVDAc", "registry_address": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-        "first_seen_at": "2026-11-09T08:00:00.000Z", "deployer": "0xdededededededededededededededededededede"
+        "first_seen_at": "2026-11-09T08:00:00.000Z", "same_deployer_impostors": 3
       }]
     }
   }
@@ -285,13 +285,14 @@ curl -s 'https://proofofstock.xyz/api/impostors?chain=base&limit=5'
 | Parameter | Required | Constraint |
 |---|---|---|
 | `chain` | no | `base` or `robinhood`; omitted: both |
-| `limit` | no | items per chain, 1..100, default 30 |
+| `limit` | no | items per chain, 1..50, default 30 |
 
 | Field | Meaning |
 |---|---|
 | `counts` | tokens per resemblance kind, `ticker` included. Only `registry_symbol` and `issuer_name_suffix` are listed in `items` |
 | `listed` | items in the file (capped at 20,000) |
-| `items` | strongest kind first, then newest `first_seen_at` |
+| `items` | tokens first seen in the last 7 days, strongest kind first, then newest `first_seen_at`; at most 50 |
+| `window_days`, `in_window`, `older` | the list's window (7), how many fall in it, and where the rest is |
 
 A chain with no list yet answers `{ "error": "not generated yet" }` in its slot, not an empty list.
 `Cache-Control: public, max-age=300`. 400 for an unknown `chain`.
@@ -301,7 +302,7 @@ A chain with no list yet answers `{ "error": "not generated yet" }` in its slot,
 <a id="route-history"></a>
 ## `GET /api/history/cases` and `GET /api/history/registry`
 
-The dated archive (`/history` is the same for people). Every row is appended and never rewritten. A case is one
+The dated archive (`/history` is the same for people). **A list shows the last 7 days of observed events, at most 50 rows; cases archived from the collector's earlier history are not listed.** Any one address keeps its whole case in `/verify` and `/api/passport` (`case`), and the counts cover the whole archive. The full archive is available on request: hello@proofofstock.xyz. Every row is appended and never rewritten. A case is one
 address outside the registry that claimed an issuer token; each change of it is an event: `opened`, `kind_changed`,
 `listed` (the issuer later listed that address) or `gone` (it left our list). The archive began on 10 Nov 2026; cases
 the collector had seen before then are archived with `source: "backfilled"`, their collector `first_seen_at` and no
@@ -316,7 +317,7 @@ curl -s 'https://proofofstock.xyz/api/history/registry?chain=base&date=2026-11-1
 {
   "chain": "base", "archive_started_at": "2026-11-10T18:23:00.000Z",
   "counts": { "open": 1, "opened": 2, "listed": 1, "gone": 0, "kind_changed": 0, "backfilled": 1 },
-  "count": 1, "next": null, "error": null,
+  "count": 1, "error": null,
   "events": [{
     "event": "listed", "at": "2026-11-10T18:23:00.000Z", "source": "observed",
     "address": "0xdddddddddddddddddddddddddddddddddddddddd", "symbol": "AAPLc", "name": null, "kind": "registry_symbol",
@@ -330,7 +331,7 @@ curl -s 'https://proofofstock.xyz/api/history/registry?chain=base&date=2026-11-1
 | `chain` | both | `base` or `robinhood`; omitted: every chain, under `chains` |
 | `event` | cases | `opened`, `kind_changed`, `listed` or `gone` |
 | `since` | cases | an ISO time; events at or after it |
-| `limit`, `cursor` | cases | 1..200, default 50; pass `next` back as `cursor` |
+| `limit` | cases | 1..50, default 50: the newest events. There is no paging; `count` says how many the window holds, and `since` and `event` narrow it |
 | `date` | registry | `YYYY-MM-DD`, needs `chain`: the snapshot in force at the end of that UTC day, with its full list |
 
 Without `date`, `/api/history/registry` lists the snapshots (`fetched_at`, `hash`, `prev_hash`, `records`, and how

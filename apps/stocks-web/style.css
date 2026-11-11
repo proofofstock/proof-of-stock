@@ -49,7 +49,7 @@ kbd { font: inherit; background: var(--glass-2); border: 1px solid var(--line); 
 ::-webkit-scrollbar-thumb { background: var(--line); border-radius: 8px; border: 2px solid var(--glass); }
 ::-webkit-scrollbar-thumb:hover { background: var(--accent-hi); }
 ::-webkit-scrollbar-corner { background: transparent; }
-.term { position: relative; max-width: 980px; margin: 0 auto; background: color-mix(in srgb, var(--glass) 92%, transparent); backdrop-filter: blur(6px); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: 0 0 0 1px rgba(0, 82, 255, .18), 0 0 80px rgba(0, 82, 255, .08), 0 40px 120px rgba(0, 0, 0, .7); display: flex; flex-direction: column; height: min(640px, 78vh); min-height: 480px; overflow: hidden; scroll-margin-top: 60px; }
+.term { position: relative; max-width: 980px; margin: 0 auto; background: color-mix(in srgb, var(--glass) 96%, #06080c); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: 0 0 0 1px rgba(0, 82, 255, .18), 0 0 80px rgba(0, 82, 255, .08), 0 40px 120px rgba(0, 0, 0, .7); display: flex; flex-direction: column; height: min(640px, 78vh); min-height: 480px; overflow: hidden; scroll-margin-top: 60px; }
 .titlebar { display: flex; align-items: center; gap: 14px; padding: 10px 14px; border-bottom: 1px solid var(--line); background: linear-gradient(#10141c, var(--glass)); }
 /* The window controls work like a desktop window's: red clears the screen, yellow returns the window to its normal
    size, green makes it larger. Their signs show on hover, as on a Mac. */
@@ -219,10 +219,10 @@ a.btn { text-decoration: none; display: inline-block; }
 .bg { position: fixed; inset: 0; z-index: -1; overflow: hidden; background: var(--ink); }
 .bg-grid { position: absolute; inset: -40px; background-image: radial-gradient(rgba(77, 139, 255, .14) 1px, transparent 1.2px), linear-gradient(rgba(77, 139, 255, .035) 1px, transparent 1px);
   background-size: 22px 22px, 22px 110px; mask-image: radial-gradient(ellipse 80% 70% at 50% 35%, #000 40%, transparent 100%); }
-.bg-glow { position: absolute; width: 60vmax; height: 60vmax; border-radius: 50%; filter: blur(100px); opacity: .22; animation: drift 38s ease-in-out infinite alternate; }
-.bg-glow.a { background: var(--accent); left: -22vmax; top: -26vmax; }
-.bg-glow.b { background: #1a3fd6; right: -26vmax; bottom: -30vmax; opacity: .16; animation-duration: 46s; }
-@keyframes drift { to { transform: translate(6vmax, 4vmax) scale(1.08); } }
+.bg-glow { position: absolute; width: 80vmax; height: 80vmax; border-radius: 50%; background: radial-gradient(closest-side, var(--glow, var(--accent)), transparent); opacity: .22; animation: drift 38s ease-in-out infinite alternate; will-change: transform; }
+.bg-glow.a { --glow: var(--accent); left: -32vmax; top: -36vmax; }
+.bg-glow.b { --glow: #1a3fd6; right: -36vmax; bottom: -40vmax; opacity: .16; animation-duration: 46s; }
+@keyframes drift { to { transform: translate3d(6vmax, 4vmax, 0); } }
 .bg-scan { position: absolute; inset: 0; background: repeating-linear-gradient(to bottom, rgba(255, 255, 255, .012) 0 1px, transparent 1px 4px); }
 
 /* the live tape */
@@ -301,6 +301,7 @@ a.btn { text-decoration: none; display: inline-block; }
 .foot-note { margin: 18px 0 0; max-width: 78ch; color: var(--faint); }
 .foot-bottom { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 16px; padding-top: 14px; border-top: 1px dashed var(--line); color: var(--faint); font: 11.5px/1.4 var(--mono); }
 .foot-meta { display: inline-flex; gap: 16px; }
+.beta-tag { display: inline-block; margin-right: 8px; padding: 1px 7px; border: 1px solid color-mix(in srgb, var(--warn) 55%, transparent); border-radius: 999px; color: var(--warn); font: 600 10px/1.5 var(--mono); letter-spacing: .08em; text-transform: uppercase; vertical-align: 1px; }
 .foot-legal { color: var(--dim); border-bottom: 1px dotted transparent; transition: color .15s, border-color .15s; }
 .foot-legal:hover, .foot-legal:focus-visible { color: var(--accent-hi); border-bottom-color: var(--accent-hi); outline: none; }
 

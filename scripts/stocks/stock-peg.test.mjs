@@ -7,7 +7,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { runStockPeg, CHAINS } from './stock-peg.mjs'
+import { runStockPeg, runExitCode, CHAINS, SUPPLEMENT_STOP_MS } from './stock-peg.mjs'
 import { validateV2 } from '../../base/dataset-v2/schema-validator.mjs'
 import { COINBASE_URL, ROBINHOOD_ASSETS_URL, ROBINHOOD_PRICES_URL } from '../../evm/core/stocks/registries.mjs'
 
@@ -123,6 +123,16 @@ console.log('a token whose DexScreener list is full')
   const [r2] = lines(path.join(root2, 'stock-peg', 'stock-peg-2026-11-08.jsonl'))
   check('a throttled GeckoTerminal leaves the DexScreener reading as it was', r2.pools.source === 'dexscreener' && r2.pools.seen === 30 && r2.pools.capped === true && run2.supplement_errors === 1)
   check('GeckoTerminal is asked only for full lists', geckoCalls === 2)
+  // Near the deadline a full list is kept as DexScreener gave it; at the deadline the run stops, and says so in its row.
+  const root3 = path.join(tmp, 'capped-late')
+  const run3 = await runStockPeg({ chain: 'base', root: root3, now: () => NOW, deadline: NOW + SUPPLEMENT_STOP_MS - 1, paceMs: 0, geckoPaceMs: 0, log: () => {}, fetchImpl: gecko(false) })
+  const [r3] = lines(path.join(root3, 'stock-peg', 'stock-peg-2026-11-08.jsonl'))
+  check('close to its deadline a run skips GeckoTerminal and counts it', geckoCalls === 2 && r3.pools.source === 'dexscreener' && r3.pools.capped === true && run3.supplement_skipped === 1 && run3.aborted === undefined)
+  check('...and its run row is valid', validateV2('stock-peg-run', lines(path.join(root3, 'stock-peg', 'stock-peg-runs-2026-11-08.jsonl'))[0]).valid)
+  const root4 = path.join(tmp, 'past-deadline')
+  const run4 = await runStockPeg({ chain: 'base', root: root4, now: () => NOW, deadline: NOW, paceMs: 0, geckoPaceMs: 0, log: () => {}, fetchImpl: gecko(false) })
+  const runs4 = lines(path.join(root4, 'stock-peg', 'stock-peg-runs-2026-11-08.jsonl'))
+  check('at its deadline a run reads no more tokens but still writes a valid run row saying why', run4.rows_written === 0 && /time budget/.test(run4.aborted) && runs4.length === 1 && runs4[0].aborted === run4.aborted && validateV2('stock-peg-run', runs4[0]).valid && runExitCode(run4) === 1 && !fs.existsSync(path.join(root4, 'stock-peg', 'stock-peg-2026-11-08.jsonl')))
 }
 
 console.log('a Robinhood reference that does not move')
@@ -228,7 +238,19 @@ console.log('the units')
   check('the service runs from the deployed release', /WorkingDirectory=\/opt\/stp\/current/.test(unit))
   check('the service reads both chains, each into its own dataset root', /--chain=base --root=\/var\/lib\/stp\/base/.test(unit) && /--chain=robinhood --root=\/var\/lib\/stp\/robinhood/.test(unit))
   check('a Base failure does not skip the Robinhood reading', !/stock-peg\.mjs --chain=base[^;]*&&/.test(unit))
+  const timeout = Number((/TimeoutStartSec=(\d+)min/.exec(unit) || [])[1]) * 60
+  const end = Number((/end=\$\$\(\( \$\$\(date \+%%s\) \+ (\d+) \)\)/.exec(unit) || [])[1])
+  check('both chains get a deadline short of the unit timeout, Base an earlier one', end > 0 && end < timeout && /--chain=base --root=\S+ --deadline=\$\$\(\( end - \d+ \)\)/.test(unit) && /--chain=robinhood --root=\S+ --deadline=\$\$end/.test(unit), `${end} ${timeout}`)
   check('the timer fires the service every 15 minutes', /Unit=stp-peg\.service/.test(timer) && /OnCalendar=\*:7\/15/.test(timer))
+}
+
+console.log('the exit code')
+{
+  const ok = { registry: { complete: true }, aborted: undefined, rows_invalid: 0 }
+  check('a whole run exits 0', runExitCode(ok) === 0)
+  check('a run that died midway exits 1 even with its registry read', runExitCode({ ...ok, aborted: 'boom' }) === 1)
+  check('a run that wrote an invalid row exits 1', runExitCode({ ...ok, rows_invalid: 1 }) === 1)
+  check('a run without its registry exits 1', runExitCode({ ...ok, registry: { complete: false } }) === 1)
 }
 
 fs.rmSync(tmp, { recursive: true, force: true })

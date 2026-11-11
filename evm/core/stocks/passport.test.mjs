@@ -42,6 +42,11 @@ console.log('a registry token')
 
   const old = buildPassport({ address: A, chainId: 8453, registry: [cb()], readings, now, windowH: 24 })
   check('the window bounds the series', old.series.readings === 2 && old.series.first_at === '2026-11-07T15:00:00Z', String(old.series.readings))
+  // The owner's rule (11.11): no price older than the window, latest included. A recorder stopped for 48 h shows none.
+  const gone = buildPassport({ address: A, chainId: 8453, registry: [cb()], readings: [reading('2026-11-08T12:00:00Z', 0.01)], now: Date.parse('2026-11-10T12:00:00Z'), windowH: 24 })
+  check('a newest reading older than the window is not shown: latest is null and the passport says reading_stale', gone.latest === null && gone.notes.includes('reading_stale') && !gone.notes.includes('no_readings') && gone.series.readings === 0, JSON.stringify({ latest: gone.latest && gone.latest.observed_at, notes: gone.notes }))
+  const inside = buildPassport({ address: A, chainId: 8453, registry: [cb()], readings: [reading('2026-11-09T13:00:00Z', 0.01)], now: Date.parse('2026-11-10T12:00:00Z'), windowH: 24 })
+  check('a reading inside the window is still latest, flagged stale when old', inside.latest && inside.latest.observed_at === '2026-11-09T13:00:00Z' && inside.notes.includes('reading_stale'))
 
   const open = buildPassport({ address: A, chainId: 8453, registry: [cb()], readings: [reading('2026-11-10T15:00:00Z', 0)], now: Date.parse('2026-11-10T15:05:00Z') })
   check('a reference days old while the exchange is OPEN is flagged as such', open.notes.includes('reference_held_market_open'))

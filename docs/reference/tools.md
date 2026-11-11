@@ -31,7 +31,7 @@ curl -s https://proofofstock.xyz/mcp \
 | Auth | none. The proxy strips `Authorization` and `Cookie` |
 | CORS | `Access-Control-Allow-Origin: *`, methods `POST, OPTIONS`. `OPTIONS` answers 204 |
 | Caching | `Cache-Control: no-store` on every answer |
-| Rate limit | 60 units per minute per client IP (IPv6: per /64). Every POST costs 1 unit; `verify_stock_tokens` with n addresses costs ⌈n/10⌉ |
+| Rate limit | 60 units per minute per client IP (IPv6: per /56). Every POST costs 1 unit; `stock_passport` costs 3; `verify_stock_tokens` with n addresses costs ⌈n/10⌉ |
 | Body | at most 16 KB |
 | Methods | `initialize`, `ping`, `tools/list`, `tools/call`. Notifications (no `id`) and client responses (`id` with `result` or `error`) get 202 with no body |
 
@@ -280,7 +280,7 @@ curl -s https://proofofstock.xyz/mcp -H 'content-type: application/json' \
       "issuer": { "name": "robinhood", "symbol": "NVDA", "isin": "US67066G1040", "minted": null, "multiplier": 1, "…": "…" },
       "reference": { "kind": "token_bid_ask_mid", "price_usd": 180.05, "updated_at": "2026-11-10T14:44:00Z", "age_s": 960, "halted": false, "bid": 180, "ask": 180.1, "spread": 0.000555 },
       "latest": { "observed_at": "2026-11-10T14:45:00Z", "dex_price_usd": 180.5, "premium": 0.0025, "premium_refused": null, "dex_inside_quote": false, "age_s": 900, "cadence_s": 900, "…": "…" },
-      "series": { "window_h": 72, "readings": 1, "…": "…" },
+      "series": { "window_h": 24, "readings": 1, "…": "…" },
       "notes": [],
       "…": "the rest of the passport"
     }
@@ -300,7 +300,7 @@ NOT an issuer token: 0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee is not in the is
 |---|---|---|---|
 | `chain` | string | yes | `base` or `robinhood` |
 | `address` | string | yes | `^0x[0-9a-fA-F]{40}$`, any case |
-| `hours` | number | no | 1 to 72. The window of `series`, `series_points` and `premium_at_reference_time`. Default 72 |
+| `hours` | number | no | 1 to 24. The window of `series`, `series_points` and `premium_at_reference_time`. Default 24 |
 | `include_series` | boolean | no | `true` adds `series_points`. Default: left out |
 
 ### Output
@@ -319,11 +319,11 @@ fraction (`0.0025`).
 | Kind | When |
 |---|---|
 | `isError` | `the issuer registry is not loaded yet` |
-| `-32602` | missing `chain` or `address`; an address of the wrong form; `hours` not a number or outside 1 to 72; `include_series` not a boolean; any other argument |
+| `-32602` | missing `chain` or `address`; an address of the wrong form; `hours` not a number or outside 1 to 24; `include_series` not a boolean; any other argument |
 
 ### Limits
 
-72 hours of readings. Readings are recorded every 900 s; `latest` is a recorded reading, not a live quote.
+24 hours of readings. Readings are recorded every 900 s; `latest` is a recorded reading, not a live quote.
 
 ---
 
@@ -416,7 +416,7 @@ Each result:
 ## `recent_impostors`
 
 Tokens on a chain whose symbol or name copies an issuer-listed token while their contract is not in the registry,
-newest first. A claim with evidence, not a verdict.
+newest first, first seen in the last 7 days, at most 50. A claim with evidence, not a verdict. An older `since` is the 7-day window; any one address is answered whole by `verify_stock_tokens` and `stock_passport`. A `stock_passport` call costs 3 units of the per-minute limit.
 
 ```bash
 curl -s https://proofofstock.xyz/mcp -H 'content-type: application/json' \

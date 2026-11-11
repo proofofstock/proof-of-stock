@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "description": "Pre-trade check for agents buying tokenized stocks on Base and Robinhood Chain: is this exact contract on the issuer's own registry?",
   "license": "MIT",
+  "repository": { "type": "git", "url": "git+https://github.com/proofofstock/proof-of-stock.git", "directory": "packages/stockofproof-guard" },
   "homepage": "https://proofofstock.xyz/docs/",
   "type": "module",
   "exports": {

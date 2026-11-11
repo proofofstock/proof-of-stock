@@ -5,6 +5,8 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { replayCases, caseEvents, recordCases, canonicalRegistry, registryHash, recordRegistry, HISTORY_DIR } from './history.mjs'
+import { createHistoryStore } from '../../../apps/stocks-history.mjs'
+import { eachJsonl } from '../../../scripts/lib/jsonl.mjs'
 import { validateV2 } from '../../../base/dataset-v2/schema-validator.mjs'
 
 let passed = 0, failed = 0
@@ -81,6 +83,47 @@ console.log('H2: registry snapshots')
   check('every snapshot passes its schema', rows.every((r) => validateV2('stock-registry-snapshot', r).valid))
   reg([rec(A, { multiplier: 1.01 }), rec(C)], T3)
   check('a token the issuer dropped is named as removed', rowsOf(root, 'registry-')[2]?.removed.join() === B)
+}
+
+console.log('damage is not emptiness')
+{
+  // A run killed mid-write left a torn last line with no newline: the next append must not glue its row onto it.
+  const root = newRoot()
+  run(root, [item(A)], T0)
+  const file = path.join(root, 'stock-peg', HISTORY_DIR, fs.readdirSync(path.join(root, 'stock-peg', HISTORY_DIR))[0])
+  fs.appendFileSync(file, '{"event":"opened","addr')
+  run(root, [item(A), item(B)], T0 + 3600e3)
+  const lines = fs.readFileSync(file, 'utf8').split('\n').filter(Boolean)
+  const good = lines.flatMap((l) => { try { return [JSON.parse(l)] } catch { return [] } })
+  check('a row appended after a torn tail stays whole and readable', good.some((r) => r.address === B && r.event === 'opened') && lines.length === 3, String(lines.length))
+
+  // An archive directory that cannot be listed (EACCES) is an error, not an empty archive: that would backfill every case.
+  const r2 = newRoot()
+  run(r2, [item(A)], T0)
+  const histPath = path.join(r2, 'stock-peg', HISTORY_DIR)
+  const realReaddir = fs.readdirSync
+  fs.readdirSync = (p, ...a) => { if (path.resolve(String(p)) === path.resolve(histPath)) throw Object.assign(new Error('EACCES: permission denied'), { code: 'EACCES' }); return realReaddir(p, ...a) }
+  let threw = false
+  try { run(r2, [item(A), item(B)], T1) } catch (_) { threw = true } finally { fs.readdirSync = realReaddir }
+  check('an unreadable archive stops the run instead of backfilling from scratch', threw && rowsOf(r2, 'cases-').length === 1, String(rowsOf(r2, 'cases-').length))
+
+  // The site's copy: a refresh that cannot list the archive keeps the last good copy and says so.
+  const r3 = newRoot()
+  run(r3, [item(A)], T0)
+  const store = createHistoryStore({ roots: { base: r3 }, now: () => T1 })
+  store.refresh('base')
+  const before = store.cases('base').counts.opened
+  fs.rmSync(path.join(r3, 'stock-peg', HISTORY_DIR), { recursive: true }); fs.writeFileSync(path.join(r3, 'stock-peg', HISTORY_DIR), 'not a directory')
+  store.refresh('base')
+  const after = store.cases('base')
+  check('the site keeps its last good archive when a refresh cannot read it, and says so', before === 1 && after.counts.opened === 1 && typeof after.error === 'string', JSON.stringify({ before, after: after.counts.opened, error: after.error }))
+
+  // A junk line inside a day file is damage; a torn last line is a writer mid-append.
+  const f = path.join(newRoot(), 'day.jsonl')
+  fs.writeFileSync(f, '{"a":1}\n{"a":2\n{"a":3}\n{"a":4')
+  const seen = []
+  const bad = await eachJsonl(f, (o) => seen.push(o.a))
+  check('eachJsonl counts a damaged middle line, not a torn last one', bad === 1 && seen.join(',') === '1,3', `${bad} ${seen}`)
 }
 
 console.log(`\n${passed} passed, ${failed} failed`)

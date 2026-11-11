@@ -16,7 +16,7 @@ const day = (ms) => new Date(ms).toISOString().slice(0, 10)
 
 async function eachRow (file, fn) {
   let s = fs.createReadStream(file)
-  if (file.endsWith('.gz')) s = s.pipe(zlib.createGunzip())
+  if (file.endsWith('.gz')) { const src = s, z = zlib.createGunzip(); src.on('error', (e) => z.destroy(e)); s = src.pipe(z) }
   for await (const l of readline.createInterface({ input: s, crlfDelay: Infinity })) {
     if (!l) continue
     let o; try { o = JSON.parse(l) } catch { continue }

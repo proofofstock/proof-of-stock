@@ -83,7 +83,11 @@ export function buildPassport ({ address, chainId, registry, readings = [], iden
   const minted = rec.supplied !== false
   if (!minted) notes.push('not_minted')
   const own = (readings || []).filter((r) => r && r.token_address === addr).sort((a, b) => Date.parse(a.observed_at) - Date.parse(b.observed_at))
-  const latest = own.length ? own[own.length - 1] : null
+  // ⚠ NO PRICE OLDER THAN THE WINDOW. A passport shows windowH hours of readings (24 in public), `latest` included: when the
+  //   recorder has stopped for longer, the last reading it left is not shown; the passport says reading_stale instead.
+  const from = now - windowH * 3600e3
+  const last = own.length ? own[own.length - 1] : null
+  const latest = last && Date.parse(last.observed_at) >= from ? last : null
   const ref = latest ? latest.reference : rec.reference
   // The reference's age NOW. A reading stores it as of the reading, which a stopped recorder would leave looking fresh.
   // A Robinhood quote with no reading of ours: its updated_at is the time Robinhood's server answered, not when the mid last
@@ -95,7 +99,7 @@ export function buildPassport ({ address, chainId, registry, readings = [], iden
   else if (refAge != null && session.session !== 'regular' && refAge > REFERENCE_HELD_S) notes.push('reference_held_market_closed')
   if (ref && ref.halted === true) notes.push('trading_halted')
   if ((latest ? latest.paused : rec.paused)?.length) notes.push('paused')
-  if (!latest) { if (minted) notes.push('no_readings') }
+  if (!latest) { if (last) notes.push('reading_stale'); else if (minted) notes.push('no_readings') }
   else {
     if (now - Date.parse(latest.observed_at) > READING_STALE_S * 1000) notes.push('reading_stale')
     if (latest.premium == null && NO_DEX_PRICE.has(latest.premium_refused)) notes.push('no_dex_price')
@@ -105,7 +109,6 @@ export function buildPassport ({ address, chainId, registry, readings = [], iden
   const pending = latest ? latest.multiplier_pending : rec.multiplier_pending
   if (pending != null && pending !== (latest ? latest.multiplier : rec.multiplier)) notes.push('multiplier_change_pending')
 
-  const from = now - windowH * 3600e3
   const inWindow = own.filter((r) => Date.parse(r.observed_at) >= from)
   const bySession = {}
   for (const r of inWindow) {

@@ -11,12 +11,19 @@
 #
 # ⚠ The running release is re-read right before switching and must still be the one ship.sh checked against: a deploy
 #   that landed in between is never replaced.
+# ⚠ One deploy at a time: a second one started meanwhile is refused (flock on $BASE/.deploy.lock), not interleaved.
+# ⚠ /healthz is 200 only once an issuer registry is loaded. A restart that fails or a release that never gets healthy is
+#   rolled back, and the rolled-back release is health-checked too: the script says which state the host is left in.
 set -eu
 
 BASE=${STP_BASE:-/opt/stp}
 WEB_UNIT=stp-web.service
 HEALTH=http://127.0.0.1:3005/healthz
 KEEP=5
+wait_healthy () {
+  for _ in $(seq 1 "${HEALTH_WAIT_S:-45}"); do curl -fsS -m 3 "$HEALTH" >/dev/null 2>&1 && return 0; sleep 1; done
+  return 1
+}
 running_sha () { [ -f "$BASE/current/.release-sha" ] && cat "$BASE/current/.release-sha" || echo none; }
 
 if [ "${1:-}" = "--status" ]; then
@@ -28,6 +35,8 @@ if [ "${1:-}" = "--status" ]; then
 fi
 
 FULL=${1:?sha}; SRC=${2:?incoming dir}; EXPECT=${3:?expected running sha or none}
+exec 9>"$BASE/.deploy.lock"
+flock -n 9 || { echo "REFUSED: another deploy is running on this host; re-run when it ends"; exit 3; }
 SHORT=$(printf '%s' "$FULL" | cut -c1-7)
 REL="$BASE/releases/$SHORT"
 [ "$(running_sha)" = "$EXPECT" ] || { echo "REFUSED: running is $(running_sha), ship.sh checked against $EXPECT; re-run"; exit 3; }
@@ -47,10 +56,19 @@ fi
 PREV=$(readlink -f "$BASE/current" 2>/dev/null || true)
 ln -sfn "$REL" "$BASE/current.new" && mv -T "$BASE/current.new" "$BASE/current"
 if systemctl cat "$WEB_UNIT" >/dev/null 2>&1; then
-  systemctl restart "$WEB_UNIT"; sleep 3
-  if ! curl -fsS -m 5 "$HEALTH" >/dev/null 2>&1; then
+  # A failed restart must not end the script under set -e with the new release switched in: it falls to the rollback.
+  systemctl restart "$WEB_UNIT" || echo "restart of $WEB_UNIT failed"
+  # The site reads both issuer registries before it listens, which takes seconds and depends on the issuers: wait for
+  # it up to HEALTH_WAIT_S, polling, rather than judging it once after a fixed pause (10.11: a 3 s pause failed a healthy
+  # release that listened after 6 s, and the release was rolled back).
+  if ! wait_healthy; then
     echo "HEALTH FAILED after switch: restoring $PREV"
-    [ -n "$PREV" ] && ln -sfn "$PREV" "$BASE/current.new" && mv -T "$BASE/current.new" "$BASE/current" && systemctl restart "$WEB_UNIT"
+    if [ -n "$PREV" ] && ln -sfn "$PREV" "$BASE/current.new" && mv -T "$BASE/current.new" "$BASE/current"; then
+      systemctl restart "$WEB_UNIT" || echo "restart of the restored release failed"
+      if wait_healthy; then echo "ROLLED BACK: $(running_sha) is healthy"; else echo "ROLLED BACK BUT UNHEALTHY: $(running_sha) does not answer /healthz; look at journalctl -u $WEB_UNIT"; exit 4; fi
+    else
+      echo "ROLLBACK FAILED: no previous release to restore"; exit 4
+    fi
     exit 1
   fi
 fi

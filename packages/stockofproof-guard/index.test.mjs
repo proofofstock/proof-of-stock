@@ -31,6 +31,9 @@ const fetchImpl = async (url) => {
   const a = new URL(url).searchParams.get('address')
   if (a === '0x' + '99'.repeat(20)) return ans(503, { error: 'registry unavailable' })
   if (a === '0x' + '98'.repeat(20)) throw new Error('connect ETIMEDOUT')
+  if (a === '0x' + '97'.repeat(20)) return ans(200, { listed: 'false', symbol: 'SNDKc', address: a, registries_checked: ['coinbase:base'], impostor: null })
+  if (a === '0x' + '96'.repeat(20)) return ans(200, { listed: true, symbol: 'SNDKc', address: LISTED, registries_checked: ['coinbase:base'], impostor: null })
+  if (a === '0x' + '95'.repeat(20)) return ans(200, { listed: false, address: a })
   return answers[a] || ans(404, {})
 }
 const guard = createGuard({ fetchImpl })
@@ -53,6 +56,12 @@ console.log('decisions')
 
 console.log('failing closed')
 {
+  // A 200 is not enough: the answer must say listed === true about the address asked, in the documented shape.
+  for (const [a, why] of [['97', 'listed is the string "false"'], ['96', 'the answer is about another contract'], ['95', 'registries_checked is missing']]) {
+    let d, threw = null
+    try { d = await guard.beforeBuy({ chain: 'base', tokenAddress: '0x' + a.repeat(20), claimedSymbol: 'SNDK' }) } catch (e) { threw = e.message }
+    check('a malformed 200 (' + why + ') is unknown and refused, not allowed or thrown', !threw && d.allow === false && d.decision === 'unknown' && /malformed answer/.test(d.reason), threw || JSON.stringify(d && { allow: d.allow, decision: d.decision }))
+  }
   const down = await guard.beforeBuy({ chain: 'base', tokenAddress: '0x' + '99'.repeat(20) })
   check('a registry that cannot be read refuses the buy', down.allow === false && down.decision === 'unknown')
   const net = await guard.beforeBuy({ chain: 'base', tokenAddress: '0x' + '98'.repeat(20) })

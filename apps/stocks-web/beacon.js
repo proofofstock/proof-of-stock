@@ -16,15 +16,19 @@
   }
   let ref = ''
   try { const r = document.referrer && new URL(document.referrer); if (r && r.host !== location.host) ref = r.hostname } catch (_) {}
-  const send = (k, extra) => {
-    const q = new URLSearchParams({ k, p: page(), ...token(), ...extra })
+  // What is on screen: page and passport, taken when it is shown. A hide reports the view it closes, not the URL the
+  // terminal has already moved to (it used to credit passport A's seconds to the passport B that replaced it).
+  const here = () => ({ p: page(), ...token() })
+  let shown = null
+  const send = (k, ctx, extra) => {
+    const q = new URLSearchParams({ k, ...ctx, ...extra })
     if (ref) q.set('r', ref)
     try { fetch(endpoint + '?' + q, { keepalive: true, credentials: 'omit', cache: 'no-store' }).catch(() => {}) } catch (_) {}
   }
   let since = document.visibilityState === 'visible' ? Date.now() : null
   let viewed = false
-  const show = () => { if (!viewed) { viewed = true; send('view') } if (since == null) since = Date.now() }
-  const hide = () => { if (since == null) return; const t = Math.round((Date.now() - since) / 1000); since = null; send('hide', { t: String(t) }) }
+  const show = () => { if (!viewed) { viewed = true; shown = here(); send('view', shown) } if (since == null) since = Date.now() }
+  const hide = () => { if (since == null) return; const t = Math.round((Date.now() - since) / 1000); since = null; send('hide', shown || here(), { t: String(t) }) }
   if (since != null) show()
   document.addEventListener('visibilitychange', () => (document.visibilityState === 'visible' ? show() : hide()))
   addEventListener('pagehide', hide)

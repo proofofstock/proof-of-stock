@@ -8,7 +8,7 @@ import { passportLead } from './stocks-mcp-http.mjs'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { createStocksWeb, SECURITY_HEADERS } from './stocks-web.mjs'
+import { createStocksWeb, SECURITY_HEADERS, PAGE_CACHE_MS } from './stocks-web.mjs'
 import { COINBASE_URL, ROBINHOOD_ASSETS_URL, ROBINHOOD_PRICES_URL } from '../evm/core/stocks/registries.mjs'
 import { loadWindow, readingsOf } from '../evm/core/stocks/readings-window.mjs'
 
@@ -70,6 +70,13 @@ const app = createStocksWeb({ roots: { base: baseRoot, robinhood: rhRoot }, fetc
 const { port } = await app.start(0, '127.0.0.1')
 const get = (p, opts = {}) => fetch(`http://127.0.0.1:${port}${p}`, opts)
 
+console.log('health')
+{
+  const h = await get('/healthz')
+  const j = await h.json()
+  check('healthz is 200 with a registry loaded and names which ones', h.status === 200 && j.ok === true && j.registries.base === true, JSON.stringify(j))
+}
+
 console.log('the page')
 {
   const r = await get('/stocks/')
@@ -90,16 +97,21 @@ console.log('the page')
 console.log('the history archive')
 {
   const c = await (await get('/stocks/api/history/cases?chain=base')).json()
-  check('case events come newest first with counts', c.count === 3 && c.events[0].event === 'listed' && c.counts.open === 1 && c.counts.listed === 1 && c.counts.backfilled === 1, JSON.stringify(c.counts))
+  check('the list holds observed events only, newest first; the counts stay whole', c.count === 2 && c.events.every((e) => e.source === 'observed') && c.events[0].event === 'listed' && c.counts.open === 1 && c.counts.listed === 1 && c.counts.backfilled === 1, JSON.stringify(c.counts))
   check('an event carries its evidence and how it was learned, not internals', c.events[0].imitates_symbol === 'AAPLc' && c.events[0].source === 'observed' && !('_schema_version' in c.events[0]) && !('chain_id' in c.events[0]))
   check('the archive start is the first event', c.archive_started_at === '2026-11-07T00:23:00Z')
-  const f = await (await get('/stocks/api/history/cases?chain=base&event=opened&limit=1')).json()
-  check('filter by event, page with a cursor', f.count === 2 && f.events.length === 1 && f.next === 1)
+  const f = await (await get('/stocks/api/history/cases?chain=base&limit=1')).json()
+  const fo = await (await get('/stocks/api/history/cases?chain=base&event=opened')).json()
+  const fc = await (await get('/stocks/api/history/cases?chain=base&limit=1&cursor=1')).json()
+  check('filter by event and limit; count is the window, not the page', f.count === 2 && f.events.length === 1 && fo.count === 1 && fo.events[0].event === 'opened')
+  check('there is no cursor: a cursor is ignored and nothing offers a next page', !('next' in f) && fc.events.length === 1 && fc.events[0].at === f.events[0].at && fc.events[0].event === f.events[0].event)
+  const big = await (await get('/stocks/api/history/cases?chain=base&limit=500&since=2000-01-01T00:00:00Z')).json()
+  check('a list is the last 7 days and at most 50 rows, whatever is asked, and says where the rest is', big.window_days === 7 && Date.parse(big.window_from) === NOW - 7 * 86400e3 && big.count === 2 && /on request/.test(big.older))
   const s = await (await get('/stocks/api/history/cases?chain=base&since=2026-11-08T00:00:00Z')).json()
   check('since keeps later events only', s.count === 1)
   check('a bad event, since or chain is a 400', (await get('/stocks/api/history/cases?chain=base&event=x')).status === 400 && (await get('/stocks/api/history/cases?chain=base&since=nope')).status === 400 && (await get('/stocks/api/history/cases?chain=nope')).status === 400)
   const both = await (await get('/stocks/api/history/cases')).json()
-  check('without a chain, every chain answers; an empty one says so', both.chains.base.count === 3 && both.chains.robinhood.count === 0)
+  check('without a chain, every chain answers; an empty one says so', both.chains.base.count === 2 && both.chains.robinhood.count === 0)
   const ri = await (await get('/stocks/api/history/registry?chain=base')).json()
   check('the registry index has no bodies', ri.count === 1 && ri.snapshots[0].records === 1 && !('body' in ri.snapshots[0]) && !('row' in ri.snapshots[0]))
   const rd = await (await get('/stocks/api/history/registry?chain=base&date=2026-11-08')).json()
@@ -118,7 +130,7 @@ console.log('the history archive')
   check('the passport carries the case too', pp.case?.status === 'open')
   const page = await get('/stocks/history')
   const html = await page.text()
-  check('the history page is served with the events and the backfill marked', page.status === 200 && /registry snapshots/.test(html) && /from collector history/.test(html) && /listed by issuer/.test(html))
+  check('the history page lists the last 7 days, no backfilled row, and says each address keeps its case', page.status === 200 && /registry snapshot/.test(html) && !/from collector history/.test(html) && /listed by issuer/.test(html) && /last 7 days/.test(html) && /on request/.test(html))
   check('the history page escapes names from data', !/<img src=x/.test(html))
   check('the main page links to the history', /href="history"/.test(await (await get('/stocks/')).text()))
 }
@@ -144,8 +156,11 @@ console.log('the api')
   const ov = await (await get('/stocks/api/overview')).json()
   check('the board answers per chain with the market session', ov.chains.base.priced === 1 && ov.chains.base.rows[0].symbol === 'NVDAc' && ov.chains.robinhood.priced === 0 && typeof ov.market_now.session === 'string')
   check('the passport names its chain and lists the same share elsewhere', p.chain === 'base' && Array.isArray(p.same_stock_elsewhere))
-  check('the passport links to DexScreener and the explorer', /^https:\/\/dexscreener\.com\/base\/0x/.test(p.links.dex) && /^https:\/\/basescan\.org\/token\/0x/.test(p.links.explorer))
-  check('the passport carries its chart series', Array.isArray(p.series_points) && p.series_points.length === 2 && p.series_points[1][1] === 0.0056)
+  check('the passport links to GeckoTerminal and the explorer', /^https:\/\/www\.geckoterminal\.com\/base\/(pools|tokens)\/0x/.test(p.links.dex) && /^https:\/\/basescan\.org\/token\/0x/.test(p.links.explorer))
+  check('the passport carries no chart series unless asked', !('series_points' in p))
+  const ps = await (await get(`/stocks/api/passport?chain=base&address=${A}&series=1`)).json()
+  check('with series=1 it carries its chart series', Array.isArray(ps.series_points) && ps.series_points.length === 2 && ps.series_points[1][1] === 0.0056)
+  check('the page asks for the series it draws', /&series=1/.test(fs.readFileSync(new URL('./stocks-web/app.js', import.meta.url), 'utf8')))
   const imp = await (await get('/stocks/api/impostors')).json()
   check('impostors: a chain with no list yet says so instead of an empty list', imp.chains.base.error && imp.chains.robinhood.error)
   const page = await (await get('/stocks/?chain=base&address=' + A)).text()
@@ -160,7 +175,7 @@ console.log('the api')
   check('status says what is held per chain', st.base.registry_records === 1 && st.base.readings_tokens === 1 && st.robinhood.readings_tokens === 0)
   check('status says when the recorder last wrote, apart from when the server last read', st.base.newest_reading_at === '2026-11-08T13:45:00.000Z' && st.base.newest_reading_age_s === 900 && st.robinhood.newest_reading_at === null)
   const long = await (await get(`/stocks/api/passport?chain=base&address=${A}&hours=500`)).json()
-  check('a window longer than the server holds is cut to what it holds', long.series.window_h === 72)
+  check('a public passport shows at most 24 h, whatever is asked', long.series.window_h === 24)
 }
 
 console.log('rate limit')
@@ -182,7 +197,7 @@ console.log('the public MCP endpoint')
   check('a notification is 202 with no body', note.status === 202 && (await note.text()) === '')
   const list = await (await rpc({ jsonrpc: '2.0', id: 3, method: 'tools/list' })).json()
   check('six read-only tools, none of them trading', list.result.tools.length === 6 && !list.result.tools.some((t) => /buy|sell|swap|trade/.test(t.name)))
-  check('the passport tool offers only the hours the site holds', list.result.tools.find((t) => t.name === 'stock_passport').inputSchema.properties.hours.maximum === 72)
+  check('the passport tool offers only the hours the site holds', list.result.tools.find((t) => t.name === 'stock_passport').inputSchema.properties.hours.maximum === 24)
   check('a protocol version header this server does not speak is 400', (await rpc({ jsonrpc: '2.0', id: 9, method: 'ping' }, { 'mcp-protocol-version': '1999-01-01' })).status === 400)
   check('...a supported one is served', (await rpc({ jsonrpc: '2.0', id: 10, method: 'ping' }, { 'mcp-protocol-version': '2025-06-18' })).status === 200)
   const find = await (await rpc({ jsonrpc: '2.0', id: 4, method: 'tools/call', params: { name: 'find_stock_token', arguments: { chain: 'base', query: 'nvda' } } })).json()
@@ -245,6 +260,13 @@ console.log('verify and badge')
   check('badge: an SVG naming the listed token and printing its address', badge.status === 200 && /image\/svg\+xml/.test(badge.headers.get('content-type')) && svg.includes('Issuer-listed · NVDAc · Coinbase') && svg.includes('0xaaaa…aaaa'))
   const junk = await get('/stocks/badge.svg?chain=nope&address=x')
   check('badge: a junk request is still a 200 image, in the "?" state, not cached', junk.status === 200 && (await junk.text()).includes('Registry unavailable') && junk.headers.get('cache-control') === 'no-store')
+  // A chain named after an Object.prototype member used to pass the CHAINS[c] check and crash the handler with a 500.
+  for (const [i, c] of ['constructor', '__proto__', 'toString', 'hasOwnProperty'].entries()) {
+    const from = { headers: { 'x-real-ip': '198.51.100.' + (60 + i) } } // its own address: the checks above spent the shared quota
+    const v = await get('/stocks/verify?chain=' + c + '&address=' + A, from), b = await get('/stocks/badge.svg?chain=' + c + '&address=' + A, from)
+    const p = await get('/stocks/api/passport?chain=' + c + '&address=' + A, from), h = await get('/stocks/api/history/cases?chain=' + c, from)
+    check('chain=' + c + ' is a 400 on verify, passport and history, and the ? badge', v.status === 400 && p.status === 400 && h.status === 400 && b.status === 200 && (await b.text()).includes('Registry unavailable'), [v.status, p.status, h.status, b.status].join(' '))
+  }
   const rpcV = (args) => get('/stocks/mcp', { method: 'POST', headers: { 'content-type': 'application/json', 'x-real-ip': '198.51.100.9' }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'verify_stock_tokens', arguments: args } }) }).then((r) => r.json())
   const batch = await rpcV({ chain: 'base', addresses: [A, X] })
   check('MCP verify: one call checks many addresses and opens with the counts', batch.result.structuredContent.count === 2 && batch.result.structuredContent.listed === 1 && /^1 of 2 addresses is issuer-listed on Base \(NVDAc\)\./.test(batch.result.content[0].text), batch.result && batch.result.content[0].text)
@@ -264,6 +286,19 @@ console.log('verify and badge')
   const sb = await (await fetch(`http://127.0.0.1:${p6}/stocks/badge.svg?chain=base&address=${X}`)).text()
   check('badge: ...and the badge says "?" with the address, still a 200', sb.includes('Registry unavailable') && sb.includes('0xeeee…eeee'))
   await app6.stop()
+}
+{
+  // /status and /history: one build serves every request for PAGE_CACHE_MS, then the page is built again.
+  let t = NOW
+  const app9 = createStocksWeb({ roots: { base: baseRoot, robinhood: rhRoot }, fetchImpl, now: () => t, log: () => {} })
+  const { port: p9 } = await app9.start(0, '127.0.0.1')
+  const page = (p) => fetch(`http://127.0.0.1:${p9}/stocks${p}`).then((r) => r.text())
+  const s1 = await page('/status'), h1 = await page('/history')
+  t += PAGE_CACHE_MS - 1000
+  check('/status and /history are served from memory within the cache window', (await page('/status')) === s1 && (await page('/history')) === h1)
+  t += 20 * 60e3
+  check('...and built again after it (the ages move on)', (await page('/status')) !== s1)
+  await app9.stop()
 }
 console.log('the Base and Robinhood matrix')
 {
@@ -326,7 +361,32 @@ console.log('before a registry is loaded')
   const a = await down.start(0, '127.0.0.1')
   const r = await fetch(`http://127.0.0.1:${a.port}/stocks/api/find?chain=base&q=nvda`)
   check('a chain whose registry never loaded answers 503, not an empty list', r.status === 503)
+  const h = await fetch(`http://127.0.0.1:${a.port}/healthz`)
+  check('healthz is 503 while no registry is loaded, so the deploy gate fails', h.status === 503 && (await h.json()).ok === false)
   await down.stop()
+}
+
+console.log('errors in public answers')
+{
+  // Every source fails with a message that carries an internal path: none of it may reach a response, all of it the log.
+  const SECRET = 'srv-internal-path-7f3a'
+  const r3 = path.join(tmp, 'broken'), b3 = path.join(r3, 'base'), h3 = path.join(r3, 'rh')
+  for (const root of [b3, h3]) {
+    fs.mkdirSync(path.join(root, 'stock-peg', 'history', 'cases-2026-11-10.jsonl'), { recursive: true }) // a directory: reading it throws EISDIR with its path
+    fs.mkdirSync(path.join(root, 'stock-peg', 'impostors.json'), { recursive: true })
+  }
+  const logged = []
+  const broken = createStocksWeb({ roots: { base: b3, robinhood: h3 }, fetchImpl: async () => { throw new Error('ENOENT: open /' + SECRET + '/registry.json') }, now: () => NOW, log: (m) => logged.push(m) })
+  const a = await broken.start(0, '127.0.0.1')
+  const at = (p, o) => fetch(`http://127.0.0.1:${a.port}${p}`, o).then((r) => r.text())
+  const rpc = (name, args) => at('/stocks/mcp', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args } }) })
+  const bodies = [await at('/stocks/api/status'), await at('/stocks/api/passport?chain=base&address=' + A), await at('/stocks/api/history/cases'), await at('/stocks/api/history/registry'), await at('/stocks/api/impostors'),
+    await rpc('recent_impostors', { chain: 'base' }), await rpc('list_stock_tokens', { chain: 'base' })]
+  const leaks = bodies.filter((b) => b.includes(SECRET) || b.includes(r3) || /EISDIR|ENOENT/.test(b))
+  check('no internal path or system error code in any public answer', leaks.length === 0, leaks.map((b) => b.slice(0, 120)).join(' | '))
+  check('the answers say what is unavailable in plain words', bodies[1].includes('the issuer registry could not be read') && bodies[2].includes('the history archive could not be read') && bodies[4].includes('unreadable'), bodies[1].slice(0, 120))
+  check('the originals are in the log', logged.some((m) => m.includes(SECRET)) && logged.some((m) => m.includes('EISDIR')))
+  await broken.stop()
 }
 
 console.log('the public address')
@@ -397,7 +457,7 @@ console.log('status page')
 
 console.log('source link')
 {
-  const GH = 'https://github.com/Coconatrm/stock-token-passport'
+  const GH = 'https://github.com/proofofstock/proof-of-stock'
   const pages = async (opts) => {
     const app = createStocksWeb({ roots: { base: baseRoot, robinhood: rhRoot }, fetchImpl, now: () => NOW, log: () => {}, ...opts })
     const { port } = await app.start(0, '127.0.0.1')
@@ -406,10 +466,15 @@ console.log('source link')
     await app.stop()
     return { home, doc }
   }
-  const hidden = await pages({})
+  // Explicit, so the check holds whatever package.json says; the default follows package.json (checked below).
+  const hidden = await pages({ source: null })
   check('while the repository is private, no page links to it (no GitHub 404 for a visitor)', !hidden.home.includes('github.com') && !hidden.doc.includes('github.com') && !hidden.home.includes('<!--source-->'))
   const shown = await pages({ source: GH })
   check('once it is public, the footer and the docs link to the source', shown.home.includes(`href="${GH}"`) && shown.doc.includes(`href="${GH}"`) && /Source on GitHub/.test(shown.doc))
+  const pkg = JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url), 'utf8'))
+  const byDefault = await pages({})
+  const want = pkg.stp?.source_public === true ? pkg.repository.url : null
+  check('by default the link follows package.json (stp.source_public, repository.url)', want ? byDefault.home.includes(`href="${want}"`) : !byDefault.home.includes('github.com'))
 }
 
 console.log('publishing')
@@ -435,7 +500,14 @@ console.log('deployment')
   check('the vhost sends /mcp to the app, which answers GET and DELETE with 405 and an oversized body with its own 413', /location = \/mcp \{\s*limit_except GET POST OPTIONS DELETE \{ deny all; \}\s*[^}]*?client_max_body_size 32k;\s*proxy_pass http:\/\/127\.0\.0\.1:3005\/stocks\/mcp;/.test(vhost))
   check('www, the older names and plain http go to https://proofofstock.xyz', (vhost.match(/return 301 https:\/\/proofofstock\.xyz\$request_uri;/g) || []).length === 4 && /server_name tickerproof\.xyz www\.tickerproof\.xyz;/.test(vhost) && /server_name stockofproof\.xyz www\.stockofproof\.xyz;/.test(vhost))
   check('the older names still serve /mcp in place: a redirected POST is not followed', (vhost.match(/proxy_pass http:\/\/127\.0\.0\.1:3005\/stocks\/mcp;/g) || []).length === 3)
-  check('the vhost allows GET and HEAD only, and rate limits', /limit_except GET HEAD \{ deny all; \}/.test(vhost) && /limit_req zone=stocks_req/.test(vhost))
+  check('the vhost allows GET and HEAD only, and rate limits', /limit_except GET HEAD \{ deny all; \}/.test(vhost) && /limit_req zone=stocks_req56/.test(vhost))
+  // Each server block on 443, up to the next server block.
+  const servers443 = vhost.split(/\nserver \{/).filter((b) => /listen 443 ssl;/.test(b))
+  const serving = servers443.filter((b) => /proxy_pass/.test(b))
+  check('the vhost keys its limits by an IPv6 /56, like the app, through one map', /map \$binary_remote_addr \$stocks_client \{\s*"~\^\(\?s\)\(\?<stocks_v6_56>\.\{7\}\)\.\{9\}\$" \$stocks_v6_56;\s*default \$binary_remote_addr;\s*\}/.test(vhost) && /limit_req_zone \$stocks_client zone=stocks_req56/.test(vhost) && /limit_conn_zone \$stocks_client zone=stocks_conn56/.test(vhost) && !/_zone \$binary_remote_addr/.test(vhost))
+  check('every server that reaches the app limits requests and connections', serving.length === 3 && serving.every((b) => /limit_req zone=stocks_req56/.test(b) && /limit_conn stocks_conn56 \d+;/.test(b) && /limit_conn_status 429;/.test(b)))
+  check('every https server sends HSTS', servers443.length === 4 && servers443.every((b) => /add_header Strict-Transport-Security "max-age=\d{7,}" always;/.test(b)))
+  check('the unit hides other processes and keeps its files private', /^ProtectProc=invisible$/m.test(unit) && /^UMask=0077$/m.test(unit))
 }
 
 fs.rmSync(tmp, { recursive: true, force: true })

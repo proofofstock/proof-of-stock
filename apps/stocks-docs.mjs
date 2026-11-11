@@ -93,6 +93,8 @@ export function createDocsRenderer ({ docs, version, released, assets, sourceUrl
         },
         link ({ href, title, tokens }) {
           const text = this.parser.parseInline(tokens)
+          // Only web, mail, relative and in-page links: a javascript: or data: link is shown as its text.
+          if (/^[a-z][a-z0-9+.-]*:/i.test(href) && !/^(https?|mailto):/i.test(href)) return text
           const external = /^https?:\/\//.test(href) && !href.startsWith('https://proofofstock.xyz')
           return `<a href="${esc(href)}"${title ? ` title="${esc(title)}"` : ''}${external ? ' target="_blank" rel="noopener noreferrer nofollow"' : ''}>${text}</a>`
         },
@@ -106,7 +108,7 @@ export function createDocsRenderer ({ docs, version, released, assets, sourceUrl
         },
       },
     })
-    const body = rel === 'README.md' ? home(md, marked) : marked.parse(md)
+    const body = rel === 'README.md' ? home() : marked.parse(md)
     const up = rel.split('/').length - 1
     const toRoot = up ? '../'.repeat(up) : './'
     const site = toRoot + '../'
@@ -118,7 +120,7 @@ export function createDocsRenderer ({ docs, version, released, assets, sourceUrl
     const prev = idx > 0 ? ordered[idx - 1] : null, next = idx >= 0 && idx < ordered.length - 1 ? ordered[idx + 1] : null
     const pager = `<nav class="pager">${prev ? `<a class="pg prev" href="${href(prev)}"><span class="pg-dir">Previous</span><span class="pg-t">${esc(short(prev))}</span></a>` : '<span></span>'}${next ? `<a class="pg next" href="${href(next)}"><span class="pg-dir">Next</span><span class="pg-t">${esc(short(next))}</span></a>` : ''}</nav>`
     const tocHtml = toc.length > 1 ? `<nav class="toc" aria-label="On this page"><div class="side-label">On this page</div>${toc.map((t) => `<a class="toc-link d${t.depth}" href="#${t.id}">${esc(t.text)}</a>`).join('')}</nav>` : '<div></div>'
-    const searchIndex = JSON.stringify(ordered.map((k) => ({ u: href(k) === '#top' ? '' : href(k), t: label(k), s: section ? undefined : undefined, h: (docs.get(k).match(/^#{2,3}\s+(.+)$/gm) || []).map((x) => x.replace(/^#+\s+/, '').replace(/`/g, '')).slice(0, 40) }))).replace(/</g, '\\u003c')
+    const searchIndex = JSON.stringify(ordered.map((k) => ({ u: href(k) === '#top' ? '' : href(k), t: label(k), h: (docs.get(k).match(/^#{2,3}\s+(.+)$/gm) || []).map((x) => x.replace(/^#+\s+/, '').replace(/`/g, '')).slice(0, 40) }))).replace(/</g, '\\u003c')
     return `<!doctype html>
 <html lang="en">
 <head>
@@ -152,7 +154,7 @@ export function createDocsRenderer ({ docs, version, released, assets, sourceUrl
   <div class="dx-shell">
     <aside class="dx-side" aria-label="Documentation">${side}</aside>
     <main class="dx-main">
-      <div class="dx-crumbs">${section ? esc(section.label) : 'Docs'}<span class="dx-ver">v${esc(version)} · ${esc(released)}</span></div>
+      <div class="dx-crumbs">${section ? esc(section.label) : 'Docs'}<span class="dx-ver"><span class="beta-tag">beta</span>v${esc(version)} · ${esc(released)}</span></div>
       <article class="prose">${body}</article>
       ${pager}
       <footer class="dx-foot"><span>© 2026 Stock Token Passport. All rights reserved.</span><span><a href="${href('legal.md')}">Not investment advice</a> · <a href="?format=md">View as markdown</a>${sourceUrl ? ` · <a href="${esc(sourceUrl)}" target="_blank" rel="noopener noreferrer">Source on GitHub</a>` : ''}</span></footer>
@@ -165,7 +167,7 @@ export function createDocsRenderer ({ docs, version, released, assets, sourceUrl
   }
 
   // The docs home: a lede, the "never" card, the questions it answers, and the catalogs as cards.
-  function home (md, marked) {
+  function home () {
     const cards = nav.filter((s) => s.label !== 'Overview').map((s) => `<section class="cat"><div class="side-label">${esc(s.label)}</div>${s.items.map((k) =>
       `<a class="cat-item" href="${k}"><span class="ic ic-${ICON[k] || 'doc'}" aria-hidden="true"></span><span class="cat-text"><span class="cat-title">${esc(label(k))}</span><span class="cat-lead">${esc(leadOf(docs.get(k)))}</span></span></a>`).join('')}</section>`).join('')
     const never = [

@@ -68,5 +68,5 @@ check fails.
 
 ## Status
 
-Private. Not investment advice. No affiliation with Coinbase or Robinhood; their names and tickers are their
-trademarks. © the authors, all rights reserved until a licence is chosen.
+Code under the MIT licence (`LICENSE`). Security reports: `SECURITY.md`. Not investment advice. No affiliation with Coinbase or Robinhood; their names
+and tickers are their trademarks.

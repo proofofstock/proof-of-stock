@@ -189,7 +189,7 @@
       "required": ["dex", "explorer"],
       "additionalProperties": false,
       "properties": {
-        "dex": { "type": "string", "pattern": "^https://dexscreener\\.com/(base|robinhood)/0x[0-9a-f]{40}$" },
+        "dex": { "type": "string", "pattern": "^https://www\\.geckoterminal\\.com/(base|robinhood)/(pools|tokens)/0x[0-9a-f]{40}$" },
         "explorer": { "type": ["string", "null"], "pattern": "^https://.+/token/0x[0-9a-f]{40}$" }
       }
     },
@@ -259,17 +259,17 @@
     },
     "impostor_listing": {
       "type": ["object", "null"],
-      "required": ["first_seen_at", "deployer"],
+      "required": ["first_seen_at", "same_deployer_impostors"],
       "additionalProperties": false,
       "properties": {
         "first_seen_at": { "$ref": "#/definitions/iso_time_or_null" },
-        "deployer": { "$ref": "#/definitions/address_or_null" }
+        "same_deployer_impostors": { "type": ["integer", "null"], "minimum": 0 }
       }
     },
     "in_registry": {
       "type": "object",
       "required": ["address", "chain_id", "generated_at", "not_trading_signal", "market_now", "in_registry", "resembles", "issuer", "identity",
-        "reference", "latest", "series", "notes", "chain", "links", "sources", "same_stock_elsewhere", "series_points", "impostor_listing",
+        "reference", "latest", "series", "notes", "chain", "links", "sources", "same_stock_elsewhere", "impostor_listing",
         "readings_loaded", "registry_age_s"],
       "additionalProperties": false,
       "properties": {
@@ -290,7 +290,7 @@
         "links": { "$ref": "#/definitions/links" },
         "sources": { "$ref": "#/definitions/sources" },
         "same_stock_elsewhere": { "type": "array", "items": { "$ref": "#/definitions/elsewhere" } },
-        "series_points": { "type": "array", "maxItems": 401, "items": { "$ref": "#/definitions/series_point" } },
+        "series_points": { "description": "Only with series=1 on /api/passport, or include_series in MCP.", "type": "array", "maxItems": 401, "items": { "$ref": "#/definitions/series_point" } },
         "impostor_listing": { "type": "null" },
         "case": { "$ref": "#/definitions/case" },
         "readings_loaded": { "type": "boolean" },
@@ -300,7 +300,7 @@
     "not_in_registry": {
       "type": "object",
       "required": ["address", "chain_id", "generated_at", "not_trading_signal", "market_now", "in_registry", "issuer", "resembles", "identity",
-        "latest", "series", "notes", "chain", "links", "sources", "same_stock_elsewhere", "series_points", "impostor_listing",
+        "latest", "series", "notes", "chain", "links", "sources", "same_stock_elsewhere", "impostor_listing",
         "readings_loaded", "registry_age_s"],
       "additionalProperties": false,
       "properties": {

@@ -1,12 +1,15 @@
 {
   "_finding": "Until 10.11 the impostor list was overwritten every run and no registry was kept, so no history of either existed (docs/stocks-truth-layer-tz.md §H). The archive is only worth anything if it never rewrites a row, never passes a backfilled fact off as observed, never drops a case the issuer listed and never closes a case on a partial list.",
   "target": "evm/core/stocks/history.mjs",
-  "runner": ["node", "evm/core/stocks/history.test.mjs"],
+  "runner": [
+    "node",
+    "evm/core/stocks/history.test.mjs"
+  ],
   "mutations": [
     {
       "name": "the archive rewrites its file instead of appending",
-      "find": "  fs.appendFileSync(path.join(dir, `${prefix}${day(atMs)}.jsonl`), rows.map((r) => JSON.stringify(r)).join('\\n') + '\\n')",
-      "replace": "  fs.writeFileSync(path.join(dir, `${prefix}${day(atMs)}.jsonl`), rows.map((r) => JSON.stringify(r)).join('\\n') + '\\n')",
+      "find": "  fs.appendFileSync(file, lead + rows.map((r) => JSON.stringify(r)).join('\\n') + '\\n')",
+      "replace": "  fs.writeFileSync(file, lead + rows.map((r) => JSON.stringify(r)).join('\\n') + '\\n')",
       "expect": "FAIL earlier rows are never rewritten: the old file only grows"
     },
     {
@@ -32,6 +35,18 @@
       "find": "    paused: Array.isArray(r.paused) ? r.paused.slice().sort() : [] }))",
       "replace": "    paused: Array.isArray(r.paused) ? r.paused.slice().sort() : [], price: r.reference && r.reference.price_usd }))",
       "expect": "FAIL the canonical list leaves prices out, so they never make a snapshot"
+    },
+    {
+      "name": "a row is glued onto a torn last line",
+      "find": "if (b[0] !== 0x0a) lead = '\\n'",
+      "replace": "if (false) lead = '\\n'",
+      "expect": "FAIL a row appended after a torn tail stays whole and readable"
+    },
+    {
+      "name": "an unreadable archive reads as empty",
+      "find": "  let names; try { names = fs.readdirSync(dir) } catch (e) { if (e && e.code === 'ENOENT') return []; throw e }",
+      "replace": "  let names; try { names = fs.readdirSync(dir) } catch (e) { return [] }",
+      "expect": "FAIL an unreadable archive stops the run instead of backfilling from scratch"
     }
   ]
 }

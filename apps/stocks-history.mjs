@@ -12,9 +12,18 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { replayCases, HISTORY_DIR } from '../evm/core/stocks/history.mjs'
 
+// ⚠ LISTS ARE A WINDOW, AN ADDRESS IS ALWAYS ANSWERED. The archive is what nobody else has, so a list shows only the
+//   last BULK_WINDOW_DAYS days of observed events, at most BULK_MAX at a time; backfilled cases are never listed. Any
+//   one address still gets its whole case (caseOf, carried by /verify and the passport), and the counts stay public.
+//   The full archive is available on request.
+export const BULK_WINDOW_DAYS = 7
+export const BULK_MAX = 50
+export const FULL_ARCHIVE = 'The full archive is available on request: hello@proofofstock.xyz'
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))
 const DAY = /^\d{4}-\d{2}-\d{2}$/
-const files = (dir, prefix) => { try { return fs.readdirSync(dir).filter((f) => f.startsWith(prefix) && f.endsWith('.jsonl')).sort() } catch { return [] } }
+// A missing directory is an archive not started; any other error is thrown, so refresh() keeps the last good copy and
+// says so, instead of replacing it with an empty archive.
+const files = (dir, prefix) => { try { return fs.readdirSync(dir).filter((f) => f.startsWith(prefix) && f.endsWith('.jsonl')).sort() } catch (e) { if (e && e.code === 'ENOENT') return []; throw e } }
 const rowsOf = (file) => fs.readFileSync(file, 'utf8').split('\n').filter(Boolean).flatMap((l) => { try { return [JSON.parse(l)] } catch { return [] } })
 
 /** What the public sees of a case event: the evidence and how it was learned, nothing internal. */
@@ -22,7 +31,7 @@ export const publicEvent = (e) => ({ event: e.event, at: e.at, source: e.source,
   kind: e.kind, imitates_symbol: e.registry_symbol ?? null, listed_address: e.registry_address ?? null,
   first_seen_at: e.first_seen_at ?? null, flagged_at: e.flagged_at ?? null, ...(e.previous_kind ? { previous_kind: e.previous_kind } : {}) })
 
-export function createHistoryStore ({ roots }) {
+export function createHistoryStore ({ roots, now = () => Date.now(), log = () => {} }) {
   const state = new Map() // chain → { events, byAddress: Map(address → events), open: Map, startedAt, registry: [index] , error }
 
   function refresh (chain) {
@@ -33,26 +42,34 @@ export function createHistoryStore ({ roots }) {
       for (const e of events) { if (!byAddress.has(e.address)) byAddress.set(e.address, []); byAddress.get(e.address).push(e) }
       const registry = []
       for (const f of files(dir, 'registry-')) {
-        rowsOf(path.join(dir, f)).forEach((r) => registry.push({ row: r, fetched_at: r.fetched_at, hash: r.hash, prev_hash: r.prev_hash, records: r.records,
+        // A row missing its lists or hash is skipped, not trusted: one bad row must not stop every later refresh.
+        rowsOf(path.join(dir, f)).filter((r) => r && typeof r.hash === 'string' && typeof r.fetched_at === 'string' && Array.isArray(r.added) && Array.isArray(r.removed) && Array.isArray(r.changed)).forEach((r) => registry.push({ row: r, fetched_at: r.fetched_at, hash: r.hash, prev_hash: r.prev_hash, records: r.records,
           added: r.added.length, removed: r.removed.length, changed: r.changed.length, added_addresses: r.added.slice(0, 500), removed_addresses: r.removed.slice(0, 500), changed_addresses: r.changed.slice(0, 500) }))
       }
       state.set(chain, { events, byAddress, open: replayCases(events), startedAt: events.length ? events[0].at : null, registry, error: null })
     } catch (e) {
       const prev = state.get(chain)
-      state.set(chain, { ...(prev || { events: [], byAddress: new Map(), open: new Map(), startedAt: null, registry: [] }), error: String(e && e.message || e).slice(0, 160) })
+      state.set(chain, { ...(prev || { events: [], byAddress: new Map(), open: new Map(), startedAt: null, registry: [] }), error: 'the history archive could not be read' }) // public; the original only in the journal
+      log(`[history ${chain}] ${String(e && e.message || e).slice(0, 300)}`)
     }
   }
   const of = (chain) => state.get(chain) || { events: [], byAddress: new Map(), open: new Map(), startedAt: null, registry: [], error: 'not loaded yet' }
 
-  /** Case events, newest first, with filters and a numeric cursor. */
-  function cases (chain, { since = null, event = null, limit = 50, cursor = 0 } = {}) {
+  /**
+   * Observed case events of the last BULK_WINDOW_DAYS days, newest first, with filters: the newest BULK_MAX at most.
+   * There is no cursor. Paging through the window would hand out the whole week, which the 50-row cap is there to
+   * prevent (an audit on 11.11 read 120 events in 3 requests); count still says how many the window holds.
+   */
+  function cases (chain, { since = null, event = null, limit = BULK_MAX } = {}) {
     const s = of(chain)
-    const t = since ? Date.parse(since) : null
-    const list = s.events.filter((e) => (!event || e.event === event) && (t == null || Date.parse(e.at) >= t)).slice().reverse()
+    const from = now() - BULK_WINDOW_DAYS * 86400e3
+    const t = Math.max(from, since ? Date.parse(since) : from)
+    limit = Math.min(BULK_MAX, Math.max(1, limit))
+    const list = s.events.filter((e) => e.source !== 'backfilled' && (!event || e.event === event) && Date.parse(e.at) >= t).slice().reverse()
     const counts = { open: s.open.size, opened: 0, listed: 0, gone: 0, kind_changed: 0, backfilled: 0 }
     for (const e of s.events) { counts[e.event] = (counts[e.event] || 0) + 1; if (e.source === 'backfilled') counts.backfilled++ }
-    const page = list.slice(cursor, cursor + limit)
-    return { chain, archive_started_at: s.startedAt, counts, count: list.length, events: page.map(publicEvent), next: cursor + limit < list.length ? cursor + limit : null, error: s.error }
+    const page = list.slice(0, limit)
+    return { chain, archive_started_at: s.startedAt, counts, window_days: BULK_WINDOW_DAYS, window_from: new Date(from).toISOString(), count: list.length, events: page.map(publicEvent), older: FULL_ARCHIVE, error: s.error }
   }
 
   /** One address's case: its events and a plain summary, or null when it was never a case. */
@@ -86,23 +103,23 @@ const short = (a) => (a ? `${a.slice(0, 6)}…${a.slice(-4)}` : '')
 const CHAIN = { base: ['Base', 'Coinbase'], robinhood: ['Robinhood Chain', 'Robinhood'] }
 
 /** The /history page for people: per chain, the registry snapshots and the case timeline, each with its date and source. */
-export function historyPage ({ store, chains, now, version, assets, perChain = 60 }) {
+export function historyPage ({ store, chains, now, version, assets }) {
   const sections = chains.map((c) => {
     const [chainName, issuer] = CHAIN[c] || [c, c]
-    const cs = store.cases(c, { limit: perChain })
+    const cs = store.cases(c, { limit: BULK_MAX })
     const reg = store.registry(c)
-    const regRows = reg.snapshots.slice(0, 8).map((r) => `<li class="hs-row"><span class="hs-date">${esc(String(r.fetched_at).slice(0, 16).replace('T', ' '))}</span><span class="hs-ev reg">registry</span><span class="hs-what">${esc(issuer)} listed <b>${r.records}</b> tokens${r.prev_hash ? ` · ${[r.added && `+${r.added}`, r.removed && `−${r.removed}`, r.changed && `${r.changed} changed`].filter(Boolean).join(' · ')}` : ' · first snapshot'}</span><code class="hs-hash" title="${esc(r.hash)}">${esc(r.hash.slice(7, 19))}</code></li>`).join('')
+    const regRows = reg.snapshots.slice(0, 8).map((r) => `<li class="hs-row"><span class="hs-date">${esc(String(r.fetched_at).slice(0, 16).replace('T', ' '))}</span><span class="hs-ev reg">registry</span><span class="hs-what">${esc(issuer)} listed <b>${esc(r.records)}</b> tokens${r.prev_hash ? ` · ${[r.added && `+${r.added}`, r.removed && `−${r.removed}`, r.changed && `${r.changed} changed`].filter(Boolean).join(' · ')}` : ' · first snapshot'}</span><code class="hs-hash" title="${esc(r.hash)}">${esc(r.hash.slice(7, 19))}</code></li>`).join('')
     const evRows = cs.events.map((e) => {
       const word = { opened: 'flagged', kind_changed: 'changed', listed: 'listed by issuer', gone: 'left the list' }[e.event] || e.event
       const how = e.source === 'backfilled' ? `<span class="hs-src" title="Archived from our collector's earlier history when the archive began; first seen ${esc(String(e.first_seen_at || '').slice(0, 10))}">from collector history</span>` : ''
-      const href = `./?chain=${c}&address=${e.address}`
+      const href = `./?chain=${esc(c)}&amp;address=${esc(e.address)}`
       return `<li class="hs-row"><span class="hs-date">${esc(String(e.source === 'backfilled' ? e.first_seen_at || e.at : e.at).slice(0, 10))}</span><span class="hs-ev ${esc(e.event)}">${esc(word)}</span><span class="hs-what"><a href="${href}">${esc(e.symbol || '?')}</a> <code>${esc(short(e.address))}</code> ${esc((KIND[e.kind] || (() => e.kind))(e))}, not in the ${esc(issuer)} registry ${how}</span></li>`
     }).join('')
     return `<section class="hs-chain"><h2>${esc(chainName)}</h2>
   <div class="hs-stats"><div><b>${cs.counts.open}</b><span>open cases</span></div><div><b>${cs.counts.listed}</b><span>later listed by ${esc(issuer)}</span></div><div><b>${reg.count}</b><span>registry snapshot${reg.count === 1 ? '' : 's'}</span></div><div><b>${esc(cs.archive_started_at ? cs.archive_started_at.slice(0, 10) : 'not yet')}</b><span>${cs.archive_started_at ? 'case archive began' : 'case archive starts with the next impostor run'}</span></div></div>
   <h3>Registry snapshots</h3><ul class="hs-list">${regRows || '<li class="hs-empty">No snapshot recorded yet.</li>'}</ul>
-  <h3>Cases, newest first</h3><ul class="hs-list">${evRows || '<li class="hs-empty">No case recorded yet. The impostor list is archived every 6 hours; the first run writes every case it already holds, marked as from collector history.</li>'}</ul>
-  ${cs.count > cs.events.length ? `<p class="hs-more">${cs.count - cs.events.length} older events: <a href="api/history/cases?chain=${c}&amp;cursor=${cs.events.length}">api/history/cases?chain=${c}</a></p>` : ''}
+  <h3>Cases of the last ${BULK_WINDOW_DAYS} days, newest first</h3><ul class="hs-list">${evRows || `<li class="hs-empty">No new case in the last ${BULK_WINDOW_DAYS} days. The impostor list is archived every 6 hours.</li>`}</ul>
+  <p class="hs-more">Events of the last ${BULK_WINDOW_DAYS} days. Every address keeps its whole case: open its passport or <a href="docs/reference/http-api.md#route-verify">/verify</a>. ${esc(FULL_ARCHIVE)}.</p>
 </section>`
   }).join('')
   return `<!doctype html>

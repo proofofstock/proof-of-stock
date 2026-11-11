@@ -51,7 +51,7 @@ One recorder run reads Base first, then Robinhood, one token at a time with a pa
 of one run are spread over several minutes, and each carries its own `observed_at`. On Base the recorder skips tokens
 with no supply: Coinbase lists many tokens before any is minted, and they have no pool to read.
 
-The site holds the last 72 hours of readings in memory. Nothing on a request path reads the dataset or calls out.
+The site holds the last 72 hours of readings in memory for its own statistics; a passport shows at most the last 24. Nothing on a request path reads the dataset or calls out.
 
 ## How "issuer-listed" is decided
 
@@ -237,8 +237,8 @@ Rows of that window that were priced against one of those assets are kept.
   and stays unpublished until its precision is measured.
 - **Delisting is tracked per process.** `delisted_at` is set only for addresses that left the registry since the site
   last started.
-- **Rate limits.** Per client address (an IPv6 client is keyed by its /64), 60 units per minute, shared by `/api/*`,
-  `/verify` and `/mcp`. A `verify_stock_tokens` call of n addresses costs ⌈n/10⌉ units. Over the limit the answer is
+- **Rate limits.** Per client address (an IPv6 client is keyed by its /56), 60 units per minute, shared by `/api/*`,
+  `/verify` and `/mcp`. A passport costs 3 units, and a `verify_stock_tokens` call of n addresses ⌈n/10⌉ units. Over the limit the answer is
   429 with `Retry-After: 60`. The proxy in front also caps bursts. `/badge.svg` is not limited per client, because
   image proxies fetch it from few addresses.
 - **No SLA.** The site runs on one host. There is no uptime or freshness guarantee. Every answer carries its time, so
