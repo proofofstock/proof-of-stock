@@ -30,7 +30,9 @@ const rowsOf = (file) => fs.readFileSync(file, 'utf8').split('\n').filter(Boolea
 /** What the public sees of a case event: the evidence and how it was learned, nothing internal. */
 export const publicEvent = (e) => ({ event: e.event, at: e.at, source: e.source, address: e.address, symbol: symbolLabel(e.symbol), name: nameLabel(e.name),
   kind: e.kind, imitates_symbol: e.registry_symbol ?? null, listed_address: e.registry_address ?? null,
-  first_seen_at: e.first_seen_at ?? null, flagged_at: e.flagged_at ?? null, ...(e.previous_kind ? { previous_kind: e.previous_kind } : {}) })
+  first_seen_at: e.first_seen_at ?? null, flagged_at: e.flagged_at ?? null, ...(e.previous_kind ? { previous_kind: e.previous_kind } : {}),
+  // What the chain itself returned for symbol() and name() when the case opened (hex, schema-checked), where recorded.
+  ...('text_evidence' in e ? { text_evidence: e.text_evidence } : {}) })
 
 export function createHistoryStore ({ roots, now = () => Date.now(), log = () => {} }) {
   const state = new Map() // chain → { events, byAddress: Map(address → events), open: Map, startedAt, registry: [index] , error }

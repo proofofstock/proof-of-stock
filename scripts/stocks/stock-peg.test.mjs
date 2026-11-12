@@ -122,18 +122,19 @@ console.log('a Base run')
 console.log('DexScreener is paced by the start of each request')
 {
   // Was a fixed pause after every token (51 s of a 290 s Robinhood run, 12.11). Now a start every paceMs: two tokens with
+  // (a wide pace, 400 ms, so a loaded machine cannot blur the difference: the old code paused 400 ms after the last one)
   // instant answers wait once, not twice, and the wait is the gap, not gap plus answer time.
   const root = path.join(tmp, 'pace')
   const coinbase = respond(200, { tokens: [A, B].map((t) => ({ contract_address: t, symbol: 'Xc', multiplier: '1', nav_price: '100', nav_price_updated_at: '2026-11-08T11:00:00Z', total_supply: '10' })) })
   const starts = []
-  await runStockPeg({ chain: 'base', root, now: () => NOW, paceMs: 120, log: () => {}, fetchImpl: async (url) => {
+  await runStockPeg({ chain: 'base', root, now: () => NOW, paceMs: 400, log: () => {}, fetchImpl: async (url) => {
     const u = String(url)
     if (u.startsWith(COINBASE_URL)) return coinbase
     if (u.includes('/token-pairs/')) { starts.push(performance.now()); return respond(200, []) }
     return respond(404, {})
   } })
   const tail = performance.now() - starts[starts.length - 1]
-  check('two tokens: their DexScreener requests start at least paceMs apart, and no pause follows the last one (it was a pause after every token)', starts.length === 2 && starts[1] - starts[0] >= 110 && tail < 110, JSON.stringify({ gap: Math.round(starts[1] - starts[0]), tail: Math.round(tail) }))
+  check('two tokens: their DexScreener requests start at least paceMs apart, and no pause follows the last one (it was a pause after every token)', starts.length === 2 && starts[1] - starts[0] >= 380 && tail < 300, JSON.stringify({ gap: Math.round(starts[1] - starts[0]), tail: Math.round(tail) }))
 }
 
 console.log('a run whose list could not be read')

@@ -22,7 +22,8 @@ import { isEntryPoint } from '../lib/invoked-directly.mjs'
 import { eachJsonl, dayFiles } from '../lib/jsonl.mjs'
 import { resemblance, resemblances, prefixSelfCheck, RESEMBLANCE_KINDS, ADDRESS_SIGNAL_KINDS } from '../../evm/core/stocks/impostor.mjs'
 import { CHAINS } from './stock-peg.mjs'
-import { recordCases } from '../../evm/core/stocks/history.mjs'
+import { recordCases, pendingCaseAddresses } from '../../evm/core/stocks/history.mjs'
+import { readTextEvidence } from './text-evidence.mjs'
 import { validateV2 } from '../../schemas/v2/validate.mjs'
 
 export const STRONG_KINDS = Object.freeze(['registry_symbol', 'issuer_name_suffix', 'registry_name'])
@@ -144,7 +145,11 @@ if (isEntryPoint(import.meta.url)) {
   // H1: the case archive (docs/stocks-truth-layer-tz.md §H). After the public files, so a failure here never withholds
   // the list; but it fails the unit, because a gap in an append-only history cannot be filled later.
   try {
-    const h = recordCases({ root, list, registry: registryAddresses, chainId: CHAINS[chain].chainId, at, validate: validateV2, log: console.error })
+    // Spec G: what the chain itself returns for symbol() and name() of each newly flagged contract, at one block.
+    const pending = pendingCaseAddresses({ root, list, registry: registryAddresses, chainId: CHAINS[chain].chainId, at })
+    const textEvidence = pending.length ? await readTextEvidence({ chain, chainId: CHAINS[chain].chainId, addresses: pending, collector: new Map(list.items.map((it) => [it.address, { symbol: it.symbol, name: it.name }])) }) : new Map()
+    const h = recordCases({ root, list, registry: registryAddresses, chainId: CHAINS[chain].chainId, at, validate: validateV2, log: console.error, textEvidence })
+    if (pending.length) console.log('[stock-impostors] text evidence ' + JSON.stringify({ chain, asked: pending.length, read: textEvidence.size }))
     console.log('[stock-impostors] history ' + JSON.stringify({ chain, ...h }))
     if (h.invalid) process.exitCode = 1
   } catch (e) { console.error('[stock-impostors] ALARM case archive not written: ' + (e && e.message || e)); process.exitCode = 1 }

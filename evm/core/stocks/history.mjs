@@ -102,11 +102,26 @@ export function caseEvents (open, list, { registry, at, chainId, firstArchive })
   return out
 }
 
-/** H1 for one chain: read the archive, append what changed, return a summary for the journal. */
-export function recordCases ({ root, list, registry, chainId, at, validate = null, log = () => {} }) {
+/**
+ * The addresses that would get a new observed event (opened, kind_changed) in this run: the ones whose text the chain is
+ * asked for (scripts/stocks/text-evidence.mjs). None on the archive's first run, which is a backfill.
+ */
+export function pendingCaseAddresses ({ root, list, registry = new Set(), chainId = null, at = Date.now() }) {
+  const rows = readRows(histDir(root), 'cases-')
+  if (!rows.length) return []
+  return caseEvents(replayCases(rows), list, { registry, at, chainId, firstArchive: false }).filter((e) => e.source === 'observed' && (e.event === 'opened' || e.event === 'kind_changed')).map((e) => e.address)
+}
+
+/**
+ * H1 for one chain: read the archive, append what changed, return a summary for the journal. `textEvidence` (a Map,
+ * optional): what the chain returned for symbol() and name(); a new observed opened or kind_changed event carries its
+ * entry, or null when the chain was not read. Older events are never given evidence after the fact.
+ */
+export function recordCases ({ root, list, registry, chainId, at, validate = null, log = () => {}, textEvidence = undefined }) {
   const dir = histDir(root)
   const rows = readRows(dir, 'cases-')
   const events = caseEvents(replayCases(rows), list, { registry, at, chainId, firstArchive: rows.length === 0 })
+  if (textEvidence !== undefined) for (const e of events) if (e.source === 'observed' && (e.event === 'opened' || e.event === 'kind_changed')) e.text_evidence = textEvidence.get(e.address) ?? null
   const ok = []
   let invalid = 0
   for (const e of events) {

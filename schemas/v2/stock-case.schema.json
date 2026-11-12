@@ -23,6 +23,26 @@
     "registry_address": { "type": ["string", "null"], "pattern": "^0x[0-9a-f]{40}$" },
     "first_seen_at": { "type": ["string", "null"], "format": "date-time", "description": "first time the collector saw the token" },
     "flagged_at": { "type": ["string", "null"], "format": "date-time", "description": "the run that first listed it; null when backfilled" },
+    "text_evidence": {
+      "description": "what the contract itself returned for symbol() and name() at one block when the case was opened or its kind changed (scripts/stocks/text-evidence.mjs); hex, never decoded into our text. null when the chain could not be read; absent on events written before 2026-11-13",
+      "oneOf": [
+        { "type": "null" },
+        {
+          "type": "object", "additionalProperties": false,
+          "required": ["chain_id", "block_number", "block_hash", "symbol_return", "name_return", "matches_collector", "reproduce", "needs_archive_rpc"],
+          "properties": {
+            "chain_id": { "type": ["integer", "null"] },
+            "block_number": { "type": "integer", "minimum": 0 },
+            "block_hash": { "type": "string", "pattern": "^0x[0-9a-f]{64}$" },
+            "symbol_return": { "type": ["string", "null"], "pattern": "^0x[0-9a-f]*$" },
+            "name_return": { "type": ["string", "null"], "pattern": "^0x[0-9a-f]*$" },
+            "matches_collector": { "type": "boolean" },
+            "reproduce": { "type": "string" },
+            "needs_archive_rpc": { "type": "boolean" }
+          }
+        }
+      ]
+    },
     "deployer": { "type": ["string", "null"] }
   },
   "additionalProperties": false,
