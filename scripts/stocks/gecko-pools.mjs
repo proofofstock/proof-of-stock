@@ -12,7 +12,7 @@ import { snapshotOf } from './raw-store.mjs'
 
 export const GECKO_PAGE_SIZE = 20
 export const GECKO_MAX_PAGES = 3
-const TIMEOUT_MS = 15_000
+const TIMEOUT_MS = 8_000 // a page answers in under 0.6 s (p95, 12.11); a hung one must not eat the run's deadline
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 const num = (v) => { if (v == null || v === '') return null; const n = Number(v); return Number.isFinite(n) ? n : null }
 // "base_0xabc…" → "0xabc…"

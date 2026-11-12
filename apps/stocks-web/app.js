@@ -1,7 +1,7 @@
 // apps/stocks-web/app.js: Proof of Stock as a terminal. Every value goes into the page as TEXT (textContent),
 // never as HTML: names of tokens outside the registry come from third parties and may contain markup.
 //
-//   run()       parses a command: help, how, now, matrix, fakes, clear, both/base/robinhood, a number from the last list;
+//   run()       parses a command: help, how, now, matrix, fakes, exam, clear, both/base/robinhood, a number from the last list;
 //               anything else is a search
 //   block()     adds a "command → answer" block to the feed; reveal() scrolls to it
 //   lookup()    searches (api/find); one match opens the passport, several give a numbered list
@@ -137,7 +137,7 @@
   // ---------- commands ----------
   // What the visitor did, as a kind, for our own counter (beacon.js; the server keeps only known kinds). Never the text.
   const act = (x, v) => { try { document.dispatchEvent(new CustomEvent('pos:act', { detail: { x, v } })) } catch (_) {} }
-  const COUNTED = { help: 'help', '?': 'help', how: 'how', clear: 'clear', cls: 'clear', now: 'now', matrix: 'matrix', fakes: 'impostors', impostors: 'impostors', both: 'chain', all: 'chain', base: 'chain', robinhood: 'chain' }
+  const COUNTED = { help: 'help', '?': 'help', how: 'how', clear: 'clear', cls: 'clear', now: 'now', matrix: 'matrix', fakes: 'impostors', impostors: 'impostors', exam: 'exam', both: 'chain', all: 'chain', base: 'chain', robinhood: 'chain' }
 
   function run (raw, typed = false) { // typed: written in the prompt; a button or a tab is counted as that control
     const input = String(raw || '').trim()
@@ -153,6 +153,7 @@
     if (cmd === 'now') return board(input)
     if (cmd === 'matrix') return matrixView(input)
     if (cmd === 'fakes' || cmd === 'impostors') return fakes(input)
+    if (cmd === 'exam') return examView(input)
     if (cmd === 'both' || cmd === 'all' || CHAINS.includes(cmd)) {
       const c = cmd === 'both' ? 'all' : cmd
       setChain(c, true)
@@ -179,6 +180,7 @@
       ['matrix', 'the same share on Base and Robinhood: each premium and the gap'],
       ['impostors', 'tokens using a listed stock\'s name, not in the issuer\'s registry'],
       ['how', 'what this checks'],
+      ['exam', 'the daily public exam: how the last one went'],
       ['clear', 'clear the screen'],
     ]
     out.append(...rows.map(([k, v]) => h('div', { class: 'field' }, h('span', { class: 'k' }, k), h('span', { class: 'dots-fill' }), h('span', { class: 'v muted' }, v))))
@@ -552,6 +554,58 @@
     } catch (e) { out.append(line(e.message, 'err')) }
   }
 
+  // ---------- the public exam ----------
+  // Once a day the public repository asks this site about every token whose right answer comes from the issuers, and
+  // commits the report to its exam branch. The server reads it in the background and answers api/exam with numbers and
+  // checked strings only; here every value still goes in as text. No report from the last 36 hours: nothing is shown.
+  const EXAM_MAX_AGE_S = 36 * 3600
+  const shortDay = (d) => new Date(d + 'T00:00:00Z').toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: 'UTC' })
+  const fresh = (e) => e && typeof e.age_s === 'number' && e.age_s <= EXAM_MAX_AGE_S
+  async function examChip () {
+    const el = $('#exam-chip')
+    if (!el) return
+    let e = null
+    try { e = await api('api/exam') } catch (_) { /* hidden below */ }
+    if (!fresh(e)) { el.hidden = true; return }
+    const ok = e.failures_total === 0 && e.passed === e.total
+    el.querySelector('.exam-d').textContent = shortDay(e.day)
+    el.querySelector('.exam-s').textContent = e.passed + '/' + e.total
+    el.querySelector('.exam-bar i').style.width = (e.total ? Math.round((e.passed / e.total) * 100) : 0) + '%'
+    el.classList.toggle('miss', !ok)
+    const said = `Daily public exam, ${e.day}: ${e.total} tokens with answers known from the issuers, ${e.failures_total} failure${e.failures_total === 1 ? '' : 's'}${e.metrics.refused ? `, ${e.metrics.refused} refused` : ''}. Opens the reports on GitHub.`
+    el.title = said
+    el.setAttribute('aria-label', said)
+    el.hidden = false
+  }
+  async function examView (input) {
+    const out = block(input)
+    let e
+    try { e = await api('api/exam') } catch (err) { out.append(line(err.message, 'err')); return }
+    if (!fresh(e)) { out.append(line('No exam report from the last 36 hours.', 'err')); return }
+    const m = e.metrics, c = e.set.counts, pe = m.price_evidence
+    const yes = (b) => (b ? 'yes' : 'no')
+    // The server builds these from its own constants; only a GitHub address of the public repository is linked.
+    const gh = (href, text) => (/^https:\/\/github\.com\/proofofstock\/proof-of-stock(\/|$)/.test(String(href)) ? h('a', { class: 'inline-link', href, target: '_blank', rel: 'noopener noreferrer' }, text) : text)
+    const row = (k, v, target, bad) => h('div', { class: 'field' }, h('span', { class: 'k' }, k), h('span', { class: 'dots-fill' }), h('span', { class: 'v' + (bad ? ' warn' : '') }, v), h('span', { class: 'faint exam-t' }, ' target ' + target))
+    out.append(
+      line(`The daily public exam, ${e.day} (finished ${age(e.age_s)}). ${e.total} tokens whose right answer comes from the issuers, not from us:`, ''),
+      line(`${c.A} on the issuers' lists · ${c.B} look-alikes we flagged this week · ${c.C} strangers (the chains' dollar and ETH tokens, never-deployed addresses) · ${c.D} Base tokens asked on Robinhood Chain`, 'muted'),
+      row('false "listed"', String(m.false_listed), '0', m.false_listed > 0),
+      row('false "not listed"', String(m.false_not_listed), '0', m.false_not_listed > 0),
+      row('a real token called a fake', String(m.real_called_fake), '0', m.real_called_fake > 0),
+      row('look-alikes flagged', m.lookalikes_caught + ' of ' + m.lookalikes, 'all', m.lookalikes_caught < m.lookalikes),
+      row('minted agrees with Coinbase', m.minted_wrong ? m.minted_wrong + ' wrong' : 'all', 'all', m.minted_wrong > 0),
+      row('refused (registry unavailable)', String(m.refused), 'honest, when needed', false),
+      row('list_proof = issuer list, Base', yes(m.list_proof.base), 'yes', !m.list_proof.base),
+      row('list_proof = issuer list, Robinhood', yes(m.list_proof.robinhood), 'yes', !m.list_proof.robinhood),
+      row('price evidence replayed',pe.same_bytes + ' of ' + pe.onchain + ' same bytes' + (pe.none ? ` (${pe.none} aggregator-only)` : ''), 'all on-chain', pe.same_bytes < pe.onchain),
+      row('/verify latency p50 / p95', (m.verify_ms.p50 ?? NA) + ' / ' + (m.verify_ms.p95 ?? NA) + ' ms', 'reported as is', false),
+      row('failures', String(e.failures_total), '0', e.failures_total > 0),
+      h('div', { class: 'line faint exam-sha' }, 'set SHA-256 ', h('code', null, e.set.sha256)),
+      h('div', { class: 'line muted' }, 'rerun it yourself: ', h('code', null, e.rerun), ' in ', gh(e.repo, 'the public repository'), ' · ', gh(e.report_day_url, 'this report'), ' · ', gh(e.report_url, 'every report')),
+      line('Listed agrees with the issuer by definition; the weight is in the look-alikes, the honest refusals and the evidence.', 'faint'))
+  }
+
   // ---------- the landing around the terminal ----------
   // The live tape: every priced issuer token on both chains, furthest from its reference first, coloured by the size of
   // the gap. The list is doubled so the CSS loop is seamless; a click opens that passport in the terminal.
@@ -771,6 +825,8 @@
     setInterval(() => { if (!document.hidden) tape() }, 60e3)
     findingsBoard()
     setInterval(() => { if (!document.hidden) findingsBoard() }, 5 * 60e3)
+    examChip()
+    setInterval(() => { if (!document.hidden) examChip() }, 30 * 60e3)
     if (!('ontouchstart' in window)) input.focus({ preventScroll: true })
   })
 })()

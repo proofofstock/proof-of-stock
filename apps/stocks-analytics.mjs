@@ -42,7 +42,7 @@ export const VISITORS_MAX = 50000
  */
 export const ACTIONS = Object.freeze({
   chip: /^(NVDA|TSLA|AAPL|MSTR|CRCL|now|impostors|help)$/, // the buttons under the headline (data-run)
-  command: /^(help|how|clear|now|matrix|impostors|chain|pick)$/, // typed into the terminal
+  command: /^(help|how|clear|now|matrix|impostors|exam|chain|pick)$/, // typed into the terminal
   search: /^(ticker|name|isin):(none|one|many|error)$|^address:(listed|impostor|unlisted|error)$/,
   tab: /^(base|robinhood|all)$/,
   copy: /^(mcp-url|mcp-cc|mcp-json|address)$/,

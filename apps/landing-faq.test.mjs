@@ -77,6 +77,13 @@ console.log('the wall of findings')
 
 console.log('the terminal script')
 {
+  {
+    // 12.11: a quote lost in an edit left app.js unparseable and the whole terminal dead, with every suite green.
+    const { Script } = await import('node:vm')
+    let err = null
+    try { new Script(fs.readFileSync(new URL('./stocks-web/app.js', import.meta.url), 'utf8'), { filename: 'app.js' }) } catch (e) { err = e }
+    check('app.js parses', !err, err && err.message)
+  }
   const js = fs.readFileSync(new URL('./stocks-web/app.js', import.meta.url), 'utf8')
   // 12.11: a second "function board" (the wall of findings) silently replaced the one behind the "now" command, and
   // the "biggest gaps now" button did nothing. A name declared twice is a bug, always.
@@ -86,6 +93,22 @@ console.log('the terminal script')
   const bar = (html.match(/<footer class="statusbar">[\s\S]*?<\/footer>/) || [''])[0]
   check('every key in the status bar is a button that does something: history, help, clear', /<button type="button" class="key" data-hist[^>]*><kbd>/.test(bar) && /<button type="button" class="key" data-run="help"><kbd>help<\/kbd>/.test(bar) && /<button type="button" class="key" data-win="clear"><kbd>clear<\/kbd>/.test(bar) && !/<span class="key">/.test(bar))
   check('...and the history key has its handler', /querySelectorAll\('\[data-hist\]'\)/.test(js))
+}
+
+console.log('the public exam on the landing')
+{
+  const js = fs.readFileSync(new URL('./stocks-web/app.js', import.meta.url), 'utf8')
+  const { EXAM_CHIP_HTML, EXAM_REPORTS_URL } = await import('./stocks-exam.mjs')
+  const bar = (html.match(/<footer class="statusbar">[\s\S]*?<\/footer>/) || [''])[0]
+  check('the status bar has a place for the exam chip, between the chains and the keys', /<span id="status"[^>]*>[^<]*<\/span>\s*<!--exam-->\s*<span class="hint">/.test(bar))
+  check('...the chip links to the reports on GitHub, opens apart, and is hidden until filled', EXAM_REPORTS_URL === 'https://github.com/proofofstock/proof-of-stock/tree/exam' && EXAM_CHIP_HTML.startsWith(`<a id="exam-chip" class="exam" href="${EXAM_REPORTS_URL}" target="_blank" rel="noopener noreferrer" hidden>`))
+  const fns = ['examChip', 'examView'].map((n) => (js.match(new RegExp(`async function ${n} \\([^)]*\\) \\{[\\s\\S]*?\\n {2}\\}\\n`)) || [''])[0])
+  check('...both read only our own api/exam, never GitHub from the browser (connect-src self)',fns.every((f) => /api\('api\/exam'\)/.test(f)) && !/githubusercontent|fetch\(['"`]https?:/.test(js) && /connect-src 'self'/.test(SECURITY_HEADERS['content-security-policy']))
+  check('...and put everything in as text: no innerHTML anywhere in them', fns.every((f) => f && !/innerHTML|outerHTML|insertAdjacentHTML|document\.write/.test(f)))
+  check('...the chip stays hidden without a report from the last 36 hours', /EXAM_MAX_AGE_S = 36 \* 3600/.test(js) && /if \(!fresh\(e\)\) \{ el\.hidden = true; return \}/.test(fns[0]))
+  check('...the command is in help, prints the metrics, the set hash and how to rerun it', /\['exam', '[^']+'\]/.test(js) && /if \(cmd === 'exam'\) return examView\(input\)/.test(js) && /set SHA-256/.test(fns[1]) && /rerun it yourself: /.test(fns[1]) && /false "listed"/.test(fns[1]))
+  const exq = shown.find(([q]) => q === 'How do we know the answers are right?')
+  check('...and the FAQ says how the answers are checked: the daily public exam and its branch', exq && /public exam/.test(exq[1]) && /exam branch/.test(exq[1]) && /rerun/.test(exq[1]))
 }
 
 console.log('the agent wire in the hero')
@@ -98,12 +121,43 @@ console.log('the agent wire in the hero')
   check('...only on a wide screen, still under reduced motion, with the lede kept clear of it', /\.wire \{ display: none; \}/.test(css) && /@media \(min-width: 1100px\) \{\n {2}\.hero \.lede \{ max-width: calc\(100% - 372px\); \}/.test(css) && /prefers-reduced-motion: reduce\) \{ \.wire-l \{ animation: none; opacity: 1; \} \.wire-packet \{ animation: none; \}/.test(css))
 }
 
+console.log('a jump to a section stops below the ticker')
+{
+  const css = fs.readFileSync(new URL('./stocks-web/style.css', import.meta.url), 'utf8')
+  // Owner, 12.11: "Ask it from your agent" landed under the sticky ticker. The page keeps a scroll padding taller than
+  // the ticker, and the terminal's own margin adds to it rather than doubling it.
+  const tape = Number((css.match(/\.tape \{[^}]*height: (\d+)px/) || [])[1])
+  // Scoped to a page that has the ticker: the docs and history pages load the same sheet and keep their own offsets.
+  const pad = Number((css.match(/^html:has\(\.tape\) \{ scroll-padding-top: (\d+)px; \}/m) || [])[1])
+  const termMargin = Number((css.match(/\.term \{[^}]*scroll-margin-top: (\d+)px/) || [])[1])
+  check('the scroll padding clears the sticky ticker with room to spare', tape > 0 && pad >= tape + 12, `tape ${tape}, padding ${pad}`)
+  check('...and the terminal still lands where it did (padding plus its margin, 60px)', pad + termMargin === 60, `${pad} + ${termMargin}`)
+}
+
 console.log('the prompt waits with a cursor')
 {
   const css = fs.readFileSync(new URL('./stocks-web/style.css', import.meta.url), 'utf8')
   const form = (html.match(/<form id="prompt"[\s\S]*?<\/form>/) || [''])[0]
   check('a cursor block sits in the input line, hidden from screen readers', /<span class="cmd-wrap"><input id="cmd"[^>]*><span class="cmd-cursor" aria-hidden="true"><\/span><\/span>/.test(form))
   check('...shown only on an empty, unfocused line, blinking, and still under reduced motion', /\.cmd-wrap:focus-within \.cmd-cursor, \.cmd-wrap input:not\(:placeholder-shown\) \+ \.cmd-cursor \{ display: none; \}/.test(css) && /\.cmd-cursor \{[^}]*animation: blink/.test(css) && /prefers-reduced-motion: reduce\) \{ \.cmd-cursor \{ animation: none; \} \}/.test(css))
+}
+
+console.log('connecting from Claude and ChatGPT')
+{
+  const agents = (html.match(/<section class="agents"[\s\S]*?<\/section>/) || [''])[0]
+  const items = [...agents.matchAll(/<li>([\s\S]*?)<\/li>/g)].map((m) => m[1])
+  const gpt = items[1] || ''
+  check('Claude, ChatGPT, then Claude Code and other clients, one line each', items.length === 3 && items[0].startsWith('<b>Claude:</b>') && gpt.startsWith('<b>ChatGPT</b>') && /^<b>Claude Code:<\/b>[\s\S]*Other MCP clients/.test(items[2]))
+  check('...ChatGPT names its current path: Plugins, Add custom MCP server, No authentication, Create as a plugin', /Plugins → \+ → Add custom MCP server → paste the URL, No authentication → Create as a plugin/.test(gpt) && /type @/.test(gpt) && /\(web; /.test(gpt))
+  const urlBlock = (agents.match(/<pre id="mcp-url">([^<]*)<\/pre>/) || [])[1]
+  const ccUrl = (agents.match(/<pre id="mcp-cc">claude mcp add --transport http proofofstock (\S+)<\/pre>/) || [])[1]
+  const jsonUrl = (agents.match(/"url": "([^"]+)"/) || [])[1]
+  check('...the URL it says to paste is the one block that the command and the JSON also name', urlBlock === '__MCP_URL__' && ccUrl === urlBlock && jsonUrl === urlBlock && /data-copy="mcp-url"/.test(agents))
+  const howTo = ['../README.md', '../docs/README.md', '../docs/stocks-passport-agent.md', '../docs/tutorials/connect-an-agent.md'].map((f) => fs.readFileSync(new URL(f, import.meta.url), 'utf8'))
+  const tut = howTo[3]
+  check('the client name is proofofstock in the command and the JSON, here and in every how-to; stock-passport is left only in the tutorial\'s remove line', /<pre id="mcp-cc">claude mcp add --transport http proofofstock /.test(agents) && /"mcpServers": \{\n {4}"proofofstock": \{/.test(agents) && ![agents, ...howTo].some((t) => t.replace('claude mcp remove stock-passport', '').includes('stock-passport')) && tut.includes('claude mcp remove stock-passport') &&howTo.every((t) => !/claude mcp add/.test(t) || /claude mcp add --transport http proofofstock https:\/\/proofofstock\.xyz\/mcp/.test(t)))
+  const tutGpt = (tut.match(/### ChatGPT \(web\)\n([\s\S]*?)\n### /) || [])[1] || ''
+  check('...the tutorial gives the same ChatGPT steps with the public URL', /\*\*Plugins\*\*/.test(tutGpt) && /\*\*Add custom MCP server\*\*/.test(tutGpt) && /`https:\/\/proofofstock\.xyz\/mcp`/.test(tutGpt) && /\*\*No authentication\*\*/.test(tutGpt) && /\*\*Create as a plugin\*\*/.test(tutGpt))
 }
 
 console.log(`\n${passed} passed, ${failed} failed`)

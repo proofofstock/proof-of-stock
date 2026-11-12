@@ -329,6 +329,9 @@ console.log('the public MCP endpoint')
   const list = await (await rpc({ jsonrpc: '2.0', id: 3, method: 'tools/list' })).json()
   check('six read-only tools, none of them trading', list.result.tools.length === 6 && !list.result.tools.some((t) => /buy|sell|swap|trade/.test(t.name)))
   check('the passport tool offers only the hours the site holds', list.result.tools.find((t) => t.name === 'stock_passport').inputSchema.properties.hours.maximum === 24)
+  // mcptry, 12.11: agents pick a tool and fill its arguments from these descriptions, so none may be missing.
+  const undescribed = list.result.tools.flatMap((t) => Object.entries(t.inputSchema.properties || {}).filter(([, v]) => !(typeof v.description === 'string' && v.description.length >= 15)).map(([k]) => `${t.name}.${k}`))
+  check('every argument of every tool has a description an agent can act on', undescribed.length === 0, undescribed.join(', '))
   check('a protocol version header this server does not speak is 400', (await rpc({ jsonrpc: '2.0', id: 9, method: 'ping' }, { 'mcp-protocol-version': '1999-01-01' })).status === 400)
   check('...a supported one is served', (await rpc({ jsonrpc: '2.0', id: 10, method: 'ping' }, { 'mcp-protocol-version': '2025-06-18' })).status === 200)
   const find = await (await rpc({ jsonrpc: '2.0', id: 4, method: 'tools/call', params: { name: 'find_stock_token', arguments: { chain: 'base', query: 'nvda' } } })).json()
@@ -435,6 +438,30 @@ console.log('verify and badge')
   const sb = await (await fetch(`http://127.0.0.1:${p6}/stocks/badge.svg?chain=base&address=${X}`)).text()
   check('badge: ...and the badge says "?" with the address, still a 200', sb.includes('Registry unavailable') && sb.includes('0xeeee…eeee'))
   await app6.stop()
+}
+{
+  // /stats, the owner's dashboard (owner, 12.11): served only to a request that carries the gate header nginx sets
+  // behind its password; anything else is the same 404 as an unknown path. Aggregates only, every value escaped.
+  const statsDir = path.join(tmp, 'stats-analytics')
+  fs.mkdirSync(statsDir, { recursive: true })
+  const day = new Date(NOW).toISOString().slice(0, 10)
+  const hit = (o) => JSON.stringify({ at: new Date(NOW).toISOString(), ...o })
+  fs.writeFileSync(path.join(statsDir, `hits-${day}.jsonl`), [
+    hit({ kind: 'view', visitor: 'v1', ua_class: 'browser', page: '/', country: 'TR' }),
+    hit({ kind: 'hide', visitor: 'v1', ua_class: 'browser', page: '/', visible_s: 41 }),
+    hit({ kind: 'mcp', visitor: 'm1', method: 'tools/call', tool: 'find_stock_token', client: '<img src=x onerror=alert(1)>' }),
+  ].join('\n') + '\n')
+  const appS = createStocksWeb({ roots: { base: baseRoot, robinhood: rhRoot }, fetchImpl, now: () => NOW, log: () => {}, analytics: { dir: statsDir } })
+  const { port: pS } = await appS.start(0, '127.0.0.1')
+  const open = await fetch(`http://127.0.0.1:${pS}/stocks/stats`)
+  const spoof = await fetch(`http://127.0.0.1:${pS}/stocks/stats`, { headers: { 'x-pos-stats': 'yes' } })
+  check('/stats without the gate header is the same 404 as an unknown path, and so is a wrong value', open.status === 404 && spoof.status === 404)
+  const ok = await fetch(`http://127.0.0.1:${pS}/stocks/stats`, { headers: { 'x-pos-stats': 'gate' } })
+  const html = await ok.text()
+  check('...through the gate it is the dashboard: by day, the MCP clients, the recorder, the exam; never stored, never indexed', ok.status === 200 && /By day/.test(html) && /Recorder, Base/.test(html) && /Public exam/.test(html) && /<td class="n">1<\/td>/.test(html) && ok.headers.get('cache-control') === 'no-store, private' && /noindex/.test(ok.headers.get('x-robots-tag') || ''))
+  check('...an MCP client name from outside renders as text, and the page runs no script and no beacon', !html.includes('<img src=x') && html.includes('&lt;img src=x') && !/<script/i.test(html))
+  check('...the bars are meters, so the CSP needs no inline style', /<meter class="sx-bar/.test(html) && !/style="/.test(html))
+  await appS.stop()
 }
 {
   // /status and /history: one build serves every request for PAGE_CACHE_MS, then the page is built again.
@@ -720,6 +747,7 @@ console.log('source link')
   check('while the repository is private, no page links to it (no GitHub 404 for a visitor)', !hidden.home.includes('github.com') && !hidden.doc.includes('github.com') && !hidden.home.includes('<!--source-->'))
   const shown = await pages({ source: GH })
   check('once it is public, the footer and the docs link to the source', shown.home.includes(`href="${GH}"`) && shown.doc.includes(`href="${GH}"`))
+  check('...and the status bar has the exam chip, hidden until the page has a fresh result', /<footer class="statusbar">[\s\S]*<a id="exam-chip" class="exam" href="https:\/\/github\.com\/proofofstock\/proof-of-stock\/tree\/exam" target="_blank" rel="noopener noreferrer" hidden>/.test(shown.home) && !hidden.home.includes('exam-chip') && !shown.home.includes('<!--exam-->'))
   {
     // The bottom of every page: X, Telegram, GitHub, in that order and nothing after them (owner, 12.11).
     const icons = (html, cls) => [...html.matchAll(new RegExp(`<a class="${cls}" href="([^"]+)"`, 'g'))].map((m) => m[1])
@@ -753,7 +781,7 @@ console.log('deployment')
   const vhost = fs.readFileSync(new URL('../deployment/nginx/proofofstock.xyz.conf', import.meta.url), 'utf8')
   check('the unit runs this app from the deployed release, on loopback', /WorkingDirectory=\/opt\/stp\/current/.test(unit) && /apps\/stocks-web\.mjs/.test(unit) && /STOCKS_WEB_HOST=127\.0\.0\.1/.test(unit))
   check('the unit and the vhost agree on the port', /STOCKS_WEB_PORT=3005/.test(unit) && /proxy_pass http:\/\/127\.0\.0\.1:3005\/stocks\/;/.test(vhost))
-  check('the vhost is public: no auth_basic directive', !/^\s*auth_basic\s/m.test(vhost))
+  check('the vhost is public: no auth_basic directive outside the owner\'s /stats', !/^\s*auth_basic\s/m.test(vhost.replace(/location = \/stats \{[\s\S]*?\n {4}\}/, '')))
   check('the vhost passes the client as X-Real-IP and clears X-Forwarded-For, cookies and auth', /X-Real-IP \$remote_addr/.test(vhost) && /X-Forwarded-For ""/.test(vhost) && /Cookie ""/.test(vhost) && /Authorization ""/.test(vhost))
   check('the domain root is the app\'s /stocks/, and dot-files are refused', /location \/ \{\s*limit_except GET HEAD \{ deny all; \}\s*proxy_pass http:\/\/127\.0\.0\.1:3005\/stocks\/;/.test(vhost) && /location ~ \/\\\. \{ return 404; \}/.test(vhost))
   check('the vhost sends /mcp to the app, which answers GET and DELETE with 405 and an oversized body with its own 413', /location = \/mcp \{\s*limit_except GET POST OPTIONS DELETE \{ deny all; \}\s*[^}]*?client_max_body_size 32k;\s*proxy_pass http:\/\/127\.0\.0\.1:3005\/stocks\/mcp;/.test(vhost))
@@ -761,6 +789,12 @@ console.log('deployment')
   check('the older names still serve /mcp in place: a redirected POST is not followed', (vhost.match(/proxy_pass http:\/\/127\.0\.0\.1:3005\/stocks\/mcp;/g) || []).length === 3)
   check('the vhost allows GET and HEAD only, and rate limits', /limit_except GET HEAD \{ deny all; \}/.test(vhost) && /limit_req zone=stocks_req56/.test(vhost))
   check('every server block hides the nginx version on its own error pages', (vhost.match(/^server \{/gm) || []).length === (vhost.match(/^    server_tokens off;/gm) || []).length && /server_tokens off;/.test(vhost))
+  {
+    // /stats: a password, then the gate header; every other proxied location clears that header, so no client can send it.
+    const block = (vhost.match(/location = \/stats \{[\s\S]*?\n {4}\}/) || [''])[0]
+    check('/stats is behind nginx basic auth with the owner\'s password file, GET only, and only it sets the gate', /auth_basic "[^"]+";/.test(block) && /auth_basic_user_file \/etc\/nginx\/pos-stats\.htpasswd;/.test(block) && /limit_except GET HEAD \{ deny all; \}/.test(block) && /proxy_set_header X-Pos-Stats "gate";/.test(block) && (vhost.match(/X-Pos-Stats "gate"/g) || []).length === 1)
+    check('...and every other location that proxies to the app clears the gate header', (vhost.match(/proxy_pass /g) || []).length === (vhost.match(/proxy_set_header X-Pos-Stats /g) || []).length)
+  }
   check('security.txt is served though dot-paths are refused: an exact location, before the rule', vhost.indexOf('location = /.well-known/security.txt') > 0 && vhost.indexOf('location = /.well-known/security.txt') < vhost.indexOf('location ~ /\\. { return 404; }') && /proxy_pass http:\/\/127\.0\.0\.1:3005\/stocks\/\.well-known\/security\.txt;/.test(vhost))
   check('...and so is the MCP registry proof, the same way: GET only, before the rule', vhost.indexOf('location = /.well-known/mcp-registry-auth') > 0 && vhost.indexOf('location = /.well-known/mcp-registry-auth') < vhost.indexOf('location ~ /\\. { return 404; }') && /proxy_pass http:\/\/127\.0\.0\.1:3005\/stocks\/\.well-known\/mcp-registry-auth;/.test(vhost))
   {
@@ -777,6 +811,100 @@ console.log('deployment')
   check('every server that reaches the app limits requests and connections', serving.length === 3 && serving.every((b) => /limit_req zone=stocks_req56/.test(b) && /limit_conn stocks_conn56 \d+;/.test(b) && /limit_conn_status 429;/.test(b)))
   check('every https server sends HSTS', servers443.length === 4 && servers443.every((b) => /add_header Strict-Transport-Security "max-age=\d{7,}" always;/.test(b)))
   check('the unit hides other processes and keeps its files private', /^ProtectProc=invisible$/m.test(unit) && /^UMask=0077$/m.test(unit))
+}
+
+console.log('the public exam: /api/exam')
+{
+  const { EXAM_RAW_URL, EXAM_REPORTS_URL, createExamCache, summarizeExam } = await import('./stocks-exam.mjs')
+  const SHA = 'ab'.repeat(32)
+  // A report as scripts/exam.mjs writes it (latest.json): the failures list and the set's text included.
+  const report = (o = {}) => ({
+    version: 1, day: '2026-11-08', site: 'https://proofofstock.xyz', started_at: '2026-11-08T06:37:00.000Z', finished_at: '2026-11-08T06:52:10.000Z',
+    set: { counts: { A: 520, B: 12, C: 40, D: 20 }, sha256: SHA, issuer_list_sha256: { base: 'cd'.repeat(32), robinhood: 'ef'.repeat(32) } },
+    metrics: { false_listed: 0, false_not_listed: 0, real_called_fake: 0, lookalikes: 12, lookalikes_caught: 12, minted_wrong: 0, refused: 0, not_listed_while_refusing: 0, asked: 592,
+      lookalikes_caught_pct: 100, list_proof: { base: { ours: 'cd'.repeat(32), issuer: 'cd'.repeat(32), match: true }, robinhood: { ours: 'ef'.repeat(32), issuer: 'ef'.repeat(32), match: true } },
+      price_evidence: { tried: 10, onchain: 8, same_bytes: 8, none: 2 }, verify_ms: { p50: 140, p95: 410, batches: 14 } },
+    failures: [], failures_total: 0, ...o })
+  let t = NOW, body = JSON.stringify(report()), calls = 0, mode = 'ok', initSeen = null
+  const examFetch = async (url, init) => {
+    const u = String(url)
+    if (u === EXAM_RAW_URL) {
+      calls++
+      initSeen = init
+      if (mode === 'down') throw new Error('getaddrinfo ENOTFOUND raw.githubusercontent.com')
+      if (mode === 'huge-declared') return new Response('{}', { status: 200, headers: { 'content-length': String(50 * 1024 * 1024) } })
+      if (mode === 'huge-streamed') {
+        let sent = 0
+        return new Response(new ReadableStream({ pull (c) { if (sent > 4 * 1024 * 1024) return c.close(); sent += 65536; c.enqueue(new Uint8Array(65536).fill(32)) } }), { status: 200 })
+      }
+      if (mode === 'html') return new Response('<html><script>alert(1)</script></html>', { status: 200, headers: { 'content-type': 'text/html' } })
+      return new Response(body, { status: 200, headers: { 'content-type': 'application/json' } })
+    }
+    return fetchImpl(url, init)
+  }
+  const appE = createStocksWeb({ roots: { base: baseRoot, robinhood: rhRoot }, fetchImpl: examFetch, now: () => t, log: () => {} })
+  const { port: pe } = await appE.start(0, '127.0.0.1')
+  await appE.examRefresh()
+  check('the report is read with a timeout and no redirect', initSeen && initSeen.signal && initSeen.redirect === 'error')
+  const ex = async () => { const r = await fetch(`http://127.0.0.1:${pe}/stocks/api/exam`); return { r, text: await r.text() } }
+  t = Date.parse('2026-11-08T14:00:00Z')
+  {
+    const { r, text } = await ex(), j = JSON.parse(text)
+    check('the latest report is summarized: day, totals, failures_total, the set hash', r.status === 200 && j.day === '2026-11-08' && j.total === 592 && j.passed === 592 && j.failures_total === 0 && j.set.sha256 === SHA && j.set.counts.B === 12, text.slice(0, 200))
+    check('...with every metric as a number or a yes/no, and its age', j.metrics.lookalikes_caught === 12 && j.metrics.list_proof.base === true && j.metrics.price_evidence.same_bytes === 8 && j.metrics.verify_ms.p95 === 410 && j.age_s === Math.round((t - Date.parse('2026-11-08T06:52:10Z')) / 1000))
+    check('...and nothing else of the report: no failures list, no site, no issuer hashes', !('failures' in j) && !text.includes('issuer_list_sha256') && !text.includes('started_at') && !text.includes('not_listed_while_refusing'))
+    check('...links built here, to the public repository\'s exam branch', j.report_url === EXAM_REPORTS_URL && j.report_day_url === 'https://github.com/proofofstock/proof-of-stock/blob/exam/reports/2026-11-08.md' && j.rerun === 'node scripts/exam.mjs')
+    check('...JSON, nosniff, cacheable for 5 minutes', /application\/json/.test(r.headers.get('content-type')) && r.headers.get('x-content-type-options') === 'nosniff' && r.headers.get('cache-control') === 'public, max-age=300')
+  }
+  {
+    for (let i = 0; i < 5; i++) await ex()
+    await appE.refreshAll(); await appE.examRefresh()
+    check('the report is read once: requests answer from memory, a refresh within 30 minutes reads nothing', calls === 1, String(calls))
+    t += 31 * 60e3
+    await appE.refreshAll(); await appE.examRefresh()
+    check('...and read again once 30 minutes have passed', calls === 2, String(calls))
+  }
+  {
+    // A failed read hides the result: no last copy shown as if it were current.
+    mode = 'down'; t += 31 * 60e3; await appE.examRefresh()
+    const { r, text } = await ex()
+    check('a failed read: 503 with a plain sentence, no numbers, nothing of the error', r.status === 503 && /could not be read/.test(text) && !/ENOTFOUND|githubusercontent|592/.test(text) && r.headers.get('cache-control') === 'no-store', text)
+  }
+  const hostile = async (m, b) => { mode = m; if (b != null) body = b; t += 31 * 60e3; await appE.examRefresh(); return ex() }
+  {
+    const h1 = await hostile('huge-declared')
+    const h2 = await hostile('huge-streamed')
+    const h3 = await hostile('html')
+    check('a huge body (declared or streamed) and an HTML page are refused', [h1, h2, h3].every((x) => x.r.status === 503), [h1, h2, h3].map((x) => x.r.status).join(' '))
+    const fresh = (o) => JSON.stringify(report({ day: new Date(t).toISOString().slice(0, 10), finished_at: new Date(t).toISOString(), ...o }))
+    const bad = [
+      await hostile('ok', fresh({ day: '<img src=x onerror=alert(1)>' })),
+      await hostile('ok', fresh({ set: { counts: { A: 1, B: 0, C: 0, D: 0 }, sha256: '<script>alert(1)</script>' } })),
+      await hostile('ok', fresh({ failures_total: '<b>0</b>' })),
+      await hostile('ok', JSON.stringify({ ...report(), metrics: { ...report().metrics, asked: -1 } })),
+      await hostile('ok', fresh({ finished_at: new Date(t + 86400e3).toISOString() })),
+    ]
+    check('a report with markup, a negative count or a date in the future is refused whole', bad.every((x) => x.r.status === 503), bad.map((x) => x.r.status).join(' '))
+    const tagged = await hostile('ok', fresh({ site: '<script>alert(1)</script>', note: '<img src=x onerror=alert(1)>', failures: [{ group: 'A', address: '<svg onload=alert(1)>', why: '<script>x</script>' }], failures_total: 1 }))
+    check('a good report with markup in the fields we do not use: shown, and no "<" reaches the answer', tagged.r.status === 200 && !tagged.text.includes('<') && JSON.parse(tagged.text).failures_total === 1 && JSON.parse(tagged.text).passed === 591, tagged.text.slice(0, 160))
+  }
+  {
+    const old = await hostile('ok', JSON.stringify(report({ day: '2026-11-01', finished_at: new Date(t - 37 * 3600e3 + 31 * 60e3).toISOString() })))
+    check('a report older than 36 hours is not shown', old.r.status === 503 && /last 36 hours/.test(old.text) && !/2026-11-01|592/.test(old.text), old.text)
+    const ok = await hostile('ok', JSON.stringify(report({ day: new Date(t).toISOString().slice(0, 10), finished_at: new Date(t).toISOString() })))
+    check('...a fresh one is', ok.r.status === 200, ok.text.slice(0, 120))
+    t += 36 * 3600e3 // no new read: the copy ages in memory
+    const aged = await ex()
+    check('...and one that ages past 36 hours in memory stops being shown, without a new read', aged.r.status === 503 && /last 36 hours/.test(aged.text))
+  }
+  check('summarizeExam takes only version 1 with every field of its kind', summarizeExam(report(), NOW) && !summarizeExam({ ...report(), version: 2 }, NOW) && !summarizeExam(null, NOW) && !summarizeExam({ ...report(), set: null }, NOW))
+  {
+    let n = 0
+    const off = createExamCache({ url: null, fetchImpl: async () => { n++; return new Response('{}') } })
+    await off.refresh(true)
+    check('url null turns it off: no read, 503', n === 0 && off.get().status === 503)
+  }
+  await appE.stop()
 }
 
 fs.rmSync(tmp, { recursive: true, force: true })

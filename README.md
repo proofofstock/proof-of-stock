@@ -31,10 +31,10 @@ No key and no sign-up for any of these.
 Add the MCP server to Claude Code:
 
 ```bash
-claude mcp add --transport http stock-passport https://proofofstock.xyz/mcp
+claude mcp add --transport http proofofstock https://proofofstock.xyz/mcp
 ```
 
-Claude, Cursor and raw JSON-RPC are covered in the [tutorial](docs/tutorials/connect-an-agent.md).
+Claude, ChatGPT, Cursor and raw JSON-RPC are covered in the [tutorial](docs/tutorials/connect-an-agent.md).
 
 ## Example
 

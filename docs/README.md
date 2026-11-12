@@ -14,7 +14,7 @@ No key, no sign-up.
 
 ```bash
 # an agent: the MCP server
-claude mcp add --transport http stock-passport https://proofofstock.xyz/mcp
+claude mcp add --transport http proofofstock https://proofofstock.xyz/mcp
 # anything else: plain HTTP
 curl -s 'https://proofofstock.xyz/verify?chain=base&address=0xb20000000000000000000078ee7ce2fe4908108c'
 ```

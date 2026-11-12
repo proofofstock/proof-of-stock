@@ -49,7 +49,7 @@ kbd { font: inherit; background: var(--glass-2); border: 1px solid var(--line); 
 ::-webkit-scrollbar-thumb { background: var(--line); border-radius: 8px; border: 2px solid var(--glass); }
 ::-webkit-scrollbar-thumb:hover { background: var(--accent-hi); }
 ::-webkit-scrollbar-corner { background: transparent; }
-.term { position: relative; max-width: 980px; margin: 0 auto; background: color-mix(in srgb, var(--glass) 96%, #06080c); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: 0 0 0 1px rgba(0, 82, 255, .18), 0 0 80px rgba(0, 82, 255, .08), 0 40px 120px rgba(0, 0, 0, .7); display: flex; flex-direction: column; height: min(640px, 78vh); min-height: 480px; overflow: hidden; scroll-margin-top: 60px; }
+.term { position: relative; max-width: 980px; margin: 0 auto; background: color-mix(in srgb, var(--glass) 96%, #06080c); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: 0 0 0 1px rgba(0, 82, 255, .18), 0 0 80px rgba(0, 82, 255, .08), 0 40px 120px rgba(0, 0, 0, .7); display: flex; flex-direction: column; height: min(640px, 78vh); min-height: 480px; overflow: hidden; scroll-margin-top: 8px; }
 .titlebar { display: flex; align-items: center; gap: 14px; padding: 10px 14px; border-bottom: 1px solid var(--line); background: linear-gradient(#10141c, var(--glass)); }
 /* The window controls work like a desktop window's: red clears the screen, yellow returns the window to its normal
    size, green makes it larger. Their signs show on hover, as on a Mac. */
@@ -210,6 +210,20 @@ a.btn { text-decoration: none; display: inline-block; }
 .hint button.key:hover, .hint button.key:hover kbd { color: var(--accent-hi); }
 .hint button.key:hover kbd { border-color: var(--accent-hi); }
 .hint button.key:focus-visible { outline: 2px solid var(--accent-hi); outline-offset: 2px; border-radius: 4px; }
+/* The public exam, graded like a test paper: "exam 12 Nov [bar] 592/592". Quiet like the rest of the bar; the bar is the
+   share answered right, green when full, amber when not. Hidden until a report from the last 36 h is read. */
+.statusbar .exam { display: inline-flex; align-items: center; gap: 7px; color: var(--faint); text-decoration: none; white-space: nowrap; border-radius: 4px; }
+.statusbar .exam[hidden] { display: none; }
+.exam .exam-k { color: var(--dim); }
+.exam .exam-bar { position: relative; width: 26px; height: 3px; border-radius: 2px; background: var(--line); overflow: hidden; }
+.exam .exam-bar i { position: absolute; inset: 0 auto 0 0; width: 0; background: var(--ok); border-radius: 2px; transition: width .6s ease-out; }
+.exam.miss .exam-bar i { background: var(--warn); }
+.exam .exam-s { color: var(--dim); font-variant-numeric: tabular-nums; }
+.exam:hover .exam-k, .exam:hover .exam-s { color: var(--accent-hi); }
+.exam:focus-visible { outline: 2px solid var(--accent-hi); outline-offset: 2px; }
+.field .v.warn { color: var(--warn); }
+.field .exam-t { font-size: 11.5px; white-space: nowrap; min-width: 24ch; }
+.exam-sha code { word-break: break-all; }
 .disclaimer { max-width: 980px; margin: 14px auto 0; color: var(--faint); font: 12.5px/1.5 var(--sans); text-align: center; }
 .disclaimer strong { color: var(--dim); font-weight: 500; }
 
@@ -231,11 +245,13 @@ a.btn { text-decoration: none; display: inline-block; }
   .status { align-items: flex-start; }
   .status .segs { flex-direction: column; }
   .statusbar .hint { display: none; }
+  .field .exam-t { display: none; }
   .out > .tbl, .more .tbl { display: block; overflow-x: auto; white-space: nowrap; }
   .disclaimer { padding: 10px 14px 14px; margin: 0; }
 }
 @media (prefers-reduced-motion: reduce) {
   .term { transition: none; }
+  .exam .exam-bar i { transition: none; }
   .addr-copy.done .addr-text { animation: none; }
   .block { animation: none; }
   .typing::after { animation: none; }
@@ -313,6 +329,8 @@ a.btn { text-decoration: none; display: inline-block; }
   .wire:hover .wire-go .i-arrow { transform: rotate(90deg) translateX(2px); }
 }
 @keyframes wire-packet { 0% { left: 0; opacity: 0; } 8% { opacity: 1; } 30% { left: calc(100% - 5px); opacity: 1; } 36%, 100% { left: calc(100% - 5px); opacity: 0; } }
+/* A jump to #mcp, #faq or #findings, and the terminal's scrollIntoView, stop below the sticky ticker (34px and its border). */
+html:has(.tape) { scroll-padding-top: 52px; } /* the landing only: docs headings keep their own 80px */
 @media (prefers-reduced-motion: no-preference) { html { scroll-behavior: smooth; } }
 @media (prefers-reduced-motion: reduce) { .wire-l { animation: none; opacity: 1; } .wire-packet { animation: none; } .wire, .wire-go .i-arrow { transition: none; } .wire:hover { transform: none; } }
 
@@ -337,6 +355,8 @@ a.btn { text-decoration: none; display: inline-block; }
 .art-label { fill: var(--faint); font: 10.5px var(--mono); }
 .agents { max-width: 980px; margin: 64px auto 0; display: grid; grid-template-columns: 1fr 1.1fr; gap: 36px; align-items: center; }
 .agents code { color: var(--accent-hi); font-size: 13px; }
+.agents .connect { list-style: none; margin: 0; padding: 0; font: 14px/1.6 var(--sans); display: grid; gap: 4px; }
+.agents .connect b { color: var(--dim); font-weight: 600; }
 .code { background: var(--glass); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
 .code-head { display: flex; justify-content: space-between; align-items: center; padding: 6px 10px; border-bottom: 1px solid var(--line); color: var(--faint); font-size: 12px; }
 .code .code-head:not(:first-child) { border-top: 1px solid var(--line); }

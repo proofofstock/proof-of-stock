@@ -67,14 +67,23 @@ export function summarise (rows) {
   }
 }
 
+/** The last `days` UTC days to `today`, oldest first: { day, summary } with summary null for a day with no file. */
+export function dailySummaries ({ dir, days = 7, today = new Date().toISOString().slice(0, 10) }) {
+  const out = []
+  for (let i = days - 1; i >= 0; i--) {
+    const day = new Date(Date.parse(today + 'T00:00:00Z') - i * 86400e3).toISOString().slice(0, 10)
+    const f = dir ? path.join(dir, `hits-${day}.jsonl`) : null
+    if (!f || !fs.existsSync(f)) { out.push({ day, summary: null }); continue }
+    const rows = fs.readFileSync(f, 'utf8').split('\n').filter(Boolean).flatMap((l) => { try { return [JSON.parse(l)] } catch { return [] } })
+    out.push({ day, summary: summarise(rows) })
+  }
+  return out
+}
+
 export function report ({ dir, days = 7, today = new Date().toISOString().slice(0, 10) }) {
   const out = [`# Visit counter, last ${days} days to ${today}`, '', 'People: pages that ran their script in a browser. Pseudonyms change daily, so a person counts once per day.', '']
-  for (let i = days - 1; i >= 0; i--) {
-    const d = new Date(Date.parse(today + 'T00:00:00Z') - i * 86400e3).toISOString().slice(0, 10)
-    const f = path.join(dir, `hits-${d}.jsonl`)
-    if (!fs.existsSync(f)) { out.push(`## ${d}`, '', 'no file', ''); continue }
-    const rows = fs.readFileSync(f, 'utf8').split('\n').filter(Boolean).flatMap((l) => { try { return [JSON.parse(l)] } catch { return [] } })
-    const s = summarise(rows)
+  for (const { day: d, summary: s } of dailySummaries({ dir, days, today })) {
+    if (!s) { out.push(`## ${d}`, '', 'no file', ''); continue }
     const list = (a, f2 = ([k, v]) => `${k} ${v}`) => a.length ? a.map(f2).join(', ') : 'none'
     out.push(`## ${d}`, '',
       `- **people:** ${s.people}; spent 30 s or more: ${s.engaged}; median visible time per person: ${s.median_visible_s ?? ', '} s`,

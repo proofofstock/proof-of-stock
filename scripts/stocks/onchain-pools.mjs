@@ -35,7 +35,12 @@ import path from 'node:path'
 import { tokenPriceIn } from '../../evm/core/stocks/peg.mjs'
 
 export const MULTICALL3 = '0xca11bde05977b3631167028862be2a173976ca11'
-const RPC_TIMEOUT_MS = 10_000
+// The public RPCs answer a token's read in about 0.1 s from the host (p95 0.37 s, max 0.72 s, 12.11): two such requests
+// per token, each cut at 5 s so a hung one cannot eat the run. A large multicall (the factories' discovery, up to CHUNK
+// calls, every 6 h) keeps the longer limit.
+const RPC_TIMEOUT_MS = 5_000
+const RPC_LARGE_TIMEOUT_MS = 15_000
+const LARGE_CALL = 50
 const CHUNK = 200
 export const BOOK_FILE = 'pool-book.json'
 export const BOOK_MAX_PER_TOKEN = 40
@@ -129,8 +134,8 @@ export function decodeAggregate3Calldata (hex) {
 
 // ---- RPC
 
-async function rpc (fetchImpl, url, method, params) {
-  const r = await fetchImpl(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }), signal: AbortSignal.timeout(RPC_TIMEOUT_MS) })
+async function rpc (fetchImpl, url, method, params, timeoutMs = RPC_TIMEOUT_MS) {
+  const r = await fetchImpl(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }), signal: AbortSignal.timeout(timeoutMs) })
   if (!r.ok) throw new Error(`rpc answered ${r.status}`)
   const j = await r.json()
   if (!j || j.error || j.result == null) throw new Error('rpc: ' + String(j?.error?.message || 'no result').slice(0, 120))
@@ -147,7 +152,7 @@ export async function multicall (fetchImpl, url, calls, blockNumber) {
   const out = []
   for (let i = 0; i < calls.length; i += CHUNK) {
     const part = calls.slice(i, i + CHUNK)
-    const res = decodeAggregate3Result(await rpc(fetchImpl, url, 'eth_call', [{ to: MULTICALL3, data: encodeAggregate3(part) }, '0x' + blockNumber.toString(16)]))
+    const res = decodeAggregate3Result(await rpc(fetchImpl, url, 'eth_call', [{ to: MULTICALL3, data: encodeAggregate3(part) }, '0x' + blockNumber.toString(16)], part.length > LARGE_CALL ? RPC_LARGE_TIMEOUT_MS : RPC_TIMEOUT_MS))
     if (res.length !== part.length) throw new Error('aggregate3: result count')
     out.push(...res)
   }

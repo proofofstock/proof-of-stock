@@ -44,11 +44,23 @@
         "error": { "type": ["string", "null"], "description": "set when the chain could not be reached at the start of the run; every reading then stands on the aggregators" },
         "discovered": { "type": "integer", "minimum": 0, "description": "pools the factories returned that the pool book did not hold" },
         "tokens_read": { "type": "integer", "minimum": 0 },
+        "breaker": { "type": ["string", "null"], "description": "set when the run stopped reading the chain after several failed tokens in a row; the later rows stand on the aggregators" },
         "read_errors": { "type": "integer", "minimum": 0, "description": "tokens whose chain read failed; those rows stand on the aggregators" }
       },
       "additionalProperties": false
     },
-    "aborted": { "type": ["string", "null"], "description": "set when the run stopped on an error or at its deadline after the registry was read; the rows before it stand" }
+    "aborted": { "type": ["string", "null"], "description": "set when the run stopped on an error or at its deadline after the registry was read; the rows before it stand" },
+    "duration_s": { "type": "number", "minimum": 0, "description": "wall time of the run, from its start to the row being written" },
+    "budget_s": { "type": ["number", "null"], "minimum": 0, "description": "the time the run was given: its deadline minus its start; null when it ran without a deadline" },
+    "timing": {
+      "type": "object",
+      "description": "where the run spent its time: every outside request by source, timed until its answer arrived. rpc_block reads a block, rpc_call is an eth_call (the pools' multicall)",
+      "propertyNames": { "enum": ["issuer", "dexscreener", "geckoterminal", "rpc_block", "rpc_call", "rpc_other", "other"] },
+      "additionalProperties": {
+        "type": "object", "additionalProperties": false, "required": ["n", "total_ms", "p50_ms", "p95_ms", "max_ms"],
+        "properties": { "n": { "type": "integer", "minimum": 1 }, "total_ms": { "type": "number", "minimum": 0 }, "p50_ms": { "type": "number", "minimum": 0 }, "p95_ms": { "type": "number", "minimum": 0 }, "max_ms": { "type": "number", "minimum": 0 }, "n_429": { "type": "integer", "minimum": 0, "description": "answers refused as rate limited" }, "n_failed": { "type": "integer", "minimum": 0, "description": "other failures: a non-2xx status, a timeout, a network error" } }
+      }
+    }
   },
   "additionalProperties": false
 }

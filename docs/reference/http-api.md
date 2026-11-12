@@ -31,6 +31,7 @@ curl -s 'https://proofofstock.xyz/verify?chain=base&address=0xaaaaaaaaaaaaaaaaaa
 - [`GET /api/list/<hex>`](#route-list)
 - [`GET /api/matrix`](#route-matrix)
 - [`GET /api/status`](#route-status)
+- [`GET /api/exam`](#route-exam)
 - [Monitoring](#monitoring)
 
 <a id="basics"></a>
@@ -459,6 +460,36 @@ curl -s 'https://proofofstock.xyz/api/status'
 
 `readings_age_s` says when the server last read the files; `newest_reading_age_s` says when the recorder last wrote
 one. `Cache-Control: no-store`. This route counts against the rate limit.
+
+<a id="route-exam"></a>
+## `GET /api/exam`
+
+The latest public exam, summarized. Once a day the public repository asks the site about every token whose right
+answer comes from the issuers (`scripts/exam.mjs`) and commits the report to its
+[`exam` branch](https://github.com/proofofstock/proof-of-stock/tree/exam). The server reads `reports/latest.json` from
+there at most every 30 minutes, in the background, and keeps only numbers and checked strings.
+
+```bash
+curl -s 'https://proofofstock.xyz/api/exam'
+```
+
+```json
+{
+  "day": "2026-11-12", "finished_at": "2026-11-12T06:52:10.000Z", "age_s": 25200,
+  "total": 592, "passed": 592, "failures_total": 0,
+  "set": { "counts": { "A": 520, "B": 12, "C": 40, "D": 20 }, "sha256": "<64 hex>" },
+  "metrics": { "asked": 592, "false_listed": 0, "false_not_listed": 0, "real_called_fake": 0, "lookalikes": 12, "lookalikes_caught": 12,
+    "minted_wrong": 0, "refused": 0, "list_proof": { "base": true, "robinhood": true },
+    "price_evidence": { "tried": 10, "onchain": 8, "same_bytes": 8, "none": 2 }, "verify_ms": { "p50": 140, "p95": 410 } },
+  "report_url": "https://github.com/proofofstock/proof-of-stock/tree/exam",
+  "report_day_url": "https://github.com/proofofstock/proof-of-stock/blob/exam/reports/2026-11-12.md",
+  "rerun": "node scripts/exam.mjs", "repo": "https://github.com/proofofstock/proof-of-stock"
+}
+```
+
+`set.counts`: A tokens on the issuers' lists, B look-alikes flagged that week, C strangers, D Base tokens asked on
+Robinhood Chain. `passed` is `total` less refusals and failures, so it never flatters. 503 with `{ "error": ... }` when
+the report could not be read or none is from the last 36 hours: an old result is never served as current.
 
 <a id="monitoring"></a>
 ## Monitoring

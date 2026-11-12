@@ -32,9 +32,21 @@
     },
     {
       "name": "a chain read that throws loses the reading",
-      "find": "        if (c.e) { onchainError = String(c.e && c.e.message || c.e).slice(0, 200); run.onchain.read_errors++ } else if (c.r) { chainRead = c.r; run.onchain.tokens_read++ }",
-      "replace": "        if (c.e) throw c.e; else if (c.r) { chainRead = c.r; run.onchain.tokens_read++ }",
+      "find": "          onchainError = String(c.e && c.e.message || c.e).slice(0, 200); run.onchain.read_errors++\n",
+      "replace": "          throw c.e\n",
       "expect": "FAIL a chain read that fails mid-run is named on the row, and the DexScreener reading stands"
+    },
+    {
+      "name": "the chain breaker never opens",
+      "find": "          if (++chainFails >= ONCHAIN_BREAKER)",
+      "replace": "          if (++chainFails >= ONCHAIN_BREAKER * 1000)",
+      "expect": "FAIL after ONCHAIN_BREAKER failed tokens in a row the run stops asking the chain, and says so"
+    },
+    {
+      "name": "the pool book stops learning once the breaker opens",
+      "find": "      if (chainState.ok) learn(",
+      "replace": "      if (chainState.ok && !run.onchain.breaker) learn(",
+      "expect": "FAIL ...and the pool book still learned the pools DexScreener listed after the breaker"
     },
     {
       "name": "the chain is not merged when DexScreener is down",

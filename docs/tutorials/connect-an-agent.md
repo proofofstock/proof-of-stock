@@ -1,4 +1,4 @@
-v0.5.0 · updated 2026-11-11
+v0.5.0 · updated 2026-11-12
 
 # Connect an agent and read your first passport
 
@@ -22,16 +22,34 @@ Pick one client in step 1. Step 2 is the same for all of them.
 3. Name it `Proof of Stock` and paste `https://proofofstock.xyz/mcp` as the URL.
 4. Save. In a new chat, turn the connector on.
 
+### ChatGPT (web)
+
+On chatgpt.com, with a Pro, Business or Enterprise/Edu plan. On Business, only admins and owners can add a server;
+on Enterprise/Edu, an admin can grant it. Not on mobile.
+
+1. Open **Plugins**.
+2. Select the plus button, then **Add custom MCP server**.
+3. Name it `Proof of Stock`. Under **Connection**, paste `https://proofofstock.xyz/mcp` as the server URL.
+4. For authentication, choose **No authentication**.
+5. Tick **I understand and want to continue**, then select **Create as a plugin**. You should see the six tools.
+6. Install the plugin. In a new chat, type `@` and pick it.
+
 ### Claude Code
 
 ```bash
-claude mcp add --transport http stock-passport https://proofofstock.xyz/mcp
+claude mcp add --transport http proofofstock https://proofofstock.xyz/mcp
 ```
 
 Check that it is there:
 
 ```bash
 claude mcp list
+```
+
+If you added it before under its old name, remove that entry, or every tool shows twice:
+
+```bash
+claude mcp remove stock-passport
 ```
 
 ### Cursor
@@ -41,7 +59,7 @@ Add the server to `~/.cursor/mcp.json` (all projects) or `.cursor/mcp.json` (thi
 ```json
 {
   "mcpServers": {
-    "stock-passport": { "url": "https://proofofstock.xyz/mcp" }
+    "proofofstock": { "url": "https://proofofstock.xyz/mcp" }
   }
 }
 ```

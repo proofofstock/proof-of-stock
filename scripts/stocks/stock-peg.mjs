@@ -58,7 +58,12 @@ export const CHAINS = Object.freeze(Object.assign(Object.create(null), {
   base: { issuer: 'coinbase', read: readCoinbase, slug: 'base', gecko: 'base', chainId: BASE_DESCRIPTOR.chainId, explorer: BASE_DESCRIPTOR.explorer?.webUrl || null, referenceAssets: referenceAssetsOf(BASE_DESCRIPTOR) },
   robinhood: { issuer: 'robinhood', read: readRobinhood, slug: 'robinhood', gecko: 'robinhood', chainId: ROBINHOOD_DESCRIPTOR.chainId, explorer: ROBINHOOD_DESCRIPTOR.explorer?.webUrl || null, referenceAssets: referenceAssetsOf(ROBINHOOD_DESCRIPTOR) },
 }))
-const PAIR_TIMEOUT_MS = 15_000
+// DexScreener answers in about 0.15 s (p95 0.19 s, measured on the host 12.11); a request still open after 6 s is
+// not coming back, and every second it waits is taken from the run's deadline (the 17:01 abort, 12.11).
+const PAIR_TIMEOUT_MS = 6_000
+// After this many tokens in a row whose chain read failed, the run stops asking the chain: each failure can cost two
+// RPC timeouts, and the aggregators' reading stands anyway. The pool book still learns.
+export const ONCHAIN_BREAKER = 5
 export const SUPPLEMENT_STOP_MS = 90_000 // no GeckoTerminal top-ups this close to the deadline
 const day = (ms) => new Date(ms).toISOString().slice(0, 10)
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
@@ -71,6 +76,49 @@ async function readPairs (fetchImpl, slug, address) {
   const body = JSON.parse(snap.body)
   if (!Array.isArray(body)) throw new Error('dexscreener body is not an array')
   return { pairs: body, snap }
+}
+
+/**
+ * Where a run spends its time (owner, 12.11: a Robinhood run reached its 9-minute deadline). Wraps fetch: every outside
+ * request is sorted by source and timed until its whole answer has arrived (the body is read once from a clone, so the
+ * caller reads it as before). summary() gives, per source, the count, the total and the p50, p95 and max in ms, and how
+ * many answers were 429 (rate limited) and how many failed otherwise (another non-2xx status, a timeout, a network error).
+ * JSON-RPC is recognised by its body before any host, since an RPC host may sit under an issuer's domain
+ * (rpc.mainnet.chain.robinhood.com).
+ */
+export function timedFetch (fetchImpl, clock = () => performance.now()) {
+  const times = {}
+  const rpcMethod = (init) => {
+    if (!init || typeof init.body !== 'string') return null
+    try { const b = JSON.parse(init.body); const one = Array.isArray(b) ? b[0] : b; return one && one.jsonrpc ? String(one.method || '') : null } catch (_) { return null }
+  }
+  const sourceOf = (url, init) => {
+    const m = rpcMethod(init)
+    if (m != null) return m === 'eth_call' ? 'rpc_call' : (m === 'eth_blockNumber' || m.startsWith('eth_getBlock')) ? 'rpc_block' : 'rpc_other'
+    let host = ''
+    try { host = new URL(String(url)).host } catch (_) { /* counted as other */ }
+    if (/(^|\.)dexscreener\.com$/.test(host)) return 'dexscreener'
+    if (/(^|\.)geckoterminal\.com$/.test(host)) return 'geckoterminal'
+    if (/(^|\.)(coinbase|robinhood)\.com$/.test(host)) return 'issuer'
+    return 'other'
+  }
+  const statuses = {}
+  const timed = async (url, init) => {
+    const source = sourceOf(url, init), t0 = clock()
+    const st = (statuses[source] ||= { n_429: 0, n_failed: 0 })
+    try {
+      const r = await fetchImpl(url, init)
+      if (r && r.status === 429) st.n_429++
+      else if (r && r.ok === false) st.n_failed++
+      if (r && typeof r.clone === 'function') await r.clone().arrayBuffer().catch(() => {})
+      return r
+    } catch (e) { st.n_failed++; throw e } finally { (times[source] ||= []).push(Math.max(0, clock() - t0)) }
+  }
+  timed.summary = () => Object.fromEntries(Object.entries(times).map(([source, xs]) => {
+    const v = [...xs].sort((a, b) => a - b), at = (p) => Math.round(v[Math.min(v.length - 1, Math.floor(p * v.length))])
+    return [source, { n: v.length, total_ms: Math.round(v.reduce((a, b) => a + b, 0)), p50_ms: at(0.5), p95_ms: at(0.95), max_ms: Math.round(v[v.length - 1]), n_429: statuses[source]?.n_429 || 0, n_failed: statuses[source]?.n_failed || 0 }]
+  }))
+  return timed
 }
 
 // Robinhood stamps every quote with the time its server answered (generatedAt), which is seconds old even when the quote
@@ -91,9 +139,12 @@ export function unchangedSince (state, address, reference, atIso) {
 export async function runStockPeg ({ chain, root, fetchImpl = fetch, now = () => Date.now(), paceMs = 250, geckoPaceMs = 4500, log = console.log,
   deadline = null, // ms since epoch, or null for none; see the header
   env = process.env, // STP_RPC_BASE / STP_RPC_ROBINHOOD replace the public RPC (scripts/stocks/onchain-pools.mjs)
+  clock = () => performance.now(), // times the outside requests (timedFetch); `now` stays the run's calendar
   onHistoryError = () => { process.exitCode = 1 } }) {
   const C = CHAINS[chain]
   if (!C) throw new Error(`unknown chain ${chain}: expected one of ${Object.keys(CHAINS).join(', ')}`)
+  const timed = timedFetch(fetchImpl, clock)
+  fetchImpl = timed
   const outDir = path.join(root, 'stock-peg')
   fs.mkdirSync(outDir, { recursive: true })
   const started = now()
@@ -130,7 +181,8 @@ export async function runStockPeg ({ chain, root, fetchImpl = fetch, now = () =>
     run.tokens_considered = wanted.length
     // The chain's side of the run. It never throws: a chain it cannot reach leaves every reading to the aggregators.
     chainState = await prepareOnchain({ chain, dir: outDir, tokens: wanted.map((r) => r.address), referenceAssets: C.referenceAssets, fetchImpl, now, env })
-    run.onchain = { rpc: chainState.rpc, error: chainState.error, discovered: chainState.discovered, tokens_read: 0, read_errors: 0 }
+    run.onchain = { rpc: chainState.rpc, error: chainState.error, discovered: chainState.discovered, tokens_read: 0, read_errors: 0, breaker: null }
+    let chainFails = 0
     // Private copies of the aggregators' answers (scripts/stocks/raw-store.mjs): off unless STP_RAW_SNAPSHOTS=1.
     raw = openRawStore({ chain, env, now, log })
     for (const rec of wanted) {
@@ -140,7 +192,7 @@ export async function runStockPeg ({ chain, root, fetchImpl = fetch, now = () =>
       // The chain is read from the pool book while DexScreener answers: a pool DexScreener lists for the first time is
       // read from the chain from the next run on (the factories' pools from the first). Sequential, the chain added
       // ~0.4 s a token, ~80 s to a Robinhood run already near its deadline (measured 12.11).
-      const chainP = chainState.ok ? readTokenOnchain(chainState, fetchImpl, rec.address, { tokenUsd: rec.reference?.price_usd ?? null }).then((r) => ({ r }), (e) => ({ e })) : null
+      const chainP = chainState.ok && !run.onchain.breaker ? readTokenOnchain(chainState, fetchImpl, rec.address, { tokenUsd: rec.reference?.price_usd ?? null }).then((r) => ({ r }), (e) => ({ e })) : null
       try { const d = await readPairs(fetchImpl, C.slug, rec.address); pairs = d.pairs; snaps.push(d.snap); (shapes['dexscreener:token-pairs'] ||= []).push(shapeOf(d.pairs)) } catch (e) { pairError = String(e && e.message || e).slice(0, 200); run.pair_read_errors++ }
       const dsCapped = pairs ? pairs.length >= DEXSCREENER_PAIR_CAP : false
       // A full DexScreener list may be hiding pools: ask GeckoTerminal for more, and keep the first list if it refuses.
@@ -159,9 +211,14 @@ export async function runStockPeg ({ chain, root, fetchImpl = fetch, now = () =>
       let onchainError = null, chainRead = null
       if (chainP) {
         const c = await chainP
-        if (c.e) { onchainError = String(c.e && c.e.message || c.e).slice(0, 200); run.onchain.read_errors++ } else if (c.r) { chainRead = c.r; run.onchain.tokens_read++ }
-        learn(chainState.book, rec.address, pairs, C.referenceAssets, sources.includes('geckoterminal') ? 'geckoterminal' : 'dexscreener', new Date(now()).toISOString())
+        if (c.e) {
+          onchainError = String(c.e && c.e.message || c.e).slice(0, 200); run.onchain.read_errors++
+          if (++chainFails >= ONCHAIN_BREAKER) run.onchain.breaker = `stopped reading the chain after ${ONCHAIN_BREAKER} failed tokens in a row, at token ${run.rows_written + run.rows_invalid + 1} of ${wanted.length}`
+        } else if (c.r) { chainFails = 0; chainRead = c.r; run.onchain.tokens_read++ } // a token with no pool in the book asked nothing, and proves nothing
       }
+      // The pool book learns from the aggregators' answer whenever the chain was reached at the start, even after the
+      // breaker stopped the reads: the next run starts with the pools this one saw.
+      if (chainState.ok) learn(chainState.book, rec.address, pairs, C.referenceAssets, sources.includes('geckoterminal') ? 'geckoterminal' : 'dexscreener', new Date(now()).toISOString())
       if (chainRead && chainRead.reads.size) { pairs = mergeOnchain(rec.address, pairs, chainRead.reads, C.referenceAssets, ONCHAIN[chain]?.symbols); sources.push('onchain') }
       const source = sources.length ? sources.join('+') : 'dexscreener'
       const at = now()
@@ -202,11 +259,15 @@ export async function runStockPeg ({ chain, root, fetchImpl = fetch, now = () =>
     try { run.shape_changes = recordShapes(outDir, shapes, { complete: !run.aborted }) } catch (e) { log('[stock-peg] shapes not compared: ' + String(e && e.message || e).slice(0, 200)) }
   }
 
-  run.finished_at = new Date(now()).toISOString()
+  const finished = now()
+  run.finished_at = new Date(finished).toISOString()
+  run.duration_s = Math.max(0, Math.round((finished - started) / 100) / 10)
+  run.budget_s = deadline != null ? Math.max(0, Math.round((deadline - started) / 1000)) : null
+  run.timing = timed.summary()
   const v = validateV2('stock-peg-run', run)
   if (!v.valid) log(`[stock-peg] invalid run row: ${JSON.stringify(v.errors).slice(0, 300)}`)
   fs.appendFileSync(path.join(outDir, `stock-peg-runs-${day(started)}.jsonl`), JSON.stringify(run) + '\n')
-  log('[stock-peg] ' + JSON.stringify({ chain, registry: run.registry, tokens: run.tokens_considered, written: run.rows_written, invalid: run.rows_invalid, refused: run.refused, pair_read_errors: run.pair_read_errors, supplement_skipped: run.supplement_skipped || 0, onchain: run.onchain ?? null, raw: raw.on ? { written: raw.written, skipped_full: raw.skipped_full, pruned: raw.pruned, store_bytes: raw.bytes } : (raw.error ? { error: raw.error } : 'off'), aborted: run.aborted ?? null }))
+  log('[stock-peg] ' + JSON.stringify({ chain, registry: run.registry, tokens: run.tokens_considered, written: run.rows_written, invalid: run.rows_invalid, refused: run.refused, pair_read_errors: run.pair_read_errors, supplement_skipped: run.supplement_skipped || 0, onchain: run.onchain ?? null, raw: raw.on ? { written: raw.written, skipped_full: raw.skipped_full, pruned: raw.pruned, store_bytes: raw.bytes } : (raw.error ? { error: raw.error } : 'off'), aborted: run.aborted ?? null, duration_s: run.duration_s, budget_s: run.budget_s, timing: Object.fromEntries(Object.entries(run.timing).map(([s, t]) => [s, `${t.n}x p50 ${t.p50_ms} p95 ${t.p95_ms} total ${t.total_ms}ms`])) }))
   return run
 }
 

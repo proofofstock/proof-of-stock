@@ -36,13 +36,13 @@ export const SAFETY_TOOLS = Object.freeze([
   {
     name: 'verify_stock_tokens',
     description: 'Before buying a token that claims to be a stock, check its contract address: is it on the issuer\'s own registry for this chain (Base: Coinbase; robinhood: Robinhood)? Up to 50 addresses per call. listed=true is decided by the exact address alone. listed=false means "not in this issuer\'s registry", not "fake" (it may be another issuer\'s token); impostor is set only when the token copies a listed symbol or the issuer\'s naming, and then listed_address is the real one. If the registry cannot be read the call fails rather than answering false. Facts, not advice.',
-    inputSchema: { type: 'object', properties: { chain: { type: 'string', enum: CHAINS_ENUM }, addresses: { type: 'array', minItems: 1, maxItems: MAX_VERIFY_BATCH, items: { type: 'string', pattern: '^0x[0-9a-fA-F]{40}$' } } }, required: ['chain', 'addresses'], additionalProperties: false },
+    inputSchema: { type: 'object', properties: { chain: { type: 'string', enum: CHAINS_ENUM, description: 'which chain and issuer list to check: base (Coinbase\'s list) or robinhood (Robinhood Chain, Robinhood\'s list)' }, addresses: { type: 'array', minItems: 1, maxItems: MAX_VERIFY_BATCH, items: { type: 'string', pattern: '^0x[0-9a-fA-F]{40}$' }, description: 'the token contract addresses to check, 1 to 50, each 0x and 40 hex digits' } }, required: ['chain', 'addresses'], additionalProperties: false },
     annotations: { title: 'Verify stock token addresses', ...READ_ONLY },
   },
   {
     name: 'recent_impostors',
     description: 'Tokens on a chain whose symbol or name copies an issuer-listed stock token while their contract is not in that registry, newest first (at most 50), optionally since an ISO time. Each names what it imitates and the listed address. A claim with evidence, not a verdict.',
-    inputSchema: { type: 'object', properties: { chain: { type: 'string', enum: CHAINS_ENUM }, since: { type: 'string', maxLength: 29, pattern: ISO_TIME_PATTERN } }, required: ['chain'], additionalProperties: false },
+    inputSchema: { type: 'object', properties: { chain: { type: 'string', enum: CHAINS_ENUM, description: 'which chain and issuer list to check: base (Coinbase\'s list) or robinhood (Robinhood Chain, Robinhood\'s list)' }, since: { type: 'string', maxLength: 29, pattern: ISO_TIME_PATTERN, description: 'only look-alikes first flagged at or after this ISO 8601 time, e.g. 2026-11-12T00:00:00Z; omit for the newest 50' } }, required: ['chain'], additionalProperties: false },
     annotations: { title: 'Recent impostors', ...READ_ONLY },
   },
 ])
@@ -54,7 +54,7 @@ export const VENUE_TOOLS = Object.freeze([
   {
     name: 'compare_venues',
     description: 'For shares listed on BOTH Base (Coinbase) and Robinhood Chain (Robinhood), matched by ISIN: per venue the on-chain price\'s premium over that venue\'s own issuer reference, the reference kind and age, the deepest pool\'s liquidity and the multiplier, and the gap (Robinhood premium minus Base premium) when both are current. Raw prices are never compared: multipliers and references differ (Coinbase NAV vs Robinhood bid/ask), so a gap is not a price difference or an arbitrage. Name a share by isin or by ticker (NVDA, or NVDAc); with neither, the 20 rows with the largest gap. A missing premium carries its reason; a reading older than 30 min is flagged stale and gets no gap. Facts, not advice.',
-    inputSchema: { type: 'object', properties: { isin: { type: 'string', pattern: '^[A-Za-z]{2}[A-Za-z0-9]{9}[0-9]$' }, symbol: { type: 'string', pattern: '^[A-Za-z0-9.\\-]{1,16}$' } }, additionalProperties: false },
+    inputSchema: { type: 'object', properties: { isin: { type: 'string', pattern: '^[A-Za-z]{2}[A-Za-z0-9]{9}[0-9]$', description: 'the share\'s ISIN, e.g. US67066G1040 for NVIDIA' }, symbol: { type: 'string', pattern: '^[A-Za-z0-9.\\-]{1,16}$', description: 'the ticker, plain or as the issuer writes it (NVDA or NVDAc); give isin or symbol, or neither for the 20 largest gaps' } }, additionalProperties: false },
     annotations: { title: 'Compare one share across venues', ...READ_ONLY },
   },
 ])

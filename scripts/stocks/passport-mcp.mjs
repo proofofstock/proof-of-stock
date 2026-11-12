@@ -39,19 +39,19 @@ export const TOOLS = Object.freeze([
   {
     name: 'find_stock_token',
     description: 'Find issuer-listed tokenized stocks on a chain by ticker, company name or ISIN. Returns the official contract addresses. An empty result says only that the issuer lists no such token, nothing about impostors. ' + CHAIN_HINT + ' ' + NOTICE,
-    inputSchema: { type: 'object', properties: { chain: { type: 'string', enum: CHAIN_ENUM }, query: { type: 'string', minLength: 1 } }, required: ['chain', 'query'], additionalProperties: false },
+    inputSchema: { type: 'object', properties: { chain: { type: 'string', enum: CHAIN_ENUM, description: 'which chain and issuer list to check: base (Coinbase\'s list) or robinhood (Robinhood Chain, Robinhood\'s list)' }, query: { type: 'string', minLength: 1, description: 'a ticker (NVDA or NVDAc), a company name (Tesla) or an ISIN (US67066G1040)' } }, required: ['chain', 'query'], additionalProperties: false },
     annotations: { title: 'Find a stock token', ...READ_ONLY },
   },
   {
     name: 'list_stock_tokens',
     description: 'List every token in a chain\'s issuer registry: symbol, name, contract address, ISIN, multiplier, whether it is minted on the chain and whether the issuer publishes a reference price. The answer opens with the exact count (also the `count` field); quote that number, do not estimate it from the list. On Base many listed tokens are not minted yet and do not trade (`minted`). ' + CHAIN_HINT + ' ' + NOTICE,
-    inputSchema: { type: 'object', properties: { chain: { type: 'string', enum: CHAIN_ENUM } }, required: ['chain'], additionalProperties: false },
+    inputSchema: { type: 'object', properties: { chain: { type: 'string', enum: CHAIN_ENUM, description: 'which chain and issuer list to check: base (Coinbase\'s list) or robinhood (Robinhood Chain, Robinhood\'s list)' } }, required: ['chain'], additionalProperties: false },
     annotations: { title: 'List an issuer registry', ...READ_ONLY },
   },
   {
     name: 'stock_passport',
     description: 'Passport of one token address: whether it is in the issuer registry (and, if not, which listed stock its name imitates); the issuer reference price and its age; the latest DEX price and its premium over the reference; the premium series split by US market session; and every gap named. ' + UNITS + ' ' + CHAIN_HINT + ' ' + NOTICE,
-    inputSchema: { type: 'object', properties: { chain: { type: 'string', enum: CHAIN_ENUM }, address: { type: 'string', pattern: '^0x[0-9a-fA-F]{40}$' }, hours: { type: 'number', minimum: 1, maximum: 720 }, include_series: { type: 'boolean', description: 'also return series_points, the raw premium time series (large); the session medians in `series` are always there' } }, required: ['chain', 'address'], additionalProperties: false },
+    inputSchema: { type: 'object', properties: { chain: { type: 'string', enum: CHAIN_ENUM, description: 'which chain and issuer list to check: base (Coinbase\'s list) or robinhood (Robinhood Chain, Robinhood\'s list)' }, address: { type: 'string', pattern: '^0x[0-9a-fA-F]{40}$', description: 'the token contract address to check, 0x and 40 hex digits; any token, listed or not' }, hours: { type: 'number', minimum: 1, maximum: 720, description: 'how many hours of premium history to summarise (default 72; the HTTP server caps it at what it holds)' }, include_series: { type: 'boolean', description: 'also return series_points, the raw premium time series (large); the session medians in `series` are always there' } }, required: ['chain', 'address'], additionalProperties: false },
     annotations: { title: 'Stock token passport', ...READ_ONLY },
   },
 ])

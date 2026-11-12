@@ -70,6 +70,50 @@ console.log('a Base run')
   check('a failed pair read is recorded on the row', b.pools.seen === null && /socket hang up/.test(b.pools.error))
   check('one manifest row, valid, complete', runs.length === 1 && validateV2('stock-peg-run', runs[0]).valid && runs[0].registry.complete === true)
   check('the manifest counts the refusals and the read errors', runs[0].refused.no_reference === 1 && runs[0].pair_read_errors === 1 && runs[0].rows_written === 2)
+  // 12.11: a Robinhood run reached its deadline. The run row now says how long it took, what it was given, and where
+  // the time went, per source (TZ recorder speed 4.1).
+  const t = runs[0].timing
+  check('the run row says where its time went: the issuer list and DexScreener, each counted, a failed read too', t.issuer?.n >= 1 && t.dexscreener?.n === 2 && Object.values(t).every((x) => x.total_ms >= 0 && x.p50_ms <= x.p95_ms && x.p95_ms <= x.max_ms), JSON.stringify(t))
+  check('...its duration, and no budget when it ran without a deadline', runs[0].duration_s === 0 && runs[0].budget_s === null)
+  {
+  const { timedFetch } = await import('./stock-peg.mjs')
+  let tick = 0
+  const f = timedFetch(async () => ({ ok: true }), () => (tick += 10))
+  const rpc = (method) => ({ method: 'POST', body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params: [] }) })
+  await f('https://api.dexscreener.com/token-pairs/v1/base/0x1')
+  await f('https://api.geckoterminal.com/api/v2/networks/base/tokens/0x1/pools')
+  await f('https://api.coinbase.com/v1/tokenized-stocks')
+  await f('https://api.robinhood.com/x')
+  await f('https://rpc.example', rpc('eth_getBlockByNumber'))
+  await f('https://rpc.example', rpc('eth_blockNumber'))
+  await f('https://rpc.example', rpc('eth_call'))
+  await f('https://rpc.example', rpc('eth_chainId'))
+  await f('https://rpc.mainnet.chain.robinhood.com', rpc('eth_call'))
+  await f('https://rpc.example', { method: 'POST', body: JSON.stringify([{ jsonrpc: '2.0', id: 1, method: 'eth_getBlockByNumber', params: [] }]) })
+  await f('https://evil.dexscreener.com.example.org/x')
+  await f('not a url')
+  const s = f.summary()
+  check('sources: the two aggregators, the issuers, a block read, an eth_call, other RPC, other hosts', s.dexscreener.n === 1 && s.geckoterminal.n === 1 && s.issuer.n === 2 && s.rpc_block.n === 3 && s.rpc_call.n === 2 && s.rpc_other.n === 1 && s.other.n === 2, JSON.stringify(s))
+  check('...a host that only contains a source name is not that source', s.dexscreener.n === 1)
+  check('...an RPC under an issuer domain is RPC, not the issuer, and a batch is read by its first call', s.issuer.n === 2 && s.rpc_call.n === 2 && s.rpc_block.n === 3)
+  check('...each request timed by the clock, summed, with p50, p95 and max', s.rpc_block.total_ms === 30 && s.rpc_block.p50_ms === 10 && s.rpc_block.max_ms === 10)
+  const failing = timedFetch(async () => { throw new Error('down') }, () => (tick += 5))
+  let threw = false
+  try { await failing('https://api.dexscreener.com/x') } catch (_) { threw = true }
+  check('a request that fails is still timed, and the error still reaches the caller', threw && failing.summary().dexscreener.n === 1)
+  const whole = timedFetch(async () => new Response(JSON.stringify({ pairs: [1, 2, 3] })))
+  const answer = await whole('https://api.dexscreener.com/x')
+  check('...the body is timed from a clone: the caller still reads the whole answer', (await answer.json()).pairs.length === 3 && whole.summary().dexscreener.n === 1)
+  // The review of 12.11: GeckoTerminal top-ups fail 1 to 6 times a run and nothing said why. Now a 429 is counted apart.
+  const codes = [429, 429, 503, 200]
+  const counted = timedFetch(async () => { const c = codes.shift(); if (c == null) throw new Error('timeout'); return new Response('{}', { status: c }) })
+  for (let i = 0; i < 5; i++) { try { await counted('https://api.geckoterminal.com/x') } catch (_) {} }
+  const gs = counted.summary().geckoterminal
+  check('...rate-limited answers (429) and other failures (a 503, a timeout) are counted per source', gs.n === 5 && gs.n_429 === 2 && gs.n_failed === 2, JSON.stringify(gs))
+  const { validateV2: v2 } = await import('../../schemas/v2/validate.mjs')
+  const row = { _schema_version: '1.0', run_id: 'x', chain_id: 1, issuer: 'coinbase', started_at: '2026-11-12T00:00:00.000Z', finished_at: '2026-11-12T00:01:00.000Z', registry: { records: 1, complete: true, error: null }, tokens_considered: 1, rows_written: 1, rows_invalid: 0, refused: {}, pair_read_errors: 0, supplemented: 0, supplement_errors: 0, duration_s: 60, budget_s: 240, timing: s }
+  check('the schema takes the new fields, and refuses a source it does not know', v2('stock-peg-run', row).valid && !v2('stock-peg-run', { ...row, timing: { ...s, someone: s.other } }).valid)
+  }
   check('rows and manifest share the run id', rows.every((r) => r.run_id === runs[0].run_id))
 }
 
@@ -140,6 +184,7 @@ console.log('a token whose DexScreener list is full')
   const root4 = path.join(tmp, 'past-deadline')
   const run4 = await runStockPeg({ chain: 'base', root: root4, now: () => NOW, deadline: NOW, paceMs: 0, geckoPaceMs: 0, log: () => {}, fetchImpl: gecko(false) })
   const runs4 = lines(path.join(root4, 'stock-peg', 'stock-peg-runs-2026-11-08.jsonl'))
+  check('a run with a deadline writes the budget it was given, in seconds', run3.budget_s === Math.round((SUPPLEMENT_STOP_MS - 1) / 1000) && run4.budget_s === 0, `${run3.budget_s} ${run4.budget_s}`)
   check('at its deadline a run reads no more tokens but still writes a valid run row saying why', run4.rows_written === 0 && /time budget/.test(run4.aborted) && runs4.length === 1 && runs4[0].aborted === run4.aborted && validateV2('stock-peg-run', runs4[0]).valid && runExitCode(run4) === 1 && !fs.existsSync(path.join(root4, 'stock-peg', 'stock-peg-2026-11-08.jsonl')))
 }
 
@@ -349,6 +394,48 @@ console.log('the chain as a second source')
   const blocked = path.join(tmp, 'raw-is-a-file'); fs.writeFileSync(blocked, 'x')
   const nine = await runWith('raw-broken', makeChain(), () => respond(200, listed()), { env: { STP_RAW_SNAPSHOTS: '1', STP_RAW_DIR: blocked } })
   check('a store that cannot be written never costs the reading or fails the run', nine.rows.length === 1 && nine.rows[0].premium != null && runExitCode(nine.run) === 0)
+}
+
+console.log('a chain that stops answering mid-run')
+{
+  // 12.11: a run reached its deadline. A chain that fails token after token can cost two RPC timeouts each; after
+  // ONCHAIN_BREAKER failed tokens in a row the run stops asking it, the rows stand on DexScreener, and the book learns on.
+  const { ONCHAIN_BREAKER } = await import('./stock-peg.mjs')
+  const cfg = ONCHAIN.base
+  const N = ONCHAIN_BREAKER + 3
+  const tokens = Array.from({ length: N }, (_, i) => '0x' + (0xa1 + i).toString(16).repeat(20))
+  const pools = tokens.map((_, i) => '0x' + (0xc1 + i).toString(16).repeat(20))
+  const dexPools = tokens.map((_, i) => '0x' + (0x31 + i).toString(16).repeat(20))
+  const chain = fakeChain({ rpc: cfg.rpc })
+  chain.erc20(USDC, 6, Object.fromEntries(pools.map((p) => [p, 600_000n * 10n ** 6n])))
+  tokens.forEach((t, i) => {
+    chain.erc20(t, 18, { [pools[i]]: 4_000n * 10n ** 18n })
+    chain.getPool(cfg.factories[0].address, true, t, USDC, 500, pools[i])
+    chain.v3(pools[i], USDC, t, sqrtX96For(1 / 101, 6, 18))
+  })
+  const coinbase = respond(200, { tokens: tokens.map((t) => ({ contract_address: t, symbol: 'Xc', multiplier: '1', nav_price: '100', nav_price_updated_at: '2026-11-08T11:00:00Z', total_supply: '10' })) })
+  let broken = false, rpcAfterBreak = 0
+  const inner = chain.fetch(async (url) => {
+    const u = String(url)
+    if (u.startsWith(COINBASE_URL)) return coinbase
+    const m = u.match(/token-pairs\/v1\/[a-z]+\/(0x[0-9a-f]{40})$/)
+    if (m) { broken = true; const i = tokens.indexOf(m[1]); return respond(200, [{ ...pairOf(m[1], 101, 2_000_000), pairAddress: dexPools[i] }]) }
+    return respond(404, {})
+  })
+  // The chain answers the run's start (discovery), then refuses every JSON-RPC request once the token loop has begun.
+  const fetchImpl = async (url, init) => {
+    if (broken && init && typeof init.body === 'string' && init.body.includes('"jsonrpc"')) { rpcAfterBreak++; return respond(503, {}) }
+    return inner(url, init)
+  }
+  const root = path.join(tmp, 'chain-breaker')
+  const run = await runStockPeg({ chain: 'base', root, now: () => NOW, paceMs: 0, geckoPaceMs: 0, log: () => {}, env: { STP_RAW_DIR: path.join(tmp, 'stp-raw-default') }, fetchImpl })
+  const rows = lines(path.join(root, 'stock-peg', 'stock-peg-2026-11-08.jsonl'))
+  const runRow = lines(path.join(root, 'stock-peg', 'stock-peg-runs-2026-11-08.jsonl'))[0]
+  check('after ONCHAIN_BREAKER failed tokens in a row the run stops asking the chain, and says so', run.onchain.read_errors === ONCHAIN_BREAKER && new RegExp(`after ${ONCHAIN_BREAKER} failed tokens in a row, at token ${ONCHAIN_BREAKER} of ${N}`).test(run.onchain.breaker || ''), JSON.stringify(run.onchain))
+  check('...every token still gets its row from DexScreener, and the later rows asked the chain nothing', rows.length === N && rows.slice(ONCHAIN_BREAKER).every((r) => r.pools.source === 'dexscreener' && r.pools.onchain_error === null) && rpcAfterBreak <= ONCHAIN_BREAKER * 2, JSON.stringify({ rows: rows.length, rpcAfterBreak, src: rows.map((r) => r.pools.source) }))
+  const book = JSON.parse(fs.readFileSync(path.join(root, 'stock-peg', 'pool-book.json'), 'utf8'))
+  check('...and the pool book still learned the pools DexScreener listed after the breaker', Object.values(book.pools).some((e) => e.token === tokens[N - 1] && e.pool === dexPools[N - 1]), Object.keys(book.pools).length + ' pools')
+  check('...the run row is valid and counts the refused RPC answers', validateV2('stock-peg-run', runRow).valid && (runRow.timing.rpc_block?.n_failed || 0) + (runRow.timing.rpc_call?.n_failed || 0) >= ONCHAIN_BREAKER, JSON.stringify(runRow.timing))
 }
 
 console.log('reference assets come from the chain descriptors')

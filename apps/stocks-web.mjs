@@ -9,6 +9,7 @@
 //   GET /stocks/api/passport?chain&address[&hours]   with the same share (same ISIN) on the other chain
 //   GET /stocks/api/matrix             every share (ISIN) listed on both Base and Robinhood: each venue's premium, the gap
 //   GET /stocks/api/status             what the server holds: registry and readings age per chain
+//   GET /stocks/api/exam               the latest public exam, summarized (apps/stocks-exam.mjs); 503 when none from the last 36 h
 //   GET /stocks/history                the dated, append-only archive: registry snapshots and impostor cases (apps/stocks-history.mjs)
 //   GET /stocks/api/history/cases?chain[&since&event&limit]          case events, newest first, at most 50, no paging
 //   GET /stocks/api/history/registry?chain[&date]                    snapshot index, or the snapshot in force on a day
@@ -58,10 +59,13 @@ import { stampList, listProof, listBytes } from '../evm/core/stocks/list-proof.m
 import { canonicalRegistry } from '../evm/core/stocks/history.mjs'
 import { isIsoTime } from '../scripts/lib/mcp-args.mjs'
 import { statusPage } from './stocks-status.mjs'
+import { statsPage, lastRuns, STATS_GATE } from './stocks-stats.mjs'
+import { dailySummaries } from '../scripts/stocks/analytics-report.mjs'
 import { createHistoryStore, historyPage, BULK_WINDOW_DAYS, BULK_MAX, FULL_ARCHIVE } from './stocks-history.mjs'
 import { createAnalytics, parseHit } from './stocks-analytics.mjs'
 import { findAcross, sameStockElsewhere, overview, matrix, isinsOfTicker, MATRIX_VENUES } from '../evm/core/stocks/cross-chain.mjs'
 import { symbolLabel, nameLabel, UNTRUSTED_TEXT_NOTE } from '../evm/core/stocks/untrusted-text.mjs'
+import { createExamCache, EXAM_CHIP_HTML } from './stocks-exam.mjs'
 
 /** How many matrix rows the MCP tool returns when no share is named. */
 export const MATRIX_MCP_TOP = 20
@@ -181,6 +185,7 @@ export function createStocksWeb ({
   publicOrigin = process.env.STOCKS_PUBLIC_ORIGIN || 'https://proofofstock.xyz',
   publicPath = process.env.STOCKS_PUBLIC_PATH ?? '',
   analytics: analyticsOpts = {}, // apps/stocks-analytics.mjs options; { enabled: false } turns the counter off
+  exam: examOpts = {}, // apps/stocks-exam.mjs options; { url: null } turns the exam summary off
   source, // the source link: undefined = package.json decides (stp.source_public), null = none, a URL = that URL
 } = {}) {
   const registries = new Map() // chain → { records, at, error }
@@ -200,6 +205,9 @@ export function createStocksWeb ({
   // The source link: shown only once the repository is public (package.json stp.source_public), so nobody follows it to
   // a GitHub 404 before then. Opening the code is that one flag and a deploy.
   const sourceUrl = source !== undefined ? source : (pkgJson.stp?.source_public && pkgJson.repository?.url ? pkgJson.repository.url : null)
+  // The public exam's report is read from GitHub in the background, at most every 30 minutes; a request reads memory.
+  // Like the source link, only while the source is public: before that there is no exam branch to read or link to.
+  const exam = createExamCache({ fetchImpl, now, log, ...(sourceUrl ? {} : { url: null }), ...examOpts })
   // The release date is the changelog's for this version ("## [0.3.0] - 2026-11-10"), shown as "10 Nov 2026".
   // The sitemap's lastmod for the home and the docs is the same date, as YYYY-MM-DD (null when unreleased).
   const releasedIso = (() => {
@@ -223,7 +231,7 @@ export function createStocksWeb ({
   const version = (k) => crypto.createHash('sha256').update(static_[k].body).digest('hex').slice(0, 12)
   static_['/'].body = Buffer.from(String(static_['/'].body).replace('href="style.css"', `href="style.css?v=${version('/style.css')}"`).replace('src="app.js"', `src="app.js?v=${version('/app.js')}"`).replace('src="beacon.js"', `src="beacon.js?v=${version('/beacon.js')}"`)
     .replaceAll('__MCP_URL__', publicOrigin + publicPath + '/mcp').replaceAll('__VERSION__', appVersion).replaceAll('__RELEASED__', released)
-    .replace('<!--source-->', sourceUrl ? sourceIcon(sourceUrl) : ''))
+    .replace('<!--source-->', sourceUrl ? sourceIcon(sourceUrl) : '').replace('<!--exam-->', sourceUrl ? EXAM_CHIP_HTML : ''))
   // What crawlers and link previews read: the preview image and logo by content hash (a new image is a new URL, so
   // X and Telegram fetch it again), robots.txt and the head tags every page gets.
   const site = publicOrigin + publicPath
@@ -302,6 +310,8 @@ export function createStocksWeb ({
     } catch (_) { if (!names.has(chain)) names.set(chain, new Map()) }
   }
   async function refreshAll () {
+    // Not awaited: a slow GitHub must not hold the start of the site or a registry refresh.
+    exam.refresh().catch(() => {})
     await Promise.all(Object.keys(CHAINS).flatMap((c) => [refreshRegistry(c), windows[c].refresh(), Promise.resolve(refreshImpostors(c)), Promise.resolve(refreshNames(c)), Promise.resolve(history.refresh(c))]))
   }
 
@@ -690,6 +700,13 @@ export function createStocksWeb ({
       const proof = proofOf(c, reg)
       return send(res, 200, { ...r.body, list_proof: proof }, undefined, { 'access-control-allow-origin': '*', 'cache-control': proof?.stale ? 'no-store' : r.body.listed ? 'public, max-age=300' : 'public, max-age=60' })
     }
+    // The owner's dashboard. Only nginx's password-protected location sets the gate header (and every other location
+    // clears it), so a request that did not pass the password gets the same 404 as any unknown path.
+    if (sub === '/stats') {
+      if (req.headers[STATS_GATE.toLowerCase()] !== 'gate') return send(res, 404, { error: 'not found' })
+      const html = statsPage({ days: dailySummaries({ dir: analyticsOpts.dir ?? process.env.STP_ANALYTICS_DIR ?? null, days: 14, today: new Date(now()).toISOString().slice(0, 10) }), runs: Object.fromEntries(Object.keys(CHAINS).map((c) => [c, lastRuns(roots[c], 8, now())])), exam: (() => { const r = exam.get(); return r.status === 200 ? r.body : null })(), now: now(), version: appVersion, assets: { css: `style.css?v=${version('/style.css')}`, docsCss: `docs.css?v=${version('/docs.css')}` } })
+      return send(res, 200, html, 'text/html; charset=utf-8', { 'cache-control': 'no-store, private', 'x-robots-tag': 'noindex, nofollow' })
+    }
     if (sub === '/status') {
       analytics.load(clientIp(req), req.headers, '/status')
       return send(res, 200, cachedPage('/status', () => withPageHead('/status', statusPage({ chains: statusNumbers(), now: now(), version: appVersion, assets: { css: `style.css?v=${version('/style.css')}`, docsCss: `docs.css?v=${version('/docs.css')}`, beacon: `beacon.js?v=${version('/beacon.js')}` } }), STATUS_DESCRIPTION)), 'text/html; charset=utf-8', { 'cache-control': 'no-store' })
@@ -710,6 +727,10 @@ export function createStocksWeb ({
     }
     if (sub === '/api/status') {
       return send(res, 200, statusNumbers(), undefined, { 'cache-control': 'no-store' })
+    }
+    if (sub === '/api/exam') {
+      const r = exam.get()
+      return send(res, r.status, r.body, undefined, { 'access-control-allow-origin': '*', 'cache-control': r.status === 200 ? 'public, max-age=300' : 'no-store' })
     }
     if (sub === '/api/history/cases' || sub === '/api/history/registry') {
       const cors = { 'access-control-allow-origin': '*' }
@@ -776,6 +797,7 @@ export function createStocksWeb ({
   let timer = null
   return {
     server, refreshAll,
+    examRefresh: (force) => exam.refresh(force),
     async start (port, host) {
       await refreshAll()
       timer = setInterval(() => { refreshAll().catch(() => {}) }, REGISTRY_TTL_MS); timer.unref()
