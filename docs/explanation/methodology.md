@@ -155,6 +155,7 @@ tokens that are not listed, and they only say what the name resembles.
 |---|---|---|
 | `registry_symbol` | The symbol is, character for character, a listed symbol on the same chain, **and** that symbol is distinctive, that is, not just the bare ticker. Coinbase's `NVDAc` qualifies. Robinhood's `GME` does not, because Robinhood names its tokens with the bare ticker. | yes |
 | `issuer_name_suffix` | On Robinhood Chain only: the name ends the way Robinhood names its tokens, `… Robinhood Token`. The target is filled in when a listed Robinhood token has the same ticker or a name that starts the same way; otherwise there is no target. | yes |
+| `registry_name` | The whole name is a listed company's name, compared without case, punctuation and the corporate ending (`NVIDIA`, `McDonald's`, `Marvell Technology` for `Marvell Technology, Inc.`). A name that only contains the company (`McDonald's fan club`) does not count, nor one shorter than three letters. Added 2026-11-12: an eye check of tokens that resembled a listed stock by meaning found that real copies were mostly exactly this, and the two rules above let them through. | yes |
 | `ticker` | The symbol equals a listed ticker, ignoring case (`NVDA`, `nvda`). | **no**: counted, not listed |
 
 Why `ticker` is not an accusation: many memecoins borrow a ticker without pretending to be the share. On Robinhood

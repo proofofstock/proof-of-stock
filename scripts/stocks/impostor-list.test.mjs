@@ -91,7 +91,7 @@ console.log('the internal radar signals (W2-static)')
   check('the published list keeps today\'s keys; the radar sits only under `internal`', Object.keys(l).join() === LEGACY_KEYS, Object.keys(l).join())
   check('published items keep today\'s fields, with no signals on them', l.items.every((i) => Object.keys(i).join() === ITEM_KEYS))
   check('only the strong claim is published: a new signal adds nothing to items', l.items.length === 1 && l.items[0].address === COPY && l.items[0].kind === 'registry_symbol')
-  check('the published counts are today\'s kinds only', Object.keys(l.counts).join() === 'registry_symbol,issuer_name_suffix,ticker' && l.counts.ticker === 1)
+  check('the published counts are today\'s kinds only', Object.keys(l.counts).join() === 'registry_symbol,issuer_name_suffix,registry_name,ticker' && l.counts.ticker === 1)
   check('the names file gains no token flagged by an address signal only', !l.names[VAN] && !l.names[FRESH] && !l.names[TAIL])
   const I = l.internal
   check('the self-check is on for a registry on the full prefix', I.prefix_check.active === true)

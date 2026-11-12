@@ -1,7 +1,10 @@
 {
   "_finding": "The W2-static radar flags tokens by address, and an address rule that misfires accuses the real asset or a fresh Coinbase deploy. A registry address must never be flagged; the full 0xb2+20-zero prefix (~2^88 to forge) is a likely unpublished Coinbase deploy, never an impostor; the prefix signals rest on an observed Coinbase deploy pattern and must switch off, visibly, the moment any registry address breaks it; 3 zeros is chance (1 in 16^5), 4 is the floor; a lookalike is what a wallet shows, per chain; and the radar must report every kind, not only the first.",
   "target": "evm/core/stocks/impostor.mjs",
-  "runner": ["node", "evm/core/stocks/impostor.test.mjs"],
+  "runner": [
+    "node",
+    "evm/core/stocks/impostor.test.mjs"
+  ],
   "mutations": [
     {
       "name": "a registry address is checked for signals",
@@ -56,6 +59,30 @@
       "find": "  if (look) hits.push(hit('address_lookalike', look, { rule: LOOKALIKE_RULES[ch] }))",
       "replace": "  if (look && !hits.length) hits.push(hit('address_lookalike', look, { rule: LOOKALIKE_RULES[ch] }))",
       "expect": "FAIL a Base copy carries its symbol, its lookalike tail and its partial prefix at once"
+    },
+    {
+      "name": "the company-name rule is gone",
+      "find": "    if (r) hits.push(hit('registry_name', r))",
+      "replace": "    if (r) void r",
+      "expect": "FAIL the bare company name of a Robinhood token is a strong claim"
+    },
+    {
+      "name": "the corporate ending is not stripped",
+      "find": "  for (let i = 0; i < 3; i++) { const t = s.replace(CORPORATE_END, '').trim(); if (t === s) break; s = t }",
+      "replace": "",
+      "expect": "FAIL the corporate ending and the case do not hide it"
+    },
+    {
+      "name": "a name that contains the company counts as the company",
+      "find": "    const r = recs.find((x) => registryCompany(x) === own)",
+      "replace": "    const r = recs.find((x) => registryCompany(x) && own.includes(registryCompany(x)))",
+      "expect": "FAIL a name that only contains the company is not the company"
+    },
+    {
+      "name": "the short-name floor is dropped",
+      "find": "  if (own.length >= COMPANY_NAME_MIN) {",
+      "replace": "  if (own.length >= 1) {",
+      "expect": "FAIL a name shorter than three letters is a word, not a company"
     }
   ]
 }

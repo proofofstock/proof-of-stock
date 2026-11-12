@@ -1,0 +1,28 @@
+{
+  "_finding": "Until 12.11 every ALARM went to the journal only and nobody was told (owner: how do we know when the registry changes or a source fails?). The health check now alerts in Telegram; each mutation silences one rule, and the tests must notice.",
+  "target": "scripts/stocks/health-check.mjs",
+  "runner": [
+    "node",
+    "scripts/stocks/health.test.mjs"
+  ],
+  "mutations": [
+    {
+      "name": "an old issuer list is never an alert",
+      "find": "      const regOld = s.registry_age_s == null || s.registry_age_s > THRESHOLDS.registry_age_s\n",
+      "replace": "      const regOld = false\n",
+      "expect": "FAIL an issuer list older than 15 minutes is an alert"
+    },
+    {
+      "name": "a DexScreener outage is never an alert",
+      "find": "      put(`dexscreener:${c}`, pe > THRESHOLDS.pair_error_share,",
+      "replace": "      put(`dexscreener:${c}`, false,",
+      "expect": "FAIL DexScreener failing for over 20% of a run"
+    },
+    {
+      "name": "a format change is never an alert",
+      "find": "    for (const [src, changes] of Object.entries(sc)) put(",
+      "replace": "    for (const [src, changes] of Object.entries({})) put(",
+      "expect": "FAIL a change in a source's format is an alert"
+    }
+  ]
+}

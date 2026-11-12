@@ -14,7 +14,7 @@ import { mintedOf } from './registries.mjs'
 export const REGISTRY_FRESH_S = 900
 // Only these kinds are called impostors on a badge: the token copies an issuer-listed symbol, or the issuer's own way of
 // naming its tokens. Borrowing a bare ticker is common and is not an accusation (evm/core/stocks/impostor.mjs).
-export const IMPOSTOR_KINDS = Object.freeze(['registry_symbol', 'issuer_name_suffix'])
+export const IMPOSTOR_KINDS = Object.freeze(['registry_symbol', 'issuer_name_suffix', 'registry_name'])
 export const ISSUER_LABEL = Object.freeze({ coinbase: 'Coinbase', robinhood: 'Robinhood' })
 
 const ADDRESS = /^0x[0-9a-f]{40}$/

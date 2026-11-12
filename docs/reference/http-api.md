@@ -130,7 +130,7 @@ cannot be moved onto a page about another token. It never shows a price, has no 
 | `not_listed` | grey, • | `Not in the Coinbase registry` | `public, max-age=60` |
 | `unavailable` | amber, ? | `Registry unavailable` | `no-store` |
 
-`impostor` is shown only for the strong kinds (`registry_symbol`, `issuer_name_suffix`). `unavailable` covers a
+`impostor` is shown only for the strong kinds (`registry_symbol`, `issuer_name_suffix`, `registry_name`). `unavailable` covers a
 registry never read or older than 900 s, an unknown chain and a malformed address. The second line is
 `0xaaaa…aaaa · checked 2026-11-10 15:00Z · proofofstock.xyz`.
 
@@ -279,7 +279,7 @@ curl -s 'https://proofofstock.xyz/api/impostors?chain=base&limit=5'
   "chains": {
     "base": {
       "generated_at": "2026-11-10T12:00:00Z",
-      "counts": { "registry_symbol": 1, "issuer_name_suffix": 0, "ticker": 0 },
+      "counts": { "registry_symbol": 1, "issuer_name_suffix": 0, "registry_name": 0, "ticker": 0 },
       "listed": 1,
       "note": "Tokens outside the issuer registry whose symbol or name claims an issuer token. A claim with evidence, not a verdict.",
       "items": [{
@@ -299,7 +299,7 @@ curl -s 'https://proofofstock.xyz/api/impostors?chain=base&limit=5'
 
 | Field | Meaning |
 |---|---|
-| `counts` | tokens per resemblance kind, `ticker` included. Only `registry_symbol` and `issuer_name_suffix` are listed in `items` |
+| `counts` | tokens per resemblance kind, `ticker` included. Only `registry_symbol`, `issuer_name_suffix` and `registry_name` are listed in `items` |
 | `listed` | items in the file (capped at 20,000) |
 | `items` | tokens first seen in the last 7 days, strongest kind first, then newest `first_seen_at`; at most 50 |
 | `window_days`, `in_window`, `older` | the list's window (7), how many fall in it, and where the rest is |

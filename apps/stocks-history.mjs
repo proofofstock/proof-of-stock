@@ -99,7 +99,7 @@ export function createHistoryStore ({ roots, now = () => Date.now(), log = () =>
   return { refresh, cases, caseOf, registry, raw: of }
 }
 
-const KIND = { registry_symbol: (e) => `uses the symbol ${e.imitates_symbol}`, issuer_name_suffix: () => 'copies the issuer\'s naming' }
+const KIND = { registry_symbol: (e) => `uses the symbol ${e.imitates_symbol}`, issuer_name_suffix: () => 'copies the issuer\'s naming', registry_name: (e) => `uses the company name of ${e.imitates_symbol}` }
 const short = (a) => (a ? `${a.slice(0, 6)}…${a.slice(-4)}` : '')
 const CHAIN = { base: ['Base', 'Coinbase'], robinhood: ['Robinhood Chain', 'Robinhood'] }
 

@@ -42,8 +42,8 @@ Read it in this order:
    - `429`: over the rate limit. Wait a minute.
 2. **`listed`.** `true` only when the exact address is in the registry. Then `symbol`, `name` and `isin` are the
    issuer's.
-3. **`impostor`.** Set only when the token is not listed **and** copies a listed symbol (`registry_symbol`) or the
-   issuer's naming (`issuer_name_suffix`). `listed_address` is the issuer-listed contract, when there is one.
+3. **`impostor`.** Set only when the token is not listed **and** copies a listed symbol (`registry_symbol`), the
+   issuer's naming (`issuer_name_suffix`) or a listed company's whole name (`registry_name`). `listed_address` is the issuer-listed contract, when there is one.
 4. **`listed_on_other_chain`.** The address is listed, but on the other chain. Check that you asked about the right
    chain.
 5. **`delisted_at`.** The address was listed and has left the registry since the site last restarted.

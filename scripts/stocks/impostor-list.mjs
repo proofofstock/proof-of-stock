@@ -25,7 +25,7 @@ import { CHAINS } from './stock-peg.mjs'
 import { recordCases } from '../../evm/core/stocks/history.mjs'
 import { validateV2 } from '../../schemas/v2/validate.mjs'
 
-export const STRONG_KINDS = Object.freeze(['registry_symbol', 'issuer_name_suffix'])
+export const STRONG_KINDS = Object.freeze(['registry_symbol', 'issuer_name_suffix', 'registry_name'])
 // A safety cap on the file, not a display limit: the site's verify lookup is built from every item (the API pages them).
 export const MAX_ITEMS = 20_000
 export const MAX_NAMES = 100_000

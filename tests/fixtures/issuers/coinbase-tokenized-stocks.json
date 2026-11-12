@@ -1,0 +1,45 @@
+{
+ "tokens": [
+  {
+   "contract_address": "0xB20000000000000000000019f6E7C675b73C2e4D",
+   "symbol": "CRCLc",
+   "name": "Circle Internet Group Inc.",
+   "decimals": 8,
+   "icon_url": "https://metadata.coinbase.com/equity_icons/f217835f2637739f460cc9335a59ec96011c1b9510a40cee3243aeef50eb7a45.png",
+   "total_supply": 2087.97778253,
+   "isin": "US1725731079",
+   "multiplier": 1,
+   "nav_price": 63.855,
+   "nav_price_updated_at": "2026-11-12T15:07:02Z",
+   "description": "About Circle Internet Group Inc. (Coinbase Tokenized Stock) (CRCLc)\n\nCircle Internet Group Inc. (Coinbase Tokenized Stock) is an onchain certificate that provides economic exposure to shares of Circle Internet Group Inc. through a tokenized security issued by Coinbase Onchain SPV Ltd in the Abu Dhabi Global Market (ADGM).\n\nEach token initially represents a 1:1 beneficial interest in shares held in a segregated custody account with a regulated broker-dealer and custodian. The applicable share-to-token ratio may change over time to reflect reinvested distributions, fees, taxes, corporate actions, and other adjustments.\n\nThe token can be held and transferred through supported blockchain networks and used in decentralized finance markets. Dividends and other distributions received on the underlying shares are generally reinvested, after applicable taxes, fees, and expenses, with the resulting economic benefit reflected through an adjustment to the share-to-token ratio.\n\nWhat Is Circle Internet Group Inc. (Coinbase Tokenized Stock)?\n\nCircle Internet Group Inc. (Coinbase Tokenized Stock) is part of Coinbase’s onchain capital-markets infrastructure, designed to represent traditional financial instruments as regulated digital securities.\n\nThe token is a certificate over shares rather than a direct investment in Circle Internet Group Inc. Each token represents a proportional beneficial interest in the pool of underlying shares and related property held on trust by Coinbase Onchain SPV Ltd. The underlying shares are held in segregated custody, while Onchain Marketplace Ltd operates the tokenization infrastructure and maintains the definitive legal ownership register in its capacity as a Central Securities Depositary.\n\nAuthorized Participants create tokens by delivering the corresponding underlying shares or subscription value. Eligible holders who satisfy applicable vesting, identity-verification, sanctions, and compliance requirements may redeem tokens for the underlying shares or through another supported settlement method.",
+   "first_mint_date": "2026-10-26T21:53:11Z",
+   "adgm_isin": "AE000A4AXGG2"
+  },
+  {
+   "contract_address": "0xb2000000000000000000001e800a7f5189430cD0",
+   "symbol": "TSLAc",
+   "name": "Tesla Inc.",
+   "decimals": 8,
+   "icon_url": "https://metadata.coinbase.com/equity_icons/a3b67028295d0e9fa3182c867b8a9afed5ebcbd8c012de3a46e160ae5e490980.png",
+   "total_supply": 6334.93101806,
+   "isin": "US88160R1014",
+   "multiplier": 1,
+   "nav_price": 392.01675,
+   "nav_price_updated_at": "2026-11-12T15:16:27Z",
+   "description": "About Tesla Inc. (Coinbase Tokenized Stock) (TSLAc)\n\nTesla Inc. (Coinbase Tokenized Stock) is an onchain certificate that provides economic exposure to shares of Tesla Inc. through a tokenized security issued by Coinbase Onchain SPV Ltd in the Abu Dhabi Global Market (ADGM).\n\nEach token initially represents a 1:1 beneficial interest in shares held in a segregated custody account with a regulated broker-dealer and custodian. The applicable share-to-token ratio may change over time to reflect reinvested distributions, fees, taxes, corporate actions, and other adjustments.\n\nThe token can be held and transferred through supported blockchain networks and used in decentralized finance markets. Dividends and other distributions received on the underlying shares are generally reinvested, after applicable taxes, fees, and expenses, with the resulting economic benefit reflected through an adjustment to the share-to-token ratio.\n\nWhat Is Tesla Inc. (Coinbase Tokenized Stock)?\n\nTesla Inc. (Coinbase Tokenized Stock) is part of Coinbase’s onchain capital-markets infrastructure, designed to represent traditional financial instruments as regulated digital securities.\n\nThe token is a certificate over shares rather than a direct investment in Tesla Inc. Each token represents a proportional beneficial interest in the pool of underlying shares and related property held on trust by Coinbase Onchain SPV Ltd. The underlying shares are held in segregated custody, while Onchain Marketplace Ltd operates the tokenization infrastructure and maintains the definitive legal ownership register in its capacity as a Central Securities Depositary.\n\nAuthorized Participants create tokens by delivering the corresponding underlying shares or subscription value. Eligible holders who satisfy applicable vesting, identity-verification, sanctions, and compliance requirements may redeem tokens for the underlying shares or through another supported settlement method.",
+   "first_mint_date": "2026-09-03T18:16:27Z",
+   "adgm_isin": "AE000A4AWG09"
+  },
+  {
+   "contract_address": "0xb200000000000000000000000D3176ee4af1102d",
+   "symbol": "RKTc",
+   "name": "Rocket Companies, Inc.",
+   "decimals": 8,
+   "icon_url": "https://metadata.coinbase.com/equity_icons/4dde0edccaaf5a6e62a814beeef58402cc8a1aba58ca6aab50f65b2ae28d1127.png",
+   "isin": "US77311W1018",
+   "multiplier": 1,
+   "description": "About Rocket Companies, Inc. (Coinbase Tokenized Stock) (RKTc)\n\nRocket Companies, Inc. (Coinbase Tokenized Stock) is an onchain certificate that provides economic exposure to shares of Rocket Companies, Inc. through a tokenized security issued by Coinbase Onchain SPV Ltd in the Abu Dhabi Global Market (ADGM).\n\nEach token initially represents a 1:1 beneficial interest in shares held in a segregated custody account with a regulated broker-dealer and custodian. The applicable share-to-token ratio may change over time to reflect reinvested distributions, fees, taxes, corporate actions, and other adjustments.\n\nThe token can be held and transferred through supported blockchain networks and used in decentralized finance markets. Dividends and other distributions received on the underlying shares are generally reinvested, after applicable taxes, fees, and expenses, with the resulting economic benefit reflected through an adjustment to the share-to-token ratio.\n\nWhat Is Rocket Companies, Inc. (Coinbase Tokenized Stock)?\n\nRocket Companies, Inc. (Coinbase Tokenized Stock) is part of Coinbase’s onchain capital-markets infrastructure, designed to represent traditional financial instruments as regulated digital securities.\n\nThe token is a certificate over shares rather than a direct investment in Rocket Companies, Inc. Each token represents a proportional beneficial interest in the pool of underlying shares and related property held on trust by Coinbase Onchain SPV Ltd. The underlying shares are held in segregated custody, while Onchain Marketplace Ltd operates the tokenization infrastructure and maintains the definitive legal ownership register in its capacity as a Central Securities Depositary.\n\nAuthorized Participants create tokens by delivering the corresponding underlying shares or subscription value. Eligible holders who satisfy applicable vesting, identity-verification, sanctions, and compliance requirements may redeem tokens for the underlying shares or through another supported settlement method.",
+   "adgm_isin": "AE000A4AXJY9"
+  }
+ ]
+}

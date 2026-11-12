@@ -1,0 +1,26 @@
+# deployment/systemd/stp-health.service: every 15 minutes, check what the site and the recorder say about themselves and
+# tell the owner in Telegram when something is off, and once more when it clears (scripts/stocks/health-check.mjs).
+# Read-only except its own state; the bot token comes from /etc/stp/alert.env (0600, the owner's, never in git).
+[Unit]
+Description=Proof of Stock: health check and alerts
+After=network-online.target
+OnFailure=stp-alert@%n.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/stp/current
+EnvironmentFile=-/etc/stp/alert.env
+Environment=STP_ALERT_STATE=/var/lib/stp-alerts/state.json
+Environment=STOCKS_ROOT_BASE=/var/lib/stp/base
+Environment=STOCKS_ROOT_ROBINHOOD=/var/lib/stp/robinhood
+ExecStart=/usr/bin/node scripts/stocks/health-check.mjs
+User=root
+NoNewPrivileges=true
+CapabilityBoundingSet=CAP_DAC_READ_SEARCH
+ProtectSystem=strict
+ProtectHome=read-only
+PrivateTmp=true
+PrivateDevices=true
+ReadWritePaths=/var/lib/stp-alerts
+StateDirectory=stp-alerts
+TimeoutStartSec=2min

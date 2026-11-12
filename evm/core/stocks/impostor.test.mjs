@@ -48,7 +48,22 @@ console.log('every kind, not the first')
   check('every matching kind is returned, name kinds first in resemblance() order', kinds(r).join() === 'issuer_name_suffix,ticker,address_lookalike', kinds(r).join())
   check('resemblance() still returns only the strongest', resemblance({ address: flip(RH1, 20), symbol: 'tsla', name: 'Tesla Robinhood Token' }, RH).kind === 'issuer_name_suffix')
   const b = resemblances({ address: flip(CB1, 20), symbol: 'NVDAc', name: 'NVIDIA' }, BASE)
-  check('a Base copy carries its symbol, its lookalike tail and its partial prefix at once', kinds(b).join() === 'registry_symbol,address_lookalike,vanity_prefix_partial', kinds(b).join())
+  check('a Base copy carries its symbol, its lookalike tail and its partial prefix at once', kinds(b).join() === 'registry_symbol,registry_name,address_lookalike,vanity_prefix_partial', kinds(b).join())
+}
+
+console.log('the company name as the whole name (registry_name, owner 2026-11-12)')
+{
+  const X = addr('e2'.repeat(20))
+  const RHC = [{ issuer: 'robinhood', address: RH1, symbol: 'MCD', name: "McDonald's " + String.fromCharCode(0x2022) + ' Robinhood Token' }]
+  const CBC = [cb(CB1, 'MRVLc', 'Marvell Technology, Inc.')]
+  check('the bare company name of a Robinhood token is a strong claim', resemblance({ address: X, symbol: 'Mc', name: "McDonald's" }, RHC)?.kind === 'registry_name')
+  check('the corporate ending and the case do not hide it', resemblance({ address: X, symbol: 'MRVLB', name: 'marvell technology' }, CBC)?.kind === 'registry_name')
+  check('the copy names the listed token it imitates', resemblance({ address: X, symbol: 'Mc', name: "McDonald's" }, RHC)?.registry_symbol === 'MCD')
+  check('a name that only contains the company is not the company', resemblance({ address: X, symbol: 'MCF', name: "McDonald's fan club" }, RHC) === null)
+  check('the issuer naming stays its own kind, not doubled as a company name', kinds(resemblances({ address: X, symbol: 'ZZZ', name: "McDonald's Robinhood Token" }, RHC)).join() === 'issuer_name_suffix')
+  check('the listed token itself is never its own copy', resemblance({ address: RH1, symbol: 'MCD', name: "McDonald's" }, RHC) === null)
+  check('a name shorter than three letters is a word, not a company', resemblance({ address: X, symbol: 'NU2', name: 'Nu' }, [{ issuer: 'robinhood', address: RH1, symbol: 'NU', name: 'Nu ' + String.fromCharCode(0x2022) + ' Robinhood Token' }]) === null)
+  check('registry_name is a published impostor kind and ranks above the bare ticker', IMPOSTOR_KINDS.includes('registry_name') && RESEMBLANCE_KINDS.indexOf('registry_name') < RESEMBLANCE_KINDS.indexOf('ticker'))
 }
 
 console.log('resemblance() is unchanged')

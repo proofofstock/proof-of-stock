@@ -387,7 +387,7 @@
     const where = mark(p.chain)
     if (!p.in_registry) {
       const r = p.resembles
-      const strong = r && (r.kind === 'registry_symbol' || r.kind === 'issuer_name_suffix')
+      const strong = r && (r.kind === 'registry_symbol' || r.kind === 'issuer_name_suffix' || r.kind === 'registry_name')
       const card = h('div', { class: 'card ' + (strong ? 'is-bad' : 'is-warn') },
         h('div', { class: 'cardhead' },
           h('div', null, h('h2', null, (p.identity.symbol || 'Unknown token') + (p.identity.name ? ' · ' + p.identity.name : '')), h('div', { class: 'sub' }, where, copyAddress(p.address, false))),

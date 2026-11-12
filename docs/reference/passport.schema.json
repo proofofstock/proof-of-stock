@@ -48,7 +48,7 @@
       "required": ["kind", "ticker", "registry_symbol", "registry_address"],
       "additionalProperties": false,
       "properties": {
-        "kind": { "enum": ["registry_symbol", "issuer_name_suffix", "ticker"] },
+        "kind": { "enum": ["registry_symbol", "issuer_name_suffix", "registry_name", "ticker"] },
         "ticker": { "$ref": "#/definitions/string_or_null" },
         "registry_symbol": { "$ref": "#/definitions/string_or_null" },
         "registry_address": { "$ref": "#/definitions/address_or_null" }

@@ -30,6 +30,11 @@
     "supplemented": { "type": "integer", "minimum": 0, "description": "tokens whose pools were completed from GeckoTerminal" },
     "supplement_errors": { "type": "integer", "minimum": 0, "description": "GeckoTerminal reads that failed; those rows keep the DexScreener pools" },
     "supplement_skipped": { "type": "integer", "minimum": 0, "description": "full lists not topped up from GeckoTerminal because the run was near its deadline; those rows keep the DexScreener pools" },
+    "shape_changes": {
+      "type": "object",
+      "description": "what changed in a third party's answer format since the last run (evm/core/stocks/shape.mjs), per source; empty when nothing did. Absent from runs before 12.11",
+      "additionalProperties": { "type": "array", "items": { "type": "string" } }
+    },
     "onchain": {
       "type": "object",
       "description": "the chain's side of the run (scripts/stocks/onchain-pools.mjs); absent when the issuer list could not be read, and from runs before the recorder read the chain",

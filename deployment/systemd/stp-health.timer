@@ -1,0 +1,11 @@
+[Unit]
+Description=Proof of Stock: health check every 15 minutes
+
+[Timer]
+OnCalendar=*:2/15
+RandomizedDelaySec=30s
+Persistent=true
+Unit=stp-health.service
+
+[Install]
+WantedBy=timers.target

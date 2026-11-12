@@ -8,6 +8,7 @@
 //   registry_symbol      the symbol is, character for character, a registry token's symbol on this chain, AND that
 //                        symbol is distinctive: it is not just the bare ticker (Coinbase's `NVDAc`, not Robinhood's `GME`)
 //   issuer_name_suffix   the name ends the way the issuer names its tokens ("… Robinhood Token")
+//   registry_name        the whole name is a listed company's name ("NVIDIA", "Marvell Technology"), corporate ending aside
 //   ticker               the symbol equals a registry ticker ignoring case (`NVDA`, `nvda`). WEAK: plenty of memecoins
 //                        borrow a ticker without pretending to be the share, so this is a resemblance, not a claim.
 //
@@ -16,10 +17,28 @@
 
 import { normalizeUntrusted } from './untrusted-text.mjs'
 
-export const RESEMBLANCE_KINDS = Object.freeze(['registry_symbol', 'issuer_name_suffix', 'ticker'])
+export const RESEMBLANCE_KINDS = Object.freeze(['registry_symbol', 'issuer_name_suffix', 'registry_name', 'ticker'])
 
 // Robinhood's own convention for its stock tokens' names (see evm/core/screener/equity-filter.mjs, where it was found).
 const ROBINHOOD_NAME = /\S\s+robinhood\s+token\s*$/i
+
+// A company name compared without the case, the punctuation and the corporate ending an issuer writes and a copier drops
+// ("Marvell Technology, Inc." and "Marvell Technology" are one name). Shorter than this, a name is a word, not a company.
+const CORPORATE_END = /\s+(inc|incorporated|corp|corporation|co|ltd|plc|n v|nv|s a|sa|class [a-z]|common stock|holdings)$/
+export const COMPANY_NAME_MIN = 3
+
+/** The comparable form of a name: normalized, lower case, no punctuation, no corporate ending. */
+export function companyName (name) {
+  let s = normalizeUntrusted(name).toLowerCase().replace(/[.,]/g, ' ').replace(/\s+/g, ' ').trim()
+  for (let i = 0; i < 3; i++) { const t = s.replace(CORPORATE_END, '').trim(); if (t === s) break; s = t }
+  return s
+}
+
+/** The company a registry record names: Robinhood writes "Tesla \u2022 Robinhood Token", Coinbase "Tesla, Inc.". */
+export function registryCompany (rec) {
+  const raw = typeof rec?.name === 'string' ? rec.name.replace(/\s*\u2022?\s*robinhood\s+token\s*$/i, '') : ''
+  return companyName(raw)
+}
 
 /** The ticker a registry symbol stands for: Coinbase appends a lower-case `c` (NVDAc → NVDA); Robinhood does not. */
 export function tickerOf (rec) {
@@ -64,6 +83,15 @@ function nameHits (identity, recs) {
     const stem = name.replace(/\s+robinhood\s+token\s*$/i, '').trim().toLowerCase()
     const r = recs.find((x) => x.issuer === 'robinhood' && (tickerOf(x).toLowerCase() === sym.toLowerCase() || (x.name && normalizeUntrusted(x.name).toLowerCase().startsWith(stem))))
     hits.push({ kind: 'issuer_name_suffix', ticker: r ? tickerOf(r) : null, registry_symbol: r ? r.symbol : null, registry_address: r ? r.address : null })
+  }
+  // The whole name IS a listed company's name ("NVIDIA", "McDonald's", "Marvell Technology"): the token takes the share's
+  // name without the issuer's naming. Added 2026-11-12 (owner: published, a strong claim): an eye check of tokens that
+  // resembled a listed stock by meaning found that real copies were mostly exactly this, and the symbol and suffix
+  // rules let them through. The token's own name keeps any issuer suffix, so the suffix rule above is not doubled.
+  const own = companyName(identity.name)
+  if (own.length >= COMPANY_NAME_MIN) {
+    const r = recs.find((x) => registryCompany(x) === own)
+    if (r) hits.push(hit('registry_name', r))
   }
   if (sym) {
     const t = recs.find((r) => tickerOf(r).toLowerCase() === sym.toLowerCase())

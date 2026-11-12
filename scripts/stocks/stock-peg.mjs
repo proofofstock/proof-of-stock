@@ -44,6 +44,7 @@ import { readGeckoPools, mergePairs } from './gecko-pools.mjs'
 import { prepareOnchain, readTokenOnchain, mergeOnchain, learn, evidenceOf, saveOnchain, ONCHAIN } from './onchain-pools.mjs'
 import { snapshotOf, openRawStore } from './raw-store.mjs'
 import { recordRegistry } from '../../evm/core/stocks/history.mjs'
+import { shapeOf, mergeShapes, shapeChanges } from '../../evm/core/stocks/shape.mjs'
 
 // Which issuer publishes for which chain, and that chain's DexScreener and GeckoTerminal names. The chain id comes from
 // the descriptor.
@@ -104,10 +105,12 @@ export async function runStockPeg ({ chain, root, fetchImpl = fetch, now = () =>
     tokens_considered: 0, rows_written: 0, rows_invalid: 0, refused: {}, pair_read_errors: 0, supplemented: 0, supplement_errors: 0,
   }
   let chainState = null, raw = { on: false }
+  // The shape of every third-party answer this run (evm/core/stocks/shape.mjs), per source; compared with the last run's.
+  const shapes = {}
 
   let records = null
   try {
-    records = await C.read(fetchImpl, { chainId: C.chainId })
+    records = await C.read(fetchImpl, { chainId: C.chainId, onBody: (src, body) => (shapes[src] ||= []).push(shapeOf(body)) })
     run.registry = { records: records.length, complete: true, error: null }
     // H2: a snapshot of the registry whenever it changed (docs/stocks-truth-layer-tz.md §H). What an issuer listed on a
     // given day cannot be read back later. A failure here never stops the readings, but it fails the unit.
@@ -138,7 +141,7 @@ export async function runStockPeg ({ chain, root, fetchImpl = fetch, now = () =>
       // read from the chain from the next run on (the factories' pools from the first). Sequential, the chain added
       // ~0.4 s a token, ~80 s to a Robinhood run already near its deadline (measured 12.11).
       const chainP = chainState.ok ? readTokenOnchain(chainState, fetchImpl, rec.address, { tokenUsd: rec.reference?.price_usd ?? null }).then((r) => ({ r }), (e) => ({ e })) : null
-      try { const d = await readPairs(fetchImpl, C.slug, rec.address); pairs = d.pairs; snaps.push(d.snap) } catch (e) { pairError = String(e && e.message || e).slice(0, 200); run.pair_read_errors++ }
+      try { const d = await readPairs(fetchImpl, C.slug, rec.address); pairs = d.pairs; snaps.push(d.snap); (shapes['dexscreener:token-pairs'] ||= []).push(shapeOf(d.pairs)) } catch (e) { pairError = String(e && e.message || e).slice(0, 200); run.pair_read_errors++ }
       const dsCapped = pairs ? pairs.length >= DEXSCREENER_PAIR_CAP : false
       // A full DexScreener list may be hiding pools: ask GeckoTerminal for more, and keep the first list if it refuses.
       const sources = pairs ? ['dexscreener'] : []
@@ -196,6 +199,7 @@ export async function runStockPeg ({ chain, root, fetchImpl = fetch, now = () =>
   } finally {
     try { writeSince(outDir, since) } catch (_) { /* the next run re-learns */ }
     if (chainState) { const err = saveOnchain(chainState, outDir); if (err) log('[stock-peg] pool book not written: ' + err) }
+    try { run.shape_changes = recordShapes(outDir, shapes, { complete: !run.aborted }) } catch (e) { log('[stock-peg] shapes not compared: ' + String(e && e.message || e).slice(0, 200)) }
   }
 
   run.finished_at = new Date(now()).toISOString()
@@ -204,6 +208,28 @@ export async function runStockPeg ({ chain, root, fetchImpl = fetch, now = () =>
   fs.appendFileSync(path.join(outDir, `stock-peg-runs-${day(started)}.jsonl`), JSON.stringify(run) + '\n')
   log('[stock-peg] ' + JSON.stringify({ chain, registry: run.registry, tokens: run.tokens_considered, written: run.rows_written, invalid: run.rows_invalid, refused: run.refused, pair_read_errors: run.pair_read_errors, supplement_skipped: run.supplement_skipped || 0, onchain: run.onchain ?? null, raw: raw.on ? { written: raw.written, skipped_full: raw.skipped_full, pruned: raw.pruned, store_bytes: raw.bytes } : (raw.error ? { error: raw.error } : 'off'), aborted: run.aborted ?? null }))
   return run
+}
+
+/**
+ * Compare this run's answer shapes with the last ones kept in <outDir>/shapes.json, keep the new ones, and return what
+ * changed as { source: [changes] } (only sources with a change). The DexScreener shape is per token merged; its sizes
+ * are not compared (a token's pool count is not a format).
+ */
+export function recordShapes (outDir, shapes, { complete = true } = {}) {
+  const file = path.join(outDir, 'shapes.json')
+  let kept = {}
+  try { kept = JSON.parse(fs.readFileSync(file, 'utf8')) } catch (_) { /* the first run keeps a baseline */ }
+  const changes = {}
+  for (const [src, list] of Object.entries(shapes)) {
+    const now = mergeShapes(list)
+    if (src.startsWith('dexscreener')) now.sizes = {}
+    const c = shapeChanges(kept[src], now, { complete })
+    if (c.length) changes[src] = c.slice(0, 20)
+    kept[src] = now
+  }
+  const tmp = file + '.tmp'
+  fs.writeFileSync(tmp, JSON.stringify(kept)); fs.renameSync(tmp, file)
+  return changes
 }
 
 /**

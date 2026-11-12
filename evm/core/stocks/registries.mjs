@@ -40,13 +40,14 @@ async function getJson (fetchImpl, url) {
 export const mintedOf = (r) => (!r ? null : r.issuer === 'robinhood' || r.supply_known === false ? null : r.supplied !== false)
 
 /** Coinbase tokenized stocks (on Base). Throws unless every page was read. */
-export async function readCoinbase (fetchImpl = fetch, { chainId } = {}) {
+export async function readCoinbase (fetchImpl = fetch, { chainId, onBody = null } = {}) {
   if (!Number.isInteger(chainId)) throw new Error('coinbase: chainId is required')
   const out = []
   let token = null
   for (let page = 0; page < MAX_PAGES; page++) {
     const url = COINBASE_URL + '?page_size=500' + (token ? '&page_token=' + encodeURIComponent(token) : '')
     const body = await getJson(fetchImpl, url)
+    if (onBody) onBody('coinbase:tokenized-stocks', body)
     if (!body || !Array.isArray(body.tokens)) throw new Error('coinbase: body has no tokens array')
     for (const t of body.tokens) {
       const address = low(t.contract_address)
@@ -69,13 +70,15 @@ export async function readCoinbase (fetchImpl = fetch, { chainId } = {}) {
 
 /** Robinhood stock tokens on its chain, with their token-unit quotes. The list throws; the prices may fail alone.
  *  Only deployments whose chainId equals the caller's are listed. */
-export async function readRobinhood (fetchImpl = fetch, { chainId } = {}) {
+export async function readRobinhood (fetchImpl = fetch, { chainId, onBody = null } = {}) {
   if (!Number.isInteger(chainId)) throw new Error('robinhood: chainId is required')
   const body = await getJson(fetchImpl, ROBINHOOD_ASSETS_URL)
+  if (onBody) onBody('robinhood:assets', body)
   if (!body || !Array.isArray(body.assets)) throw new Error('robinhood: body has no assets array')
   let quotes = null
   try {
     const q = await getJson(fetchImpl, ROBINHOOD_PRICES_URL)
+    if (onBody) onBody('robinhood:prices', q)
     if (Array.isArray(q?.quotes)) quotes = new Map(q.quotes.map((x) => [x.tokenSymbol, x]))
   } catch (_) { /* the list is still true without prices: every reference is null and says so */ }
   const out = []

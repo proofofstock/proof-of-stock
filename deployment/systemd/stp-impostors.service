@@ -1,6 +1,7 @@
 # deployment/systemd/stp-impostors.service: the impostor list and the names file (scripts/stocks/impostor-list.mjs),
 # built from the collector's token-static streams under the dataset roots. Minutes on Robinhood, so low priority.
 [Unit]
+OnFailure=stp-alert@%n.service
 Description=Stock Token Passport: impostor list, Base and Robinhood
 
 [Service]

@@ -427,6 +427,7 @@ Kinds, strongest first; the strongest that fires is returned:
 |---|---|
 | `registry_symbol` | the symbol equals, case-sensitively, a listed symbol that is not just the bare ticker (Coinbase's `NVDAc`, not Robinhood's `NVDA`) |
 | `issuer_name_suffix` | the name ends in "… Robinhood Token" and the registry is Robinhood's |
+| `registry_name` | the whole name is a listed company's name, case, punctuation and corporate ending aside (`NVIDIA`, `McDonald's`) |
 | `ticker` | the symbol equals a listed ticker ignoring case. Weak: many memecoins borrow a ticker |
 
 `null` when: the token is listed; the server knows no symbol or name for the address; or the name matches none of the
@@ -441,7 +442,7 @@ kinds.
 | `same_deployer_impostors` | integer or null | the deployer is not known yet | `3`: three other listed impostors come from the same deployer |
 
 Non-null only when the token is not listed and its address is on the chain's impostor list (`impostors.json`, written
-every 6 hours). That list holds only the strong kinds, `registry_symbol` and `issuer_name_suffix`. So a token can have
+every 6 hours). That list holds only the strong kinds, `registry_symbol`, `issuer_name_suffix` and `registry_name`. So a token can have
 a `resembles` of kind `ticker` and `impostor_listing: null`, and a token first seen after the last list run has
 `impostor_listing: null` while `resembles` already names it.
 

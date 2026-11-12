@@ -1,0 +1,20 @@
+# deployment/systemd/stp-alert@.service: a unit failed; tell the owner in Telegram (scripts/stocks/notify-failure.mjs).
+# Every stp unit names it in OnFailure=stp-alert@%n.service. The bot token and chat live in /etc/stp/alert.env (0600,
+# written by the owner, never in git); without that file the alert is written to the journal only.
+[Unit]
+Description=Proof of Stock: alert the owner that %i failed
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/stp/current
+EnvironmentFile=-/etc/stp/alert.env
+Environment=STP_ALERT_STATE=/var/lib/stp-alerts/state.json
+ExecStart=/usr/bin/node scripts/stocks/notify-failure.mjs %i
+DynamicUser=false
+User=root
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+PrivateTmp=true
+ReadWritePaths=/var/lib/stp-alerts
+StateDirectory=stp-alerts

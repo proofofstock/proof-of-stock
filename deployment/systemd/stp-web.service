@@ -3,6 +3,7 @@
 # (scripts/deploy.sh). It reads the recorded readings and the impostor files under the two dataset roots. It writes
 # one thing: its own visit counter, under /var/lib/stp-analytics (apps/stocks-analytics.mjs).
 [Unit]
+OnFailure=stp-alert@%n.service
 Description=Stock Token Passport: public site and MCP server (read-only)
 After=network-online.target
 Wants=network-online.target
