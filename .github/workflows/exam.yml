@@ -1,0 +1,42 @@
+# The public exam (scripts/exam.mjs): once a day proofofstock.xyz is asked about every token whose right answer comes
+# from the issuers, and the report is committed to the `exam` branch of the public repository, so the history is the
+# evidence. Public repository only; in the private one the job is skipped. Writes to `exam` and nothing else.
+name: Exam
+on:
+  schedule:
+    - cron: '37 6 * * *'
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: exam
+  cancel-in-progress: false
+jobs:
+  exam:
+    if: github.repository == 'proofofstock/proof-of-stock'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+      - name: Run the exam
+        id: exam
+        run: node scripts/exam.mjs --out="$RUNNER_TEMP/exam"
+        continue-on-error: true
+      - name: Publish the report to the exam branch
+        run: |
+          git config user.name 'Proof of Stock'
+          git config user.email 'hello@proofofstock.xyz'
+          git fetch origin exam || true
+          if git show-ref --quiet refs/remotes/origin/exam; then git switch -c exam origin/exam; else git switch --orphan exam; git rm -rf --quiet . || true; fi
+          mkdir -p reports
+          cp "$RUNNER_TEMP"/exam/*.json "$RUNNER_TEMP"/exam/*.md "$RUNNER_TEMP"/exam/*.set.txt reports/
+          mv reports/README.md README.md
+          git add README.md reports
+          git commit -m "Exam $(date -u +%Y-%m-%d)" || echo "nothing new"
+          git push origin HEAD:exam
+      - name: Fail the run when the exam found a wrong verdict
+        if: steps.exam.outcome == 'failure'
+        run: exit 1
