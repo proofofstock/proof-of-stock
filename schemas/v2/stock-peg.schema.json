@@ -41,6 +41,7 @@
         "seen": { "type": ["integer", "null"], "description": "pairs the source returned; null when the read failed" },
         "eligible": { "type": "integer", "minimum": 0 },
         "capped": { "type": "boolean", "description": "there may be pools neither source listed: DexScreener returned its cap of 30 and, when GeckoTerminal was asked, its last page was full too" },
+        "topped_up_at": { "type": ["string", "null"], "format": "date-time", "description": "for a full DexScreener list: when GeckoTerminal last completed it, in this run or an earlier one (its pools are then read on chain from the pool book); null when never, or when the list was not full" },
         "error": { "type": ["string", "null"], "description": "why DexScreener could not be read" },
         "onchain_error": { "type": ["string", "null"], "description": "why the chain could not be read for this token; the reading stands on the aggregators. Absent from rows recorded before the recorder read the chain" },
         "top": {

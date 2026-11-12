@@ -1,0 +1,11 @@
+[Unit]
+Description=Stock Token Passport: anchor yesterday's data files, once a day
+
+[Timer]
+OnCalendar=*-*-* 00:20:00 UTC
+RandomizedDelaySec=5min
+Persistent=true
+Unit=stp-anchor.service
+
+[Install]
+WantedBy=timers.target

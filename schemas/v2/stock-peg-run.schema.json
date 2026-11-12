@@ -49,6 +49,7 @@
       },
       "additionalProperties": false
     },
+    "supplement_deferred": { "type": "integer", "minimum": 0, "description": "full DexScreener lists not topped up from GeckoTerminal this run because the run's request budget went to tokens topped up longer ago; their rows carry pools.topped_up_at" },
     "aborted": { "type": ["string", "null"], "description": "set when the run stopped on an error or at its deadline after the registry was read; the rows before it stand" },
     "duration_s": { "type": "number", "minimum": 0, "description": "wall time of the run, from its start to the row being written" },
     "budget_s": { "type": ["number", "null"], "minimum": 0, "description": "the time the run was given: its deadline minus its start; null when it ran without a deadline" },

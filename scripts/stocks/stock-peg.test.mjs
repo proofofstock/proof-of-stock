@@ -32,6 +32,8 @@ process.env.STP_RAW_DIR = path.join(tmp, 'stp-raw-default')
 delete process.env.STP_RAW_SNAPSHOTS
 const lines = (f) => (fs.existsSync(f) ? fs.readFileSync(f, 'utf8').trim().split('\n').filter(Boolean).map((l) => JSON.parse(l)) : [])
 const NOW = Date.parse('2026-11-08T12:00:00Z')
+// The GeckoTerminal lane tops up only tokens a previous run saw with a full DexScreener list (scripts/stocks/gecko-lane.mjs).
+const seedCapped = (root, addrs) => { const d = path.join(root, 'stock-peg'); fs.mkdirSync(d, { recursive: true }); fs.writeFileSync(path.join(d, 'gecko-topups.json'), JSON.stringify(Object.fromEntries(addrs.map((a) => [a, { capped_at: new Date(NOW - 3600e3).toISOString() }])))) }
 
 const A = '0x' + 'aa'.repeat(20), B = '0x' + 'bb'.repeat(20), C = '0x' + 'cc'.repeat(20)
 // The chains' real reference assets: a pool prices a stock token only against one of them (evm/core/stocks/peg.mjs).
@@ -117,6 +119,23 @@ console.log('a Base run')
   check('rows and manifest share the run id', rows.every((r) => r.run_id === runs[0].run_id))
 }
 
+console.log('DexScreener is paced by the start of each request')
+{
+  // Was a fixed pause after every token (51 s of a 290 s Robinhood run, 12.11). Now a start every paceMs: two tokens with
+  // instant answers wait once, not twice, and the wait is the gap, not gap plus answer time.
+  const root = path.join(tmp, 'pace')
+  const coinbase = respond(200, { tokens: [A, B].map((t) => ({ contract_address: t, symbol: 'Xc', multiplier: '1', nav_price: '100', nav_price_updated_at: '2026-11-08T11:00:00Z', total_supply: '10' })) })
+  const starts = []
+  await runStockPeg({ chain: 'base', root, now: () => NOW, paceMs: 120, log: () => {}, fetchImpl: async (url) => {
+    const u = String(url)
+    if (u.startsWith(COINBASE_URL)) return coinbase
+    if (u.includes('/token-pairs/')) { starts.push(performance.now()); return respond(200, []) }
+    return respond(404, {})
+  } })
+  const tail = performance.now() - starts[starts.length - 1]
+  check('two tokens: their DexScreener requests start at least paceMs apart, and no pause follows the last one (it was a pause after every token)', starts.length === 2 && starts[1] - starts[0] >= 110 && tail < 110, JSON.stringify({ gap: Math.round(starts[1] - starts[0]), tail: Math.round(tail) }))
+}
+
 console.log('a run whose list could not be read')
 {
   const root = path.join(tmp, 'down')
@@ -164,22 +183,39 @@ console.log('a token whose DexScreener list is full')
     }
     return respond(404, {})
   }
+  seedCapped(root, [A])
   const run = await runStockPeg({ chain: 'base', root, now: () => NOW, paceMs: 0, geckoPaceMs: 0, log: () => {}, fetchImpl: gecko(false) })
   const [r] = lines(path.join(root, 'stock-peg', 'stock-peg-2026-11-08.jsonl'))
   check('a full list is completed from GeckoTerminal and says so', r.pools.source === 'dexscreener+geckoterminal' && r.pools.seen === 31 && run.supplemented === 1, `${r.pools.source} ${r.pools.seen}`)
   check('the deeper pool GeckoTerminal found now prices the token', r.dex_pool === '0x' + 'ab'.repeat(20) && Math.abs(r.premium - 0.03) < 1e-12)
   check('a GeckoTerminal page that is not full clears the capped flag', r.pools.capped === false)
   check('the row and the manifest are valid', validateV2('stock-peg', r).valid && validateV2('stock-peg-run', lines(path.join(root, 'stock-peg', 'stock-peg-runs-2026-11-08.jsonl'))[0]).valid)
+  check('...and the row says when the full list was completed: now', r.pools.topped_up_at === new Date(NOW).toISOString())
+  {
+    // The lane (review, 12.11: GeckoTerminal keyless is about 5 calls a minute per IP; 17 of 38 requests a run were 429).
+    const fresh = path.join(tmp, 'lane-first')
+    const before = geckoCalls
+    const first = await runStockPeg({ chain: 'base', root: fresh, now: () => NOW, paceMs: 0, geckoPaceMs: 0, log: () => {}, fetchImpl: gecko(false) })
+    const [f1] = lines(path.join(fresh, 'stock-peg', 'stock-peg-2026-11-08.jsonl'))
+    const st = JSON.parse(fs.readFileSync(path.join(fresh, 'stock-peg', 'gecko-topups.json'), 'utf8'))
+    check('a list seen full for the first time is not topped up in that run: deferred, remembered, and the row says never', geckoCalls === before && first.supplement_deferred === 1 && f1.pools.capped === true && f1.pools.topped_up_at === null && f1.pools.source === 'dexscreener' && st[A] && st[A].capped_at, JSON.stringify({ calls: geckoCalls - before, d: first.supplement_deferred }))
+    const second = await runStockPeg({ chain: 'base', root: fresh, now: () => NOW + 900e3, paceMs: 0, geckoPaceMs: 0, log: () => {}, fetchImpl: gecko(false) })
+    const st2 = JSON.parse(fs.readFileSync(path.join(fresh, 'stock-peg', 'gecko-topups.json'), 'utf8'))
+    check('...the next run tops it up and remembers when, and how many pages it took', geckoCalls === before + 1 && second.supplemented === 1 && st2[A].topped_at === new Date(NOW + 900e3).toISOString() && st2[A].pages === 1 && st2[A].more === false, JSON.stringify(st2[A]))
+    check('...a pool only GeckoTerminal saw that is a v4 pool marks the token as needing the aggregator', st2[A].needs_aggregator === true)
+  }
   const root2 = path.join(tmp, 'capped-429')
+  seedCapped(root2, [A])
   const run2 = await runStockPeg({ chain: 'base', root: root2, now: () => NOW, paceMs: 0, geckoPaceMs: 0, log: () => {}, fetchImpl: gecko(true) })
   const [r2] = lines(path.join(root2, 'stock-peg', 'stock-peg-2026-11-08.jsonl'))
   check('a throttled GeckoTerminal leaves the DexScreener reading as it was', r2.pools.source === 'dexscreener' && r2.pools.seen === 30 && r2.pools.capped === true && run2.supplement_errors === 1)
-  check('GeckoTerminal is asked only for full lists', geckoCalls === 2)
+  check('GeckoTerminal is asked only for full lists', geckoCalls === 3)
   // Near the deadline a full list is kept as DexScreener gave it; at the deadline the run stops, and says so in its row.
   const root3 = path.join(tmp, 'capped-late')
+  seedCapped(root3, [A])
   const run3 = await runStockPeg({ chain: 'base', root: root3, now: () => NOW, deadline: NOW + SUPPLEMENT_STOP_MS - 1, paceMs: 0, geckoPaceMs: 0, log: () => {}, fetchImpl: gecko(false) })
   const [r3] = lines(path.join(root3, 'stock-peg', 'stock-peg-2026-11-08.jsonl'))
-  check('close to its deadline a run skips GeckoTerminal and counts it', geckoCalls === 2 && r3.pools.source === 'dexscreener' && r3.pools.capped === true && run3.supplement_skipped === 1 && run3.aborted === undefined)
+  check('close to its deadline a run skips GeckoTerminal and counts it', geckoCalls === 3 && r3.pools.source === 'dexscreener' && r3.pools.capped === true && run3.supplement_skipped === 1 && run3.aborted === undefined)
   check('...and its run row is valid', validateV2('stock-peg-run', lines(path.join(root3, 'stock-peg', 'stock-peg-runs-2026-11-08.jsonl'))[0]).valid)
   const root4 = path.join(tmp, 'past-deadline')
   const run4 = await runStockPeg({ chain: 'base', root: root4, now: () => NOW, deadline: NOW, paceMs: 0, geckoPaceMs: 0, log: () => {}, fetchImpl: gecko(false) })
@@ -258,6 +294,7 @@ console.log('pools against a memecoin never price a stock token')
 {
   // The same rule on Base, and for pools GeckoTerminal adds when DexScreener's list is full.
   const root = path.join(tmp, 'meme-base')
+  seedCapped(root, [A])
   const coinbase = respond(200, { tokens: [{ contract_address: A, symbol: 'NVDAc', multiplier: '1', nav_price: '100', nav_price_updated_at: '2026-11-08T11:00:00Z', total_supply: '10' }] })
   const thirty = Array.from({ length: 30 }, (_, i) => ({ ...pairOf(A, 101, 20_000), pairAddress: '0x' + String(i + 100).padStart(40, '0') }))
   const gecko = { data: [
@@ -469,6 +506,31 @@ console.log('the exit code')
   check('a run without its registry exits 1', runExitCode({ ...ok, registry: { complete: false } }) === 1)
 }
 
+console.log('the GeckoTerminal lane')
+{
+  const { schedule, startLane, needsAggregator, GECKO_BUDGET, GECKO_PACE_MS } = await import('./gecko-lane.mjs')
+  const T = Date.parse('2026-11-12T12:00:00Z'), iso = (ms) => new Date(T - ms).toISOString()
+  const state = {
+    a: { capped_at: iso(60e3), topped_at: iso(3 * 3600e3), pages: 3 },
+    b: { capped_at: iso(60e3), topped_at: iso(600e3), pages: 1 },
+    c: { capped_at: iso(60e3) },
+    d: { capped_at: iso(48 * 3600e3) },
+    e: { capped_at: iso(60e3), topped_at: iso(60e3), pages: 1, needs_aggregator: true },
+  }
+  const plan = schedule(state, ['a', 'b', 'c', 'd', 'e', 'z'], 6, T)
+  check('the plan: never or longest without a top-up first, a token needing the aggregator an hour older; a stale cap is left out', JSON.stringify(plan) === JSON.stringify(['c', 'a', 'e']), JSON.stringify(plan))
+  check('...within the budget, a token costing the pages it took last time', JSON.stringify(schedule(state, ['a', 'b', 'c'], 3, T)) === JSON.stringify(['c', 'b']) && schedule(state, ['a'], 0, T).length === 0)
+  check('the pace and budgets keep under the keyless limit of about 5 calls a minute', GECKO_PACE_MS >= 12_000 && GECKO_BUDGET.robinhood * GECKO_PACE_MS <= 150e3 && GECKO_BUDGET.base * GECKO_PACE_MS <= 60e3)
+  let t = 0, asked = []
+  const lane = startLane({ fetchImpl: null, network: 'base', addresses: ['p', 'q', 'r'], paceMs: 0, stopAt: 2, now: () => t, read: async (_f, _n, a) => { asked.push(a); t++; if (a === 'q') throw new Error('429'); return { pairs: [], more: false, snaps: [] } } })
+  const got = await Promise.all(['p', 'q', 'r'].map((a) => lane.get(a)))
+  const stopping = startLane({ fetchImpl: null, network: 'base', addresses: ['s1', 's2'], paceMs: 0, read: async () => ({ pairs: [], more: false, snaps: [] }) })
+  stopping.stop()
+  const afterStop = await Promise.all([stopping.get('s1'), stopping.get('s2')])
+  check('a lane stopped by the run asks nothing more: the request in flight ends, the rest are skipped', afterStop[1].skipped === true)
+  check('the lane asks one at a time, turns a failure into an error answer, and skips what is left at its stop time', JSON.stringify(asked) === JSON.stringify(['p', 'q']) && Array.isArray(got[0].pairs) && /429/.test(got[1].error) && got[2].skipped === true)
+  check('needsAggregator: a v4 pool id or an undecodable pool only GeckoTerminal saw; not one DexScreener listed too', needsAggregator([{ pairAddress: '0x1' }], [{ pairAddress: '0x' + 'a'.repeat(64) }], {}) && needsAggregator([], [{ pairAddress: '0xbb' }], { pools: { '0xbb': { decoder: 'none' } } }) && !needsAggregator([{ pairAddress: '0xcc' }], [{ pairAddress: '0xCC', dexId: 'uniswap-v4' }], {}) && !needsAggregator([], [{ pairAddress: '0x' + 'd'.repeat(40), dexId: 'aerodrome' }], {}))
+}
 fs.rmSync(tmp, { recursive: true, force: true })
 console.log(`\n${passed} passed, ${failed} failed`)
 if (failed) { for (const f of failures) console.log(f); process.exit(1) }

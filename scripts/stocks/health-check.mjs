@@ -33,7 +33,7 @@ const CHAIN_NAME = { base: 'Base', robinhood: 'Robinhood Chain' }
  * @param {number} p.now
  * @returns {{ key: string, bad: boolean, text: string }[]} one entry per check; bad ones are alerts, good ones clear them
  */
-export function evaluate ({ status, siteError = null, runs = {}, now }) {
+export function evaluate ({ status, siteError = null, runs = {}, prevRuns = {}, now }) {
   const out = []
   const put = (key, bad, text) => out.push({ key, bad: Boolean(bad), text })
   put('site:down', !status, status ? 'the site answers again.' : `the site does not answer on the host (${siteError || 'no answer'}). Every verdict is unavailable until it does.`)
@@ -68,8 +68,36 @@ export function evaluate ({ status, siteError = null, runs = {}, now }) {
       const dis = (run.refused?.sources_disagree || 0) / tokens
       put(`disagree:${c}`, dis > THRESHOLDS.disagree_share, dis > THRESHOLDS.disagree_share ? `${n}: for ${run.refused.sources_disagree} of ${tokens} tokens the chain and an aggregator disagree by more than 2% on the deepest pool. One of the sources may be wrong.` : `${n}: the price sources agree again.`)
     }
+    slowRuns(put, n, 'slow:' + c, run, prevRuns[c])
     const sc = run.shape_changes || {}
     for (const [src, changes] of Object.entries(sc)) put(`shape:${c}:${src}:${run.finished_at}`, true, `${n}: the format of ${src} changed: ${changes.slice(0, 5).join('; ')}${changes.length > 5 ? `; and ${changes.length - 5} more` : ''}. Check the reader before it matters.`)
+  }
+  return out
+}
+
+/**
+ * Warn before the deadline is hit (12.11: a Robinhood run stopped at its deadline with no warning before). Bad when
+ * the last two runs both used 80% or more of their time budget; resolved when both are back under 70%; between the
+ * two, nothing is said, so a run near the line neither pages nor resolves.
+ */
+export function slowRuns (put, name, key, run, prev) {
+  const share = (r) => (r && r.duration_s != null && r.budget_s > 0 ? r.duration_s / r.budget_s : null)
+  const a = share(run), b = share(prev)
+  if (a == null || b == null) return
+  if (a >= 0.8 && b >= 0.8) put(key, true, `${name}: the recorder used ${Math.round(a * 100)}% of its time budget (${Math.round(run.duration_s)} of ${run.budget_s} s) two runs in a row. Nothing is missing yet; one more slow source and a run stops early.`)
+  else if (a < 0.7 && b < 0.7) put(key, false, `${name}: the recorder is back under 70% of its time budget.`)
+}
+
+/** The last n run rows of a chain's recorder, newest first (today's file, then yesterday's). */
+export function lastRuns (root, now, n = 2) {
+  const out = []
+  for (const d of [0, 1]) {
+    const f = path.join(root, 'stock-peg', `stock-peg-runs-${new Date(now - d * 864e5).toISOString().slice(0, 10)}.jsonl`)
+    let text
+    try { text = fs.readFileSync(f, 'utf8') } catch (_) { continue }
+    const lines = text.trim().split('\n').filter(Boolean)
+    for (let i = lines.length - 1; i >= 0 && out.length < n; i--) { try { out.push(JSON.parse(lines[i])) } catch (_) { /* a torn line */ } }
+    if (out.length >= n) break
   }
   return out
 }
@@ -96,8 +124,10 @@ if (isEntryPoint(import.meta.url)) {
     const r = await fetch(site + '/api/status', { signal: AbortSignal.timeout(10_000) })
     if (r.ok) status = await r.json(); else siteError = `HTTP ${r.status}`
   } catch (e) { siteError = String(e && e.name || e) }
-  const runs = Object.fromEntries(Object.entries(roots).map(([c, root]) => [c, lastRun(root, now)]))
-  const checks = evaluate({ status, siteError, runs, now })
+  const recent = Object.fromEntries(Object.entries(roots).map(([c, root]) => [c, lastRuns(root, now, 2)]))
+  const runs = Object.fromEntries(Object.entries(recent).map(([c, r]) => [c, r[0] || null]))
+  const prevRuns = Object.fromEntries(Object.entries(recent).map(([c, r]) => [c, r[1] || null]))
+  const checks = evaluate({ status, siteError, runs, prevRuns, now })
   const sent = []
   for (const ch of checks) sent.push([ch.key, await alert({ key: ch.key, text: ch.text, ok: !ch.bad })])
   const bad = checks.filter((c) => c.bad).map((c) => c.key)

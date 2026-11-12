@@ -83,5 +83,30 @@ console.log('a change of format')
 }
 
 fs.rmSync(tmp, { recursive: true, force: true })
+console.log('a recorder close to its deadline')
+{
+  const { slowRuns, lastRuns } = await import('./health-check.mjs')
+  const said = []
+  const put = (key, bad, text) => said.push({ key, bad, text })
+  const r = (d) => ({ duration_s: d, budget_s: 460 })
+  slowRuns(put, 'Robinhood Chain', 'slow:robinhood', r(400), r(380))
+  check('two runs at 80% or more of their budget: a warning, before anything is missing', said.length === 1 && said[0].bad === true && /87% of its time budget \(400 of 460 s\) two runs in a row/.test(said[0].text), JSON.stringify(said))
+  said.length = 0; slowRuns(put, 'Robinhood Chain', 'slow:robinhood', r(400), r(300))
+  check('...one slow run alone says nothing', said.length === 0)
+  said.length = 0; slowRuns(put, 'Robinhood Chain', 'slow:robinhood', r(340), r(330))
+  check('...between 70% and 80% says nothing either, so it neither pages nor resolves early', said.length === 0)
+  said.length = 0; slowRuns(put, 'Robinhood Chain', 'slow:robinhood', r(120), r(130))
+  check('...both under 70%: resolved', said.length === 1 && said[0].bad === false)
+  said.length = 0; slowRuns(put, 'x', 'k', { duration_s: 10 }, r(400)); slowRuns(put, 'x', 'k', r(400), null)
+  check('...a run row without duration or budget (older rows), or no earlier run: nothing', said.length === 0)
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'health-runs-'))
+  fs.mkdirSync(path.join(dir, 'stock-peg'))
+  fs.writeFileSync(path.join(dir, 'stock-peg', 'stock-peg-runs-2026-11-12.jsonl'), JSON.stringify({ n: 1 }) + '\n' + JSON.stringify({ n: 2 }) + '\n')
+  fs.writeFileSync(path.join(dir, 'stock-peg', 'stock-peg-runs-2026-11-11.jsonl'), JSON.stringify({ n: 0 }) + '\n')
+  const two = lastRuns(dir, Date.parse('2026-11-12T12:00:00Z'), 2), three = lastRuns(dir, Date.parse('2026-11-12T12:00:00Z'), 3)
+  check('lastRuns: newest first, reaching into yesterday when today has too few', two.map((x) => x.n).join() === '2,1' && three.map((x) => x.n).join() === '2,1,0')
+  fs.rmSync(dir, { recursive: true, force: true })
+}
+
 console.log(`\n${passed} passed, ${failed} failed`)
 if (failed) { for (const x of failures) console.log(x); process.exit(1) }

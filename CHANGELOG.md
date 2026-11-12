@@ -12,6 +12,16 @@ The version is in `package.json`, and the site footer, the MCP `serverInfo.versi
 
 ## [Unreleased]
 
+### Added
+- **Our data is anchored in Bitcoin once a day** (spec item F; the moat debate of 12.11). `scripts/stocks/anchor.mjs`, run by `stp-anchor.timer` at 00:20 UTC, writes a manifest of the SHA-256 of every data file the previous day produced (readings, run rows, case archive, registry snapshots), chained to the manifest before it, and sends its SHA-256 to two OpenTimestamps calendars. Manifests and proofs are public at `/anchors/`; `docs/how-to/verify-an-anchor.md` shows how to check one with `ots verify`. It proves when the files existed in this form, not that they are right. No key, wallet or transaction of ours.
+
+### Changed
+- **Two claims now say only what is true** (found in the moat debate, 12.11): the guard's README no longer shows `npm install @proofofstock/guard` as if it were published (it is not yet), and the methodology gives the measured window of Robinhood Chain's public RPC, about 6,200 blocks or 11 minutes (it said about an hour): older price evidence there needs an archive node to replay.
+- **The recorder no longer spends three quarters of a run waiting** (steps 1 to 3 of the recorder speed plan, after an independent review and the measured runs of 12.11):
+  - **GeckoTerminal top-ups run as one paced lane beside the DexScreener loop**, at most 4 (Base) and 10 (Robinhood) requests a run, 12.5 s apart. Its keyless API allows about 5 calls a minute per IP, and 17 of 38 requests a Robinhood run were refused. The tokens topped up are those whose DexScreener list was full, the longest without a top-up first. A token that has a pool only GeckoTerminal sees and the chain cannot read counts an hour older. A token not topped up keeps the pools it learned, read on the chain, and its row carries `pools.topped_up_at`. The run row counts `supplement_deferred`.
+  - **DexScreener is paced by the start of each request** (250 ms, 240 a minute, 80% of its 300), not by a fixed pause after every token.
+  - **A warning before the deadline:** the health check alerts when two runs in a row used 80% or more of their time budget, and resolves when two are back under 70%.
+
 ## [0.5.1] - 2026-11-12
 
 ### Added

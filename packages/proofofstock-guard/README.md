@@ -41,8 +41,12 @@ if (!d.allow) {
 
 Node 20.19 or newer (ESM; `require()` works too), no dependencies.
 
+**Not on npm yet.** The package is ready to publish but has not been published; until it is, copy
+`packages/proofofstock-guard/` from this repository, or install it from a local path:
+
 ```sh
-npm install @proofofstock/guard
+npm install ./packages/proofofstock-guard   # from a clone of this repository
+# npm install @proofofstock/guard           # once it is published
 ```
 
 ```js

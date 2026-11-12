@@ -60,6 +60,7 @@ import { canonicalRegistry } from '../evm/core/stocks/history.mjs'
 import { isIsoTime } from '../scripts/lib/mcp-args.mjs'
 import { statusPage } from './stocks-status.mjs'
 import { statsPage, lastRuns, STATS_GATE } from './stocks-stats.mjs'
+import { ANCHOR_FILE_RE } from '../scripts/stocks/anchor.mjs'
 import { dailySummaries } from '../scripts/stocks/analytics-report.mjs'
 import { createHistoryStore, historyPage, BULK_WINDOW_DAYS, BULK_MAX, FULL_ARCHIVE } from './stocks-history.mjs'
 import { createAnalytics, parseHit } from './stocks-analytics.mjs'
@@ -706,6 +707,23 @@ export function createStocksWeb ({
       if (req.headers[STATS_GATE.toLowerCase()] !== 'gate') return send(res, 404, { error: 'not found' })
       const html = statsPage({ days: dailySummaries({ dir: analyticsOpts.dir ?? process.env.STP_ANALYTICS_DIR ?? null, days: 14, today: new Date(now()).toISOString().slice(0, 10) }), runs: Object.fromEntries(Object.keys(CHAINS).map((c) => [c, lastRuns(roots[c], 8, now())])), exam: (() => { const r = exam.get(); return r.status === 200 ? r.body : null })(), now: now(), version: appVersion, assets: { css: `style.css?v=${version('/style.css')}`, docsCss: `docs.css?v=${version('/docs.css')}` } })
       return send(res, 200, html, 'text/html; charset=utf-8', { 'cache-control': 'no-store, private', 'x-robots-tag': 'noindex, nofollow' })
+    }
+    // The daily anchors (scripts/stocks/anchor.mjs): the manifests and their OpenTimestamps proofs, as written. Public,
+    // read-only, and only names that match the anchor files: nothing else in the directory is reachable.
+    if (sub === '/anchors/' || sub === '/anchors') {
+      const dir = process.env.STP_ANCHOR_DIR || null
+      let names = []
+      try { names = dir ? fs.readdirSync(dir).filter((n) => ANCHOR_FILE_RE.test(n)).sort().reverse() : [] } catch (_) { names = [] }
+      const days = [...new Set(names.filter((n) => n.endsWith('.json')).map((n) => n.slice(9, 19)))]
+      return send(res, 200, { note: 'Daily manifests of the SHA-256 of every data file, each anchored in Bitcoin through OpenTimestamps. To check one: download the manifest and a .ots proof, then run ots upgrade and ots verify (opentimestamps-client).', days: days.map((d) => ({ day: d, manifest: `anchors/manifest-${d}.json`, proofs: names.filter((n) => n.startsWith(`manifest-${d}.json.`)).map((n) => `anchors/${n}`) })) }, undefined, { 'access-control-allow-origin': '*', 'cache-control': 'public, max-age=300' })
+    }
+    if (sub.startsWith('/anchors/')) {
+      const name = sub.slice('/anchors/'.length)
+      const dir = process.env.STP_ANCHOR_DIR || null
+      if (!dir || !ANCHOR_FILE_RE.test(name)) return send(res, 404, { error: 'not found' })
+      let body
+      try { body = fs.readFileSync(path.join(dir, name)) } catch (_) { return send(res, 404, { error: 'not found' }) }
+      return send(res, 200, body, name.endsWith('.ots') ? 'application/octet-stream' : 'application/json; charset=utf-8', { 'access-control-allow-origin': '*', 'cache-control': 'public, max-age=3600' })
     }
     if (sub === '/status') {
       analytics.load(clientIp(req), req.headers, '/status')

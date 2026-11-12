@@ -440,6 +440,23 @@ console.log('verify and badge')
   await app6.stop()
 }
 {
+  // /anchors/: the daily manifests and their OpenTimestamps proofs (scripts/stocks/anchor.mjs), public and read-only.
+  const ad = path.join(tmp, 'anchors')
+  fs.mkdirSync(ad, { recursive: true })
+  fs.writeFileSync(path.join(ad, 'manifest-2026-11-12.json'), '{"day":"2026-11-12"}\n')
+  fs.writeFileSync(path.join(ad, 'manifest-2026-11-12.json.a-pool-opentimestamps-org.ots'), Buffer.from('00ff', 'hex'))
+  fs.writeFileSync(path.join(ad, 'secret.env'), 'X=1')
+  const before = process.env.STP_ANCHOR_DIR
+  process.env.STP_ANCHOR_DIR = ad
+  const idx = await (await get('/stocks/anchors/')).json()
+  check('/anchors/ lists each day with its manifest and proofs', idx.days.length === 1 && idx.days[0].manifest === 'anchors/manifest-2026-11-12.json' && idx.days[0].proofs.length === 1 && /ots verify/.test(idx.note))
+  const m = await get('/stocks/anchors/manifest-2026-11-12.json'), o = await get('/stocks/anchors/manifest-2026-11-12.json.a-pool-opentimestamps-org.ots')
+  check('...serves a manifest as JSON and a proof as bytes', m.status === 200 && /application\/json/.test(m.headers.get('content-type')) && o.status === 200 && Buffer.from(await o.arrayBuffer()).toString('hex') === '00ff')
+  const other = await get('/stocks/anchors/secret.env'), up = await get('/stocks/anchors/..%2Fsecret.env'), none = await get('/stocks/anchors/manifest-2026-11-13.json')
+  check('...and nothing else in that directory, no path out of it, and 404 for a day not there', other.status === 404 && up.status === 404 && none.status === 404)
+  if (before === undefined) delete process.env.STP_ANCHOR_DIR; else process.env.STP_ANCHOR_DIR = before
+}
+{
   // /stats, the owner's dashboard (owner, 12.11): served only to a request that carries the gate header nginx sets
   // behind its password; anything else is the same 404 as an unknown path. Aggregates only, every value escaped.
   const statsDir = path.join(tmp, 'stats-analytics')

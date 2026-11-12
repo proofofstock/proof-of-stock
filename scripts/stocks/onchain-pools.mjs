@@ -49,7 +49,7 @@ const CL_SPACINGS = [1, 10, 50, 100, 200, 2000]
 const V3_FEES = [100, 500, 3000, 10000]
 
 // Per chain. `archive`: whether the public RPC answers eth_call at an old block (measured 12.11: Base 120+ days, Robinhood
-// under an hour); where it does not, the evidence says `reproduce_needs: "archive_rpc"`.
+// about 6,200 blocks, 11 minutes); where it does not, the evidence says `reproduce_needs: "archive_rpc"`.
 export const ONCHAIN = Object.freeze(Object.assign(Object.create(null), {
   base: {
     rpc: 'https://mainnet.base.org', env: 'STP_RPC_BASE', archive: true,

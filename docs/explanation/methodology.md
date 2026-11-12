@@ -19,7 +19,7 @@ This page explains why each of those layers works the way it does. The field-by-
 | Registry | Coinbase Tokenized Stocks API, `GET https://api.coinbase.com/v1/tokenized-stocks`, every page | Robinhood `GET https://api.robinhood.com/rhj/assets`, the deployments whose `chainId` is 4663 |
 | Reference | `nav_price` from the same Coinbase records: a net asset value per token, total return | `tokenBid` / `tokenAsk` from `GET https://api.robinhood.com/rhj/prices`, mid of the two |
 | Pools | DexScreener `token-pairs/v1/base/<address>` | DexScreener `token-pairs/v1/robinhood/<address>` |
-| Pools, second source | GeckoTerminal, only when DexScreener lists 30 pairs (its cap), and not in the last 90 s of a run's time limit | the same |
+| Pools, second source | GeckoTerminal, for tokens whose DexScreener list is full (30 pairs, its cap): a few each run, the longest without a top-up first, about one request every 12.5 s (its keyless limit is about 5 a minute). A token not topped up in a run keeps the pools learned before, read on the chain; its row says when it was last topped up (`pools.topped_up_at`) | every 15 min, a share of the full lists each time |
 | Pools, the chain itself | every pool known for the token, read at one block through Multicall3 on `https://mainnet.base.org` | the same, on `https://rpc.mainnet.chain.robinhood.com` |
 
 None of these needs a key. The code is `evm/core/stocks/registries.mjs`, `scripts/stocks/stock-peg.mjs`,
@@ -105,7 +105,8 @@ cast call --block <block_number> 0xca11bde05977b3631167028862be2a173976ca11 <cal
 
 Its output is `return_data`, byte for byte. Decode it with the `decoder` named on the row and the `decimals` beside
 it, and you have the price. On Base the public RPC answers at old blocks (checked back 120 days on 12.11).
-**Robinhood Chain's public RPC keeps no state older than about an hour,** so there `reproduce_needs` is
+**Robinhood Chain's public RPC keeps state for only about 11 minutes** (about 6,200 blocks, measured 12.11), so there
+`reproduce_needs` is
 `"archive_rpc"`: the call needs a node that keeps old state. The block hash still pins what was asked.
 
 **`none`: there is nothing to show.** When DexScreener or GeckoTerminal alone priced the deepest pool, the row says

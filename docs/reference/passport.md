@@ -313,7 +313,8 @@ after `reference.updated_at`. So `0 <= lag_s <= 1800`.
 |---|---|---|---|
 | `seen` | integer or null | the DexScreener read failed and the chain priced no pool | `4` |
 | `eligible` | integer | never null | `1` |
-| `capped` | boolean | never null. `true`: DexScreener returned its cap of 30 pairs, and GeckoTerminal was not asked (the run was near its time limit), failed, or its last page was full too. The count is a minimum (`pools_capped`) | `false` |
+| `capped` | boolean | never null. `true`: DexScreener returned its cap of 30 pairs, and GeckoTerminal was not asked in this run (its turn had not come, or the run was near its time limit), failed, or its last page was full too. The count is a minimum (`pools_capped`) | `false` |
+| `topped_up_at` | string or null | for a full DexScreener list (`capped` from DexScreener): when GeckoTerminal last completed it, in this run or an earlier one; the pools it found then are read on the chain in between. `null` when never, or when the list was not full. |
 | `top` | object[] | never null. The eligible pools, deepest first, at most 5 | |
 
 A pool is **eligible** when all of these hold:

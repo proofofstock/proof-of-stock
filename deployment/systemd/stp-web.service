@@ -18,6 +18,7 @@ Environment=STOCKS_WEB_PORT=3005
 Environment=STOCKS_ROOT_BASE=/var/lib/stp/base
 Environment=STOCKS_ROOT_ROBINHOOD=/var/lib/stp/robinhood
 Environment=STP_ANALYTICS_DIR=/var/lib/stp-analytics
+Environment=STP_ANCHOR_DIR=/var/lib/stp-anchors
 StateDirectory=stp-analytics
 StateDirectoryMode=0700
 ExecStart=/usr/bin/node apps/stocks-web.mjs

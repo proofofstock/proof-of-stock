@@ -40,7 +40,8 @@ import { readCoinbase, readRobinhood } from '../../evm/core/stocks/registries.mj
 import { BASE_DESCRIPTOR } from '../../evm/chains/base/descriptor.mjs'
 import { ROBINHOOD_DESCRIPTOR } from '../../evm/chains/robinhood/descriptor.mjs'
 import { pegReading, DEXSCREENER_PAIR_CAP } from '../../evm/core/stocks/peg.mjs'
-import { readGeckoPools, mergePairs } from './gecko-pools.mjs'
+import { mergePairs } from './gecko-pools.mjs'
+import { GECKO_PACE_MS, GECKO_BUDGET, readTopups, writeTopups, schedule, startLane, needsAggregator } from './gecko-lane.mjs'
 import { prepareOnchain, readTokenOnchain, mergeOnchain, learn, evidenceOf, saveOnchain, ONCHAIN } from './onchain-pools.mjs'
 import { snapshotOf, openRawStore } from './raw-store.mjs'
 import { recordRegistry } from '../../evm/core/stocks/history.mjs'
@@ -136,7 +137,7 @@ export function unchangedSince (state, address, reference, atIso) {
   return state[address].since
 }
 
-export async function runStockPeg ({ chain, root, fetchImpl = fetch, now = () => Date.now(), paceMs = 250, geckoPaceMs = 4500, log = console.log,
+export async function runStockPeg ({ chain, root, fetchImpl = fetch, now = () => Date.now(), paceMs = 250, geckoPaceMs = GECKO_PACE_MS, geckoBudget = null, log = console.log,
   deadline = null, // ms since epoch, or null for none; see the header
   env = process.env, // STP_RPC_BASE / STP_RPC_ROBINHOOD replace the public RPC (scripts/stocks/onchain-pools.mjs)
   clock = () => performance.now(), // times the outside requests (timedFetch); `now` stays the run's calendar
@@ -175,18 +176,30 @@ export async function runStockPeg ({ chain, root, fetchImpl = fetch, now = () =>
   }
 
   const since = readSince(outDir)
+  const topups = readTopups(outDir)
+  let lane = null
   try {
   if (records) {
-    const wanted = records.filter((r) => r.chain_id === C.chainId && r.supplied)
+    const listed = records.filter((r) => r.chain_id === C.chainId && r.supplied)
+    // GeckoTerminal top-ups run as one paced lane beside this loop (scripts/stocks/gecko-lane.mjs); the tokens it will
+    // top up go last, so their answers are usually in by the time the loop reaches them.
+    const lanePlan = C.gecko ? schedule(topups, listed.map((r) => r.address), geckoBudget ?? GECKO_BUDGET[chain] ?? 0, now()) : []
+    const inLane = new Set(lanePlan)
+    const wanted = [...listed.filter((r) => !inLane.has(r.address)), ...listed.filter((r) => inLane.has(r.address))]
     run.tokens_considered = wanted.length
     // The chain's side of the run. It never throws: a chain it cannot reach leaves every reading to the aggregators.
     chainState = await prepareOnchain({ chain, dir: outDir, tokens: wanted.map((r) => r.address), referenceAssets: C.referenceAssets, fetchImpl, now, env })
     run.onchain = { rpc: chainState.rpc, error: chainState.error, discovered: chainState.discovered, tokens_read: 0, read_errors: 0, breaker: null }
-    let chainFails = 0
+    let chainFails = 0, lastDexStart = -Infinity
     // Private copies of the aggregators' answers (scripts/stocks/raw-store.mjs): off unless STP_RAW_SNAPSHOTS=1.
     raw = openRawStore({ chain, env, now, log })
+    lane = startLane({ fetchImpl, network: C.gecko, addresses: lanePlan, paceMs: geckoPaceMs, stopAt: deadline != null ? deadline - SUPPLEMENT_STOP_MS : null, now })
     for (const rec of wanted) {
       if (deadline != null && now() >= deadline) { run.aborted = `time budget: stopped before token ${run.rows_written + run.rows_invalid + 1} of ${wanted.length}`; break }
+      // DexScreener allows 300 requests a minute for token-pairs; a start every paceMs (250 ms: 240 a minute) keeps to 80% of
+      // it, and the time its answer takes counts toward the gap instead of adding to it (was a fixed pause after each token).
+      if (paceMs > 0) { const wait = lastDexStart + paceMs - clock(); if (wait > 0) await sleep(wait) }
+      lastDexStart = clock()
       let pairs = null, pairError = null
       const snaps = []
       // The chain is read from the pool book while DexScreener answers: a pool DexScreener lists for the first time is
@@ -198,15 +211,20 @@ export async function runStockPeg ({ chain, root, fetchImpl = fetch, now = () =>
       // A full DexScreener list may be hiding pools: ask GeckoTerminal for more, and keep the first list if it refuses.
       const sources = pairs ? ['dexscreener'] : []
       let stillCapped = null
-      if (pairs && pairs.length >= DEXSCREENER_PAIR_CAP && C.gecko && deadline != null && now() >= deadline - SUPPLEMENT_STOP_MS) {
-        run.supplement_skipped = (run.supplement_skipped || 0) + 1
-      } else if (pairs && pairs.length >= DEXSCREENER_PAIR_CAP && C.gecko) {
-        try {
-          if (geckoPaceMs > 0) await sleep(geckoPaceMs)
-          const g = await readGeckoPools(fetchImpl, C.gecko, rec.address, { paceMs: geckoPaceMs })
+      const atIso = new Date(now()).toISOString()
+      const state = topups[rec.address] || null
+      if (dsCapped) topups[rec.address] = { ...(state || {}), capped_at: atIso }
+      if (lane.has(rec.address)) {
+        const g = await lane.get(rec.address)
+        if (g.skipped) run.supplement_skipped = (run.supplement_skipped || 0) + 1
+        else if (g.error) run.supplement_errors++
+        else if (pairs) {
+          const need = needsAggregator(pairs, g.pairs, chainState?.book)
           pairs = mergePairs(pairs, g.pairs); sources.push('geckoterminal'); stillCapped = g.more; run.supplemented++; snaps.push(...g.snaps)
-        } catch (_) { run.supplement_errors++ }
-      }
+          topups[rec.address] = { ...(topups[rec.address] || {}), topped_at: atIso, pages: g.snaps.length, more: g.more, needs_aggregator: need }
+        }
+      } else if (dsCapped && C.gecko) run.supplement_deferred = (run.supplement_deferred || 0) + 1
+      const toppedAt = dsCapped ? (topups[rec.address]?.topped_at || null) : null
       // The chain's answer. A failure here costs nothing: the aggregators' reading stands.
       let onchainError = null, chainRead = null
       if (chainP) {
@@ -225,6 +243,8 @@ export async function runStockPeg ({ chain, root, fetchImpl = fetch, now = () =>
       const reading = pegReading(rec.address, rec.reference, pairs, { referenceAssets: C.referenceAssets })
       // Capped is DexScreener's cap, cleared only by GeckoTerminal showing the end of the list.
       reading.pools.capped = stillCapped != null ? stillCapped : dsCapped
+      // When the full list was last completed from GeckoTerminal: this run, an earlier one, or never (null).
+      reading.pools.topped_up_at = toppedAt
       // A bid/ask reference is aged from when it last changed (see unchangedSince); a NAV carries its own update time.
       if (rec.reference.kind === 'token_bid_ask_mid') rec.reference.updated_at = unchangedSince(since, rec.address, rec.reference, new Date(at).toISOString())
       const refAt = rec.reference.updated_at ? Date.parse(rec.reference.updated_at) : null
@@ -247,7 +267,6 @@ export async function runStockPeg ({ chain, root, fetchImpl = fetch, now = () =>
         if (row.premium != null && raw.on) raw.keep(day(at), runId, rec.address, snaps)
         if (row.premium_refused) run.refused[row.premium_refused] = (run.refused[row.premium_refused] || 0) + 1
       }
-      if (paceMs > 0) await sleep(paceMs)
     }
   }
   } catch (e) {
@@ -255,6 +274,8 @@ export async function runStockPeg ({ chain, root, fetchImpl = fetch, now = () =>
     run.aborted = String(e && e.message || e).slice(0, 300)
   } finally {
     try { writeSince(outDir, since) } catch (_) { /* the next run re-learns */ }
+    try { writeTopups(outDir, topups, now()) } catch (_) { /* the next run schedules from what it sees */ }
+    lane?.stop()
     if (chainState) { const err = saveOnchain(chainState, outDir); if (err) log('[stock-peg] pool book not written: ' + err) }
     try { run.shape_changes = recordShapes(outDir, shapes, { complete: !run.aborted }) } catch (e) { log('[stock-peg] shapes not compared: ' + String(e && e.message || e).slice(0, 200)) }
   }
@@ -267,7 +288,7 @@ export async function runStockPeg ({ chain, root, fetchImpl = fetch, now = () =>
   const v = validateV2('stock-peg-run', run)
   if (!v.valid) log(`[stock-peg] invalid run row: ${JSON.stringify(v.errors).slice(0, 300)}`)
   fs.appendFileSync(path.join(outDir, `stock-peg-runs-${day(started)}.jsonl`), JSON.stringify(run) + '\n')
-  log('[stock-peg] ' + JSON.stringify({ chain, registry: run.registry, tokens: run.tokens_considered, written: run.rows_written, invalid: run.rows_invalid, refused: run.refused, pair_read_errors: run.pair_read_errors, supplement_skipped: run.supplement_skipped || 0, onchain: run.onchain ?? null, raw: raw.on ? { written: raw.written, skipped_full: raw.skipped_full, pruned: raw.pruned, store_bytes: raw.bytes } : (raw.error ? { error: raw.error } : 'off'), aborted: run.aborted ?? null, duration_s: run.duration_s, budget_s: run.budget_s, timing: Object.fromEntries(Object.entries(run.timing).map(([s, t]) => [s, `${t.n}x p50 ${t.p50_ms} p95 ${t.p95_ms} total ${t.total_ms}ms`])) }))
+  log('[stock-peg] ' + JSON.stringify({ chain, registry: run.registry, tokens: run.tokens_considered, written: run.rows_written, invalid: run.rows_invalid, refused: run.refused, pair_read_errors: run.pair_read_errors, supplement_skipped: run.supplement_skipped || 0, supplement_deferred: run.supplement_deferred || 0, onchain: run.onchain ?? null, raw: raw.on ? { written: raw.written, skipped_full: raw.skipped_full, pruned: raw.pruned, store_bytes: raw.bytes } : (raw.error ? { error: raw.error } : 'off'), aborted: run.aborted ?? null, duration_s: run.duration_s, budget_s: run.budget_s, timing: Object.fromEntries(Object.entries(run.timing).map(([s, t]) => [s, `${t.n}x p50 ${t.p50_ms} p95 ${t.p95_ms} total ${t.total_ms}ms`])) }))
   return run
 }
 
