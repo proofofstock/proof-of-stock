@@ -768,7 +768,7 @@ console.log('deployment')
     // The registry refuses a description over 100 characters; the name proves the domain the remote is on.
     check('server.json: named by our domain, one remote, a description within the registry\'s 100', sj.name === 'xyz.proofofstock/proof-of-stock' && sj.remotes?.length === 1 && sj.description.length <= 100 && !sj.packages, sj.description.length + ' ' + sj.name)
     const wf = fs.readFileSync(new URL('../.github/workflows/mcp-registry.yml', import.meta.url), 'utf8')
-    check('the registry workflow: by hand, public repository only, actions by commit, the publisher verified, the key only in its step', /on:\n {2}workflow_dispatch:\npermissions:/.test(wf) && /if: github\.repository == 'proofofstock\/proof-of-stock'/.test(wf) && (wf.match(/uses: [^\n]+/g) || []).every((l) => /@[0-9a-f]{40}\b/.test(l)) && /cosign verify-blob/.test(wf) && (wf.match(/secrets\.MCP_REGISTRY_KEY/g) || []).length === 1 && /contents: read/.test(wf) && !/contents: write/.test(wf))
+    check('the registry workflow: by hand, public repository only, actions by commit, the publisher verified, the key only in its step', /on:\n {2}workflow_dispatch:\npermissions:/.test(wf) && /if: github\.repository == 'proofofstock\/proof-of-stock'/.test(wf) && (wf.match(/uses: [^\n]+/g) || []).every((l) => /@[0-9a-f]{40}\b/.test(l)) && /sha256sum --check --strict/.test(wf) && /MCP_PUBLISHER_SHA256: [0-9a-f]{64}\n/.test(wf) && !/uses: (?!actions\/)/.test(wf) && (wf.match(/secrets\.MCP_REGISTRY_KEY/g) || []).length === 1 && /contents: read/.test(wf) && !/contents: write/.test(wf))
   }
   // Each server block on 443, up to the next server block.
   const servers443 = vhost.split(/\nserver \{/).filter((b) => /listen 443 ssl;/.test(b))

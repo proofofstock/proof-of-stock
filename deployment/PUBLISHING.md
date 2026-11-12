@@ -22,7 +22,7 @@ The name is on our own domain, `xyz.proofofstock/proof-of-stock` (reverse DNS of
 
 - `deployment/mcp-registry-auth` holds one line, `v=MCPv1; k=ed25519; p=<public key>`. The site serves it at `https://proofofstock.xyz/.well-known/mcp-registry-auth` (an exact nginx location, like security.txt).
 - The private half lives only in the public repository's secret `MCP_REGISTRY_KEY`. The owner made the pair on their own machine and put the private half straight into the secret; it is in no file here and no host.
-- `.github/workflows/mcp-registry.yml` (run by hand, public repository only) verifies the `mcp-publisher` release by its Sigstore signature, logs in with `login http`, and publishes.
+- `.github/workflows/mcp-registry.yml` (run by hand, public repository only) downloads `mcp-publisher` pinned by the SHA-256 of its release archive (the repository allows only GitHub's own actions), logs in with `login http`, and publishes.
 
 To make or replace the key (the owner, in Git Bash, OpenSSL 3), then commit the printed line to `deployment/mcp-registry-auth` and deploy:
 
