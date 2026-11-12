@@ -36,6 +36,26 @@ claude mcp add --transport http proofofstock https://proofofstock.xyz/mcp
 
 Claude, ChatGPT, Cursor and raw JSON-RPC are covered in the [tutorial](docs/tutorials/connect-an-agent.md).
 
+## Check us, not just our answers
+
+A checker is worth something only if you do not have to take its word. Each of these works without trusting us:
+
+- **The list behind a verdict.** Every answer names the issuer list it was decided against by the SHA-256 of its
+  sorted addresses, with a shell command that computes the same hash from the issuer's own API, and a URL of that
+  exact list frozen.
+- **A receipt to keep.** `/verify?...&receipt=1` returns a record of the check that
+  [`scripts/receipt-check.mjs`](scripts/receipt-check.mjs) can check again months later, after the issuer's list has
+  changed. See [Keep a receipt of a check](docs/how-to/keep-a-receipt.md).
+- **The issuer's factory, read from the chain.** Each issuer creates its tokens from a factory that logs every one.
+  We read those logs as a second source (`issuer_factory` in each answer). On Robinhood Chain all 203 listed tokens
+  are among the 212 its factory created.
+- **Prices you can replay.** An on-chain price carries its block and the exact call; `eth_call` at that block returns
+  the same bytes.
+- **A public exam, every day.** About 590 tokens whose right answer comes from the issuers; the reports are in the
+  [`exam` branch](https://github.com/proofofstock/proof-of-stock/tree/exam).
+- **History anchored in Bitcoin.** Once a day, a manifest of every data file of the day is timestamped through
+  OpenTimestamps. See [Check that our data existed on a given day](docs/how-to/verify-an-anchor.md).
+
 ## Example
 
 Check one address on Base. This one calls itself `SNDKc` but is not on Coinbase's registry:

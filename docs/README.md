@@ -35,6 +35,10 @@ Recipes for one task each.
 - [Alert when the on-chain price drifts from the issuer's reference](how-to/alert-on-gap.md): poll `/api/overview` or
   `stock_passport`, with a small Node script.
 - [Compare one stock across Base and Robinhood Chain](how-to/compare-venues.md): `/api/matrix` and `compare_venues`.
+- [Keep a receipt of a check](how-to/keep-a-receipt.md): `/verify?...&receipt=1` and `scripts/receipt-check.mjs`, to
+  prove months later why a token was or was not listed.
+- [Check that our data existed on a given day](how-to/verify-an-anchor.md): the daily OpenTimestamps anchors at
+  `/anchors/`.
 
 ## Reference
 
