@@ -4,7 +4,7 @@ Each step needs the owner's own login. No credential for npm, GitHub or Smithery
 
 ## 1. `@proofofstock/guard` on npm
 
-The scope `@stockofproof` must exist as an npm organisation, which is free for public packages: npmjs.com → Add Organization → `stockofproof`.
+The scope `@proofofstock` must exist as an npm organisation, which is free for public packages: npmjs.com → Add Organization → `proofofstock`.
 
 ```bash
 npm login
@@ -27,7 +27,7 @@ mcp-publisher publish          # run from the repository root
 The name `io.github.proofofstock/proof-of-stock` is tied to the `proofofstock` organisation on GitHub, which holds the
 public copy of the source. Publish once the repository is public, so the listing's link works.
 
-A name on our own domain (`xyz.stockofproof/passport`) is the alternative. It needs a key pair, with the public key served at `/.well-known/mcp-registry-auth`; that is a later change.
+A name on our own domain (`xyz.proofofstock/passport`) is the alternative. It needs a key pair, with the public key served at `/.well-known/mcp-registry-auth`; that is a later change.
 
 Several catalogs (PulseMCP, Glama and others) read from the official registry.
 

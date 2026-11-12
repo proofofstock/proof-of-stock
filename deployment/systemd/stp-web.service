@@ -39,6 +39,8 @@ ProtectProc=invisible
 UMask=0077
 ProtectSystem=strict
 ReadWritePaths=/var/lib/stp-analytics
+# The recorder's private copies of third-party answers are not the site's to read: the path does not exist for it.
+InaccessiblePaths=-/var/lib/stp-raw
 ProtectHome=read-only
 PrivateTmp=true
 PrivateDevices=true

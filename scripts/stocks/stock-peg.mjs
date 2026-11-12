@@ -11,9 +11,18 @@
 // DexScreener answers with the price now, the issuers with their reference now. That is why this exists before
 // anything that would show it.
 //
-// Sources: the issuer's list and reference (evm/core/stocks/registries.mjs), DexScreener token-pairs per token
+// Sources: the issuer's list and reference (evm/core/stocks/registries.mjs), DexScreener token-pairs per token, and the
+// chain itself (scripts/stocks/onchain-pools.mjs): every pool the run knows of for the token, read at one pinned block
+// through Multicall3. Where both see a pool the chain's price and liquidity win; where either fails the other stands
 // (evm/core/stocks/peg.mjs decides what counts). On Base only tokens with supply are read: an unminted token has no
 // pool, and asking for it 227 times a run is a cost with no reading in it.
+//
+// EVIDENCE. Each row says what its DEX price rests on (`price_evidence`, the DEX leg only): for a price the chain gave,
+// the block, its hash, the aggregate3 calldata and the bytes returned, which anyone can call again (`reproduce`); for a
+// price only an aggregator gave, `{ evidence: "none" }`, because nobody can ask for that answer again. The issuer's
+// reference is an API answer nobody can replay either (`reference_evidence: "issuer_api_not_reproducible"`).
+// Short-lived private copies of the aggregators' answers may be kept for our own error checking, off by default and
+// never public (scripts/stocks/raw-store.mjs).
 //
 // Usage: node scripts/stocks/stock-peg.mjs --chain=base|robinhood --root=<data root> [--pace-ms=250] [--deadline=<unix s>]
 //
@@ -32,6 +41,8 @@ import { BASE_DESCRIPTOR } from '../../evm/chains/base/descriptor.mjs'
 import { ROBINHOOD_DESCRIPTOR } from '../../evm/chains/robinhood/descriptor.mjs'
 import { pegReading, DEXSCREENER_PAIR_CAP } from '../../evm/core/stocks/peg.mjs'
 import { readGeckoPools, mergePairs } from './gecko-pools.mjs'
+import { prepareOnchain, readTokenOnchain, mergeOnchain, learn, evidenceOf, saveOnchain, ONCHAIN } from './onchain-pools.mjs'
+import { snapshotOf, openRawStore } from './raw-store.mjs'
 import { recordRegistry } from '../../evm/core/stocks/history.mjs'
 
 // Which issuer publishes for which chain, and that chain's DexScreener and GeckoTerminal names. The chain id comes from
@@ -52,11 +63,13 @@ const day = (ms) => new Date(ms).toISOString().slice(0, 10)
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
 async function readPairs (fetchImpl, slug, address) {
-  const r = await fetchImpl(`https://api.dexscreener.com/token-pairs/v1/${slug}/${address}`, { signal: AbortSignal.timeout(PAIR_TIMEOUT_MS) })
+  const url = `https://api.dexscreener.com/token-pairs/v1/${slug}/${address}`
+  const r = await fetchImpl(url, { signal: AbortSignal.timeout(PAIR_TIMEOUT_MS) })
   if (!r.ok) throw new Error(`dexscreener answered ${r.status}`)
-  const body = await r.json()
+  const snap = await snapshotOf('dexscreener', url, r)
+  const body = JSON.parse(snap.body)
   if (!Array.isArray(body)) throw new Error('dexscreener body is not an array')
-  return body
+  return { pairs: body, snap }
 }
 
 // Robinhood stamps every quote with the time its server answered (generatedAt), which is seconds old even when the quote
@@ -76,6 +89,7 @@ export function unchangedSince (state, address, reference, atIso) {
 
 export async function runStockPeg ({ chain, root, fetchImpl = fetch, now = () => Date.now(), paceMs = 250, geckoPaceMs = 4500, log = console.log,
   deadline = null, // ms since epoch, or null for none; see the header
+  env = process.env, // STP_RPC_BASE / STP_RPC_ROBINHOOD replace the public RPC (scripts/stocks/onchain-pools.mjs)
   onHistoryError = () => { process.exitCode = 1 } }) {
   const C = CHAINS[chain]
   if (!C) throw new Error(`unknown chain ${chain}: expected one of ${Object.keys(CHAINS).join(', ')}`)
@@ -89,6 +103,7 @@ export async function runStockPeg ({ chain, root, fetchImpl = fetch, now = () =>
     registry: { records: null, complete: false, error: null },
     tokens_considered: 0, rows_written: 0, rows_invalid: 0, refused: {}, pair_read_errors: 0, supplemented: 0, supplement_errors: 0,
   }
+  let chainState = null, raw = { on: false }
 
   let records = null
   try {
@@ -110,24 +125,46 @@ export async function runStockPeg ({ chain, root, fetchImpl = fetch, now = () =>
   if (records) {
     const wanted = records.filter((r) => r.chain_id === C.chainId && r.supplied)
     run.tokens_considered = wanted.length
+    // The chain's side of the run. It never throws: a chain it cannot reach leaves every reading to the aggregators.
+    chainState = await prepareOnchain({ chain, dir: outDir, tokens: wanted.map((r) => r.address), referenceAssets: C.referenceAssets, fetchImpl, now, env })
+    run.onchain = { rpc: chainState.rpc, error: chainState.error, discovered: chainState.discovered, tokens_read: 0, read_errors: 0 }
+    // Private copies of the aggregators' answers (scripts/stocks/raw-store.mjs): off unless STP_RAW_SNAPSHOTS=1.
+    raw = openRawStore({ chain, env, now, log })
     for (const rec of wanted) {
       if (deadline != null && now() >= deadline) { run.aborted = `time budget: stopped before token ${run.rows_written + run.rows_invalid + 1} of ${wanted.length}`; break }
       let pairs = null, pairError = null
-      try { pairs = await readPairs(fetchImpl, C.slug, rec.address) } catch (e) { pairError = String(e && e.message || e).slice(0, 200); run.pair_read_errors++ }
+      const snaps = []
+      // The chain is read from the pool book while DexScreener answers: a pool DexScreener lists for the first time is
+      // read from the chain from the next run on (the factories' pools from the first). Sequential, the chain added
+      // ~0.4 s a token, ~80 s to a Robinhood run already near its deadline (measured 12.11).
+      const chainP = chainState.ok ? readTokenOnchain(chainState, fetchImpl, rec.address, { tokenUsd: rec.reference?.price_usd ?? null }).then((r) => ({ r }), (e) => ({ e })) : null
+      try { const d = await readPairs(fetchImpl, C.slug, rec.address); pairs = d.pairs; snaps.push(d.snap) } catch (e) { pairError = String(e && e.message || e).slice(0, 200); run.pair_read_errors++ }
+      const dsCapped = pairs ? pairs.length >= DEXSCREENER_PAIR_CAP : false
       // A full DexScreener list may be hiding pools: ask GeckoTerminal for more, and keep the first list if it refuses.
-      let source = 'dexscreener', stillCapped = null
+      const sources = pairs ? ['dexscreener'] : []
+      let stillCapped = null
       if (pairs && pairs.length >= DEXSCREENER_PAIR_CAP && C.gecko && deadline != null && now() >= deadline - SUPPLEMENT_STOP_MS) {
         run.supplement_skipped = (run.supplement_skipped || 0) + 1
       } else if (pairs && pairs.length >= DEXSCREENER_PAIR_CAP && C.gecko) {
         try {
           if (geckoPaceMs > 0) await sleep(geckoPaceMs)
           const g = await readGeckoPools(fetchImpl, C.gecko, rec.address, { paceMs: geckoPaceMs })
-          pairs = mergePairs(pairs, g.pairs); source = 'dexscreener+geckoterminal'; stillCapped = g.more; run.supplemented++
+          pairs = mergePairs(pairs, g.pairs); sources.push('geckoterminal'); stillCapped = g.more; run.supplemented++; snaps.push(...g.snaps)
         } catch (_) { run.supplement_errors++ }
       }
+      // The chain's answer. A failure here costs nothing: the aggregators' reading stands.
+      let onchainError = null, chainRead = null
+      if (chainP) {
+        const c = await chainP
+        if (c.e) { onchainError = String(c.e && c.e.message || c.e).slice(0, 200); run.onchain.read_errors++ } else if (c.r) { chainRead = c.r; run.onchain.tokens_read++ }
+        learn(chainState.book, rec.address, pairs, C.referenceAssets, sources.includes('geckoterminal') ? 'geckoterminal' : 'dexscreener', new Date(now()).toISOString())
+      }
+      if (chainRead && chainRead.reads.size) { pairs = mergeOnchain(rec.address, pairs, chainRead.reads, C.referenceAssets, ONCHAIN[chain]?.symbols); sources.push('onchain') }
+      const source = sources.length ? sources.join('+') : 'dexscreener'
       const at = now()
       const reading = pegReading(rec.address, rec.reference, pairs, { referenceAssets: C.referenceAssets })
-      if (stillCapped != null) reading.pools.capped = stillCapped
+      // Capped is DexScreener's cap, cleared only by GeckoTerminal showing the end of the list.
+      reading.pools.capped = stillCapped != null ? stillCapped : dsCapped
       // A bid/ask reference is aged from when it last changed (see unchangedSince); a NAV carries its own update time.
       if (rec.reference.kind === 'token_bid_ask_mid') rec.reference.updated_at = unchangedSince(since, rec.address, rec.reference, new Date(at).toISOString())
       const refAt = rec.reference.updated_at ? Date.parse(rec.reference.updated_at) : null
@@ -136,14 +173,18 @@ export async function runStockPeg ({ chain, root, fetchImpl = fetch, now = () =>
         token_address: rec.address, symbol: rec.symbol, isin: rec.isin, multiplier: rec.multiplier, multiplier_pending: rec.multiplier_pending,
         paused: rec.paused,
         reference: { ...rec.reference, age_s: refAt != null ? Math.round((at - refAt) / 1000) : null },
-        pools: { source, ...reading.pools, error: pairError },
+        pools: { source, ...reading.pools, error: pairError, onchain_error: onchainError },
         dex_price_usd: reading.dex_price_usd, dex_pool: reading.dex_pool, premium: reading.premium, premium_refused: reading.premium_refused,
         dex_inside_quote: reading.dex_inside_quote,
+        price_evidence: priceEvidence(chain, reading._best, chainRead),
+        reference_evidence: 'issuer_api_not_reproducible',
       }
       const v = validateV2('stock-peg', row)
       if (!v.valid) { run.rows_invalid++; log(`[stock-peg] invalid row ${rec.address}: ${JSON.stringify(v.errors).slice(0, 300)}`) } else {
         fs.appendFileSync(path.join(outDir, `stock-peg-${day(at)}.jsonl`), JSON.stringify(row) + '\n')
         run.rows_written++
+        // A private copy of the answers behind a premium, after the row: one that cannot be written never costs the reading.
+        if (row.premium != null && raw.on) raw.keep(day(at), runId, rec.address, snaps)
         if (row.premium_refused) run.refused[row.premium_refused] = (run.refused[row.premium_refused] || 0) + 1
       }
       if (paceMs > 0) await sleep(paceMs)
@@ -154,14 +195,26 @@ export async function runStockPeg ({ chain, root, fetchImpl = fetch, now = () =>
     run.aborted = String(e && e.message || e).slice(0, 300)
   } finally {
     try { writeSince(outDir, since) } catch (_) { /* the next run re-learns */ }
+    if (chainState) { const err = saveOnchain(chainState, outDir); if (err) log('[stock-peg] pool book not written: ' + err) }
   }
 
   run.finished_at = new Date(now()).toISOString()
   const v = validateV2('stock-peg-run', run)
   if (!v.valid) log(`[stock-peg] invalid run row: ${JSON.stringify(v.errors).slice(0, 300)}`)
   fs.appendFileSync(path.join(outDir, `stock-peg-runs-${day(started)}.jsonl`), JSON.stringify(run) + '\n')
-  log('[stock-peg] ' + JSON.stringify({ chain, registry: run.registry, tokens: run.tokens_considered, written: run.rows_written, invalid: run.rows_invalid, refused: run.refused, pair_read_errors: run.pair_read_errors, supplement_skipped: run.supplement_skipped || 0, aborted: run.aborted ?? null }))
+  log('[stock-peg] ' + JSON.stringify({ chain, registry: run.registry, tokens: run.tokens_considered, written: run.rows_written, invalid: run.rows_invalid, refused: run.refused, pair_read_errors: run.pair_read_errors, supplement_skipped: run.supplement_skipped || 0, onchain: run.onchain ?? null, raw: raw.on ? { written: raw.written, skipped_full: raw.skipped_full, pruned: raw.pruned, store_bytes: raw.bytes } : (raw.error ? { error: raw.error } : 'off'), aborted: run.aborted ?? null }))
   return run
+}
+
+/**
+ * What the row's DEX price rests on: the chain's reading when the deepest pool was priced on-chain (reproducible); else
+ * `{ evidence: "none" }`: an aggregator's answer cannot be asked for again, and a hash of it is not evidence. Null when
+ * there is no price.
+ */
+export function priceEvidence (chain, best, chainRead) {
+  if (!best) return null
+  if (best._onchain && chainRead) return evidenceOf(chain, best._onchain, chainRead.block, chainRead.calls, chainRead.results)
+  return { evidence: 'none' }
 }
 
 /**

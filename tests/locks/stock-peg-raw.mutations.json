@@ -1,0 +1,34 @@
+{
+  "_finding": "Private copies of DexScreener and GeckoTerminal answers are allowed only under conditions agreed on 12.11.2026: off unless switched on, outside the backed-up dataset tree, private, 30 days rolling with pinned exceptions, capped, and never at the cost of a reading. These mutations break each condition.",
+  "target": "scripts/stocks/raw-store.mjs",
+  "runner": [
+    "node",
+    "scripts/stocks/stock-peg.test.mjs"
+  ],
+  "mutations": [
+    {
+      "name": "copies are on by default",
+      "find": "  if (env.STP_RAW_SNAPSHOTS !== '1') return off()",
+      "replace": "  if (env.STP_RAW_SNAPSHOTS === '0') return off()",
+      "expect": "FAIL private copies are off unless STP_RAW_SNAPSHOTS=1"
+    },
+    {
+      "name": "old copies are never deleted",
+      "find": "      if (m && m[1] < cutoff) { fs.unlinkSync(path.join(dir, f)); pruned++ }",
+      "replace": "      if (m && false) { fs.unlinkSync(path.join(dir, f)); pruned++ }",
+      "expect": "FAIL copies older than 30 days are deleted, a pinned one and a recent one are not"
+    },
+    {
+      "name": "the size cap is ignored",
+      "find": "      if (store.bytes >= max) { store.skipped_full += snaps.length; return 0 }",
+      "replace": "",
+      "expect": "FAIL a full store stops writing, and the reading is written all the same"
+    },
+    {
+      "name": "a store that cannot be opened throws",
+      "find": "    log('[stock-peg] raw store unusable, nothing kept this run: ' + msg)\n    return off(msg)",
+      "replace": "    throw e",
+      "expect": "FAIL a store that cannot be written never costs the reading or fails the run"
+    }
+  ]
+}

@@ -34,10 +34,10 @@ export const PUBLIC_WINDOW_H = 24
 export const NOTE_CODES = Object.freeze([
   'not_in_registry', 'no_readings', 'no_reference', 'reference_held_market_closed', 'reference_held_market_open',
   'trading_halted', 'paused', 'no_dex_price', 'pools_capped', 'multiplier_change_pending', 'calendar_unknown',
-  'reference_spread_wide', 'reading_stale', 'not_minted',
+  'reference_spread_wide', 'reading_stale', 'not_minted', 'sources_disagree',
 ])
-// The refusals that mean no DEX price was found; the others (no_reference, reference_spread_wide) have a DEX price and
-// lack a usable reference, and get their own note.
+// The refusals that mean no DEX price was found; the others (no_reference, reference_spread_wide, sources_disagree) have a
+// DEX price and lack a usable reference, or a price two sources agree on, and get their own note.
 const NO_DEX_PRICE = new Set(['pairs_unavailable', 'no_pairs', 'no_eligible_pool'])
 
 const quantile = (sorted, q) => (sorted.length ? sorted[Math.min(sorted.length - 1, Math.floor(q * sorted.length))] : null)
@@ -111,6 +111,8 @@ export function buildPassport ({ address, chainId, registry, readings = [], iden
     if (now - Date.parse(latest.observed_at) > READING_STALE_S * 1000) notes.push('reading_stale')
     if (latest.premium == null && NO_DEX_PRICE.has(latest.premium_refused)) notes.push('no_dex_price')
     if (latest.premium_refused === 'reference_spread_wide') notes.push('reference_spread_wide')
+    // The chain and an aggregator priced the deepest pool more than 2% apart: there is a price (the chain's) and no premium.
+    if (latest.premium_refused === 'sources_disagree') notes.push('sources_disagree')
     if (latest.pools?.capped) notes.push('pools_capped')
   }
   const pending = latest ? latest.multiplier_pending : rec.multiplier_pending
@@ -146,6 +148,10 @@ export function buildPassport ({ address, chainId, registry, readings = [], iden
     latest: latest ? {
       observed_at: latest.observed_at, dex_price_usd: latest.dex_price_usd, dex_pool: latest.dex_pool,
       premium: latest.premium, premium_refused: latest.premium_refused, dex_inside_quote: latest.dex_inside_quote ?? null,
+      // What the DEX price rests on (scripts/stocks/stock-peg.mjs priceEvidence): the pool read at a block, or evidence:
+      // none. A row recorded before the chain was read has no field, and says none rather than nothing.
+      price_evidence: latest.price_evidence ?? (latest.dex_price_usd != null ? { evidence: 'none' } : null),
+      reference_evidence: latest.reference_evidence ?? 'issuer_api_not_reproducible',
       age_s: Math.round((now - Date.parse(latest.observed_at)) / 1000),
       cadence_s: RECORDER_CADENCE_S,
       // The premium as of the reference's own time: the first reading at or after the reference was last updated, so both

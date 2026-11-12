@@ -122,7 +122,7 @@ console.log('GeckoTerminal pools')
 
 {
   let n = 0
-  const pages = async () => { n++; if (n === 1) return { ok: true, status: 200, json: async () => ({ data: Array.from({ length: 20 }, (_, i) => ({ attributes: { address: '0x' + String(i).padStart(40, '0'), base_token_price_usd: '1', reserve_in_usd: '20000' }, relationships: { base_token: { data: { id: 'base_' + A } } } })) }) }; return { ok: false, status: 429, json: async () => ({}) } }
+  const pages = async () => { n++; if (n === 1) { const body = { data: Array.from({ length: 20 }, (_, i) => ({ attributes: { address: '0x' + String(i).padStart(40, '0'), base_token_price_usd: '1', reserve_in_usd: '20000' }, relationships: { base_token: { data: { id: 'base_' + A } } } })) }; return { ok: true, status: 200, json: async () => body, arrayBuffer: async () => new TextEncoder().encode(JSON.stringify(body)).buffer } }; return { ok: false, status: 429, json: async () => ({}) } }
   const { readGeckoPools } = await import('./gecko-pools.mjs')
   const r = await readGeckoPools(pages, 'base', A, { paceMs: 0 })
   check('a later page refused keeps the pages read and says there may be more', r.pairs.length === 20 && r.more === true)

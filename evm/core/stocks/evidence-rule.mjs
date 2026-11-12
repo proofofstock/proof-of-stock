@@ -3,11 +3,13 @@
 //
 // RULES is the table docs/explanation/methodology.md shows ("Evidence rule"). evidenceViolations() checks one answer
 // against it and returns what breaks the rule, in words; the tests run every kind of answer through it (and a mutation
-// lock proves they notice). The price rows join when on-chain price evidence ships (spec 1.1, the pool work).
+// lock proves they notice).
 export const RULES = Object.freeze([
   { claim: 'listed / in_registry', evidence: 'list_proof', without: 'the verdict is not given (503)' },
   { claim: 'minted: true', evidence: 'the issuer\'s own supply field (Coinbase total_supply)', without: 'minted: null (Robinhood reports no supply)' },
+  { claim: 'premium (on-chain vs issuer)', evidence: 'price_evidence: the pool read at a block, with a command to repeat it (evidence: onchain)', without: 'price_evidence says evidence: none, so the premium is a figure with its source and time, not a proof' },
 ])
+const PRICE_EVIDENCE = new Set(['onchain', 'none'])
 
 const mintedOk = (issuer, minted) => minted !== true || issuer === 'coinbase'
 
@@ -25,6 +27,7 @@ export function evidenceViolations (kind, a) {
   } else if (kind === 'passport') {
     if (a.in_registry === true && !a.list_proof?.addresses_sha256) out.push('in_registry without list_proof')
     if (a.issuer && !mintedOk(a.issuer.name, a.issuer.minted)) out.push(`issuer.minted true without a supply read (${a.issuer.name})`)
+    if (a.latest && a.latest.premium != null && !PRICE_EVIDENCE.has(a.latest.price_evidence?.evidence)) out.push('a premium without price_evidence')
   } else if (kind === 'mcp_verify') {
     if (a.listed > 0 && !a.list_proof?.addresses_sha256) out.push('listed results without list_proof')
     for (const r of a.results || []) if (!mintedOk(r.issuer, r.minted)) out.push(`minted true without a supply read (${r.address})`)

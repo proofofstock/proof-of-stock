@@ -1,4 +1,4 @@
-v0.5.0 · updated 2026-11-11
+v0.5.0 · updated 2026-11-12
 
 # Legal
 
@@ -30,6 +30,9 @@ All data is provided as is, with its time and its source, and without warranty o
 completeness, timeliness or fitness for a purpose. Sources can be wrong, late or unavailable, and so can we. There is
 no service level agreement. Every answer carries the time it was produced and the age of each number in it; check
 them.
+
+Short-lived private copies of third-party responses (DEX data providers' answers) may be kept for our own error
+checking; they are not published, not resold, and not evidence.
 
 ## Not a trading service
 

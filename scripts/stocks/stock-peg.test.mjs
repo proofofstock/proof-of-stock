@@ -7,7 +7,12 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import zlib from 'node:zlib'
+import crypto from 'node:crypto'
 import { runStockPeg, runExitCode, CHAINS, SUPPLEMENT_STOP_MS } from './stock-peg.mjs'
+import { ONCHAIN } from './onchain-pools.mjs'
+import { openRawStore } from './raw-store.mjs'
+import { fakeChain, sqrtX96For } from './test-fake-chain.mjs'
 import { validateV2 } from '../../schemas/v2/validate.mjs'
 import { COINBASE_URL, ROBINHOOD_ASSETS_URL, ROBINHOOD_PRICES_URL } from '../../evm/core/stocks/registries.mjs'
 
@@ -22,6 +27,9 @@ const check = (label, cond, detail) => {
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 const ROOT = path.resolve(HERE, '..', '..')
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'stock-peg-'))
+// No run in this file may reach the real private store, even with the store's switch broken (tests/locks/stock-peg-raw).
+process.env.STP_RAW_DIR = path.join(tmp, 'stp-raw-default')
+delete process.env.STP_RAW_SNAPSHOTS
 const lines = (f) => (fs.existsSync(f) ? fs.readFileSync(f, 'utf8').trim().split('\n').filter(Boolean).map((l) => JSON.parse(l)) : [])
 const NOW = Date.parse('2026-11-08T12:00:00Z')
 
@@ -30,7 +38,7 @@ const A = '0x' + 'aa'.repeat(20), B = '0x' + 'bb'.repeat(20), C = '0x' + 'cc'.re
 const USDC = '0x833589fcd6edb6e08f4c7c32d4f71b54bda02913', USDG = '0x5fc5360d0400a0fd4f2af552add042d716f1d168'
 const MEME = '0x' + '77'.repeat(20)
 const pairOf = (addr, price, liq, quote = USDC, quoteSymbol = 'USDC') => ({ pairAddress: '0x' + '12'.repeat(20), dexId: 'aerodrome', baseToken: { address: addr }, quoteToken: { address: quote, symbol: quoteSymbol }, priceUsd: String(price), liquidity: { usd: liq }, volume: { h24: 5 } })
-const respond = (status, body) => ({ ok: status < 400, status, json: async () => body })
+const respond = (status, body) => ({ ok: status < 400, status, json: async () => body, arrayBuffer: async () => new TextEncoder().encode(JSON.stringify(body)).buffer })
 const fetchFor = ({ coinbase, pairs }) => async (url) => {
   const u = String(url)
   if (u.startsWith(COINBASE_URL)) return coinbase
@@ -220,6 +228,127 @@ console.log('pools against a memecoin never price a stock token')
   check('the GeckoTerminal pool was read and merged', gRun.supplemented === 1 && row.pools.seen === 31, JSON.stringify({ sup: gRun.supplemented, seen: row.pools.seen }))
   check('a GeckoTerminal pool against a memecoin does not price the token either, however deep', row.dex_price_usd === 101 && Math.abs(row.premium - 0.01) < 1e-12, JSON.stringify({ price: row.dex_price_usd, premium: row.premium }))
   check('every pool the row keeps is paired with a reference asset', row.pools.top.every((t) => t.quote_symbol === 'USDC'))
+}
+
+console.log('the chain as a second source')
+{
+  // Base, 12.11: DexScreener listed a pool $43,954 deep that held $0.01 of USDC. The chain's figure wins, and a pool the
+  // factory knows, which DexScreener did not list, prices the token.
+  const cfg = ONCHAIN.base
+  const PHANTOM = '0x' + 'f0'.repeat(20), DEEP = '0x' + 'd0'.repeat(20), ETHPOOL = '0x' + 'e7'.repeat(20), WETH = '0x4200000000000000000000000000000000000006'
+  const coinbase = respond(200, { tokens: [{ contract_address: A, symbol: 'NVDAc', multiplier: '1', nav_price: '100', nav_price_updated_at: '2026-11-08T11:00:00Z', total_supply: '10' }] })
+  const makeChain = (deepPrice = 101) => {
+    const chain = fakeChain({ rpc: cfg.rpc })
+    chain.erc20(USDC, 6, { [ETHPOOL]: 10n ** 15n, [PHANTOM]: 12_610n, [DEEP]: 600_000n * 10n ** 6n })
+    chain.erc20(WETH, 18)
+    chain.erc20(A, 18, { [PHANTOM]: 123_325n, [DEEP]: 4_000n * 10n ** 18n })
+    chain.getPool(cfg.ethFactory, true, WETH, USDC, 500, ETHPOOL)
+    chain.v3(ETHPOOL, WETH, USDC, sqrtX96For(3000, 18, 6))
+    // USDC sorts before A, so token0 is USDC and the pools hold USDC per token inverted.
+    chain.v3(PHANTOM, USDC, A, sqrtX96For(1 / 102, 6, 18))
+    // Both pools come from factories the chain is asked about, as the Aerodrome pools did on 12.11.
+    chain.getPool(cfg.factories[2].address, false, A, USDC, 1, PHANTOM)
+    chain.getPool(cfg.factories[0].address, true, A, USDC, 500, DEEP)
+    chain.v3(DEEP, USDC, A, sqrtX96For(1 / deepPrice, 6, 18))
+    return chain
+  }
+  const listed = (over = {}) => [{ ...pairOf(A, 102, 43_954), pairAddress: PHANTOM, ...over }]
+  const base = (dex) => async (url) => {
+    const u = String(url)
+    if (u.startsWith(COINBASE_URL)) return coinbase
+    if (u.includes('/token-pairs/')) return dex()
+    return respond(404, {})
+  }
+  // Every run here points the private store at the test dir, so even a store switched on by mistake writes nowhere else.
+  const rawDefault = path.join(tmp, 'stp-raw-default')
+  const runWith = async (name, chain, dex, opts = {}) => {
+    const root = path.join(tmp, name)
+    const run = await runStockPeg({ chain: 'base', root, now: () => NOW, paceMs: 0, geckoPaceMs: 0, log: () => {}, env: { STP_RAW_DIR: rawDefault }, fetchImpl: chain.fetch(base(dex)), ...opts })
+    return { run, root, rows: lines(path.join(root, 'stock-peg', 'stock-peg-2026-11-08.jsonl')), runs: lines(path.join(root, 'stock-peg', 'stock-peg-runs-2026-11-08.jsonl')) }
+  }
+
+  const chain1 = makeChain()
+  const one = await runWith('chain-wins', chain1, () => respond(200, listed()))
+  const r = one.rows[0]
+  check('an empty pool DexScreener calls deep is not the price: the chain says what it holds', r.dex_pool === DEEP && Math.abs(r.premium - 0.01) < 1e-9 && r.pools.eligible === 1 && r.pools.seen === 2, JSON.stringify({ pool: r.dex_pool, premium: r.premium, seen: r.pools.seen }))
+  check('...and the row names both sources', r.pools.source === 'dexscreener+onchain' && r.pools.onchain_error === null)
+  const ev = r.price_evidence
+  check('the price carries the chain\'s evidence: block, hash, calldata and the bytes returned', ev && ev.evidence === 'onchain' && ev.block_number === chain1.block && ev.block_hash === chain1.hash && ev.pool === DEEP && ev.decoder === 'v3_slot0' && /^cast call --block 4242 /.test(ev.reproduce), JSON.stringify(ev && { e: ev.evidence, b: ev.block_number }))
+  const again = await chain1.fetch(() => null)(cfg.rpc, { method: 'POST', body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'eth_call', params: [{ to: ev.multicall, data: ev.calldata }, '0x' + ev.block_number.toString(16)] }) })
+  check('...which the chain gives back byte for byte', (await again.json()).result === ev.return_data)
+  check('the evidence covers the DEX leg; the reference is named as an API answer nobody can replay', r.reference_evidence === 'issuer_api_not_reproducible' && ev.reproduce_needs === null)
+  check('the row and the run row are valid, and the run says what the chain did', validateV2('stock-peg', r).valid && validateV2('stock-peg-run', one.runs[0]).valid && one.runs[0].onchain.tokens_read === 1 && one.runs[0].onchain.discovered >= 1 && one.runs[0].onchain.rpc === 'public', JSON.stringify(validateV2('stock-peg', r).errors || one.runs[0].onchain).slice(0, 300))
+  // A usable directory, so only the switch can keep the store off (the default /var/lib/stp-raw is not writable on every
+  // test host, and a store that cannot open is off for that reason instead).
+  check('private copies are off unless STP_RAW_SNAPSHOTS=1', openRawStore({ chain: 'base', env: { STP_RAW_DIR: rawDefault } }).on === false && openRawStore({ chain: 'base', env: { STP_RAW_DIR: rawDefault, STP_RAW_SNAPSHOTS: 'true' } }).on === false && !fs.existsSync(rawDefault))
+  check('no aggregator answer is copied anywhere by default', !fs.readdirSync(path.join(one.root, 'stock-peg')).some((f) => /raw|snapshot/.test(f)) && !fs.existsSync(rawDefault))
+  check('the pool book is kept for the next run', fs.existsSync(path.join(one.root, 'stock-peg', 'pool-book.json')))
+
+  // DexScreener down: the chain prices the pools it knows; the reading is not lost.
+  const two = await runWith('dex-down', makeChain(), () => respond(503, {}))
+  const d = two.rows[0]
+  check('with DexScreener down the chain alone gives the reading', d.pools.source === 'onchain' && d.premium_refused === null && d.dex_pool === DEEP && /503/.test(d.pools.error) && d.price_evidence.evidence === 'onchain', JSON.stringify({ s: d.pools.source, r: d.premium_refused }))
+  check('...and the row is valid', validateV2('stock-peg', d).valid)
+
+  // The chain down from the start: today's reading exactly, with the aggregator's answer as its evidence.
+  const dead = makeChain(); dead.down = true
+  const three = await runWith('chain-down', dead, () => respond(200, listed()))
+  const c = three.rows[0] || { pools: {}, price_evidence: undefined }
+  check('with the chain down the DexScreener reading stands as it was', c.pools.source === 'dexscreener' && c.dex_pool === PHANTOM && Math.abs(c.premium - 0.02) < 1e-9 && three.runs[0].onchain.error && runExitCode(three.run) === 0, JSON.stringify({ s: c.pools.source, p: c.dex_pool }))
+  check('...and its evidence says honestly that there is none: no hash, no source, no flag', JSON.stringify(c.price_evidence) === '{"evidence":"none"}' && !/sha256|[a-f0-9]{64}|snapshot|stored|digest/.test(JSON.stringify(c)), JSON.stringify(c.price_evidence))
+  check('...and the rows are valid', validateV2('stock-peg', c).valid && validateV2('stock-peg-run', three.runs[0]).valid)
+
+  // The chain fails after the run began.
+  const flaky = makeChain()
+  let blocks = 0
+  const flakyFetch = (inner) => async (url, init) => { if (String(url) === cfg.rpc && init && /eth_getBlockByNumber/.test(init.body) && ++blocks > 1) return respond(503, {}); return inner(url, init) }
+  const root4 = path.join(tmp, 'chain-flaky')
+  const run4 = await runStockPeg({ chain: 'base', root: root4, now: () => NOW, paceMs: 0, log: () => {}, env: { STP_RAW_DIR: rawDefault }, fetchImpl: flakyFetch(flaky.fetch(base(() => respond(200, listed())))) })
+  const f = lines(path.join(root4, 'stock-peg', 'stock-peg-2026-11-08.jsonl'))[0] || { pools: {} }
+  check('a chain read that fails mid-run is named on the row, and the DexScreener reading stands', f.pools.source === 'dexscreener' && /503/.test(f.pools.onchain_error) && f.premium != null && run4.onchain.read_errors === 1 && validateV2('stock-peg', f).valid, JSON.stringify({ s: f.pools.source, e: f.pools.onchain_error }))
+
+  // A pool only DexScreener lists (no factory the chain asks returns it) is learned this run and read from the next.
+  const lagChain = makeChain()
+  const NEWPOOL = '0x' + 'ce'.repeat(20)
+  lagChain.v3(NEWPOOL, USDC, A, sqrtX96For(1 / 102, 6, 18))
+  lagChain.erc20(USDC, 6, { [ETHPOOL]: 10n ** 15n, [PHANTOM]: 12_610n, [DEEP]: 600_000n * 10n ** 6n, [NEWPOOL]: 5n * 10n ** 6n })
+  lagChain.erc20(A, 18, { [PHANTOM]: 123_325n, [DEEP]: 4_000n * 10n ** 18n, [NEWPOOL]: 0n })
+  const lagRoot = path.join(tmp, 'lag')
+  const lagRun = () => runStockPeg({ chain: 'base', root: lagRoot, now: () => NOW, paceMs: 0, log: () => {}, env: { STP_RAW_DIR: rawDefault }, fetchImpl: lagChain.fetch(base(() => respond(200, [{ ...pairOf(A, 102, 80_000), pairAddress: NEWPOOL }]))) })
+  await lagRun(); await lagRun()
+  const [lag1, lag2] = lines(path.join(lagRoot, 'stock-peg', 'stock-peg-2026-11-08.jsonl'))
+  const depthOf = (row) => (row.pools.top.find((t) => t.pair_address === NEWPOOL) || {}).liquidity_usd ?? null
+  check('a pool only DexScreener lists keeps its figure on the first run and is read from the chain from the next', depthOf(lag1) === 80_000 && depthOf(lag2) === null && lag2.pools.eligible === 1, JSON.stringify({ first: depthOf(lag1), second: depthOf(lag2) }))
+
+  // The two sources price the same pool more than 2% apart.
+  const five = await runWith('disagree', makeChain(101), () => respond(200, [{ ...pairOf(A, 120, 900_000), pairAddress: DEEP }]))
+  const x = five.rows[0]
+  check('the chain and DexScreener more than 2% apart on the deepest pool refuse the premium', x.premium === null && x.premium_refused === 'sources_disagree' && Math.abs(x.dex_price_usd - 101) < 1e-6 && five.runs[0].refused.sources_disagree === 1, JSON.stringify({ r: x.premium_refused, p: x.dex_price_usd }))
+  check('...and the row is valid', validateV2('stock-peg', x).valid)
+
+  // Private copies of the aggregators' answers: off by default; on, outside the dataset, private, rolling, capped, and
+  // never at the cost of a reading.
+  const rawBase = path.join(tmp, 'stp-raw')
+  const envOn = { STP_RAW_SNAPSHOTS: '1', STP_RAW_DIR: rawBase }
+  const rawFile = path.join(rawBase, 'base', 'raw-2026-11-08.jsonl.gz')
+  fs.mkdirSync(path.join(rawBase, 'base', 'pinned'), { recursive: true })
+  fs.writeFileSync(path.join(rawBase, 'base', 'raw-2026-10-01.jsonl.gz'), 'old')
+  fs.writeFileSync(path.join(rawBase, 'base', 'raw-2026-10-20.jsonl.gz'), 'recent')
+  fs.writeFileSync(path.join(rawBase, 'base', 'pinned', 'raw-2026-09-01.jsonl.gz'), 'dispute')
+  const six = await runWith('raw-on', makeChain(), () => respond(200, listed()), { env: envOn })
+  const lines6 = fs.existsSync(rawFile) ? zlib.gunzipSync(fs.readFileSync(rawFile)).toString('utf8').trim().split('\n').map((l) => JSON.parse(l)) : []
+  check('turned on, the answer behind a premium is copied outside the dataset, with its hash only there', six.rows[0].premium != null && lines6.length === 1 && lines6[0].run_id === six.rows[0].run_id && crypto.createHash('sha256').update(Buffer.from(lines6[0].body, 'utf8')).digest('hex') === lines6[0].sha256 && !rawFile.startsWith(six.root))
+  check('...and the public row still carries no hash of it', !JSON.stringify(six.rows[0]).includes(lines6[0]?.sha256 || 'x'))
+  check('copies older than 30 days are deleted, a pinned one and a recent one are not', !fs.existsSync(path.join(rawBase, 'base', 'raw-2026-10-01.jsonl.gz')) && fs.existsSync(path.join(rawBase, 'base', 'raw-2026-10-20.jsonl.gz')) && fs.existsSync(path.join(rawBase, 'base', 'pinned', 'raw-2026-09-01.jsonl.gz')))
+  if (process.platform !== 'win32') check('the store is private: directories 0700, files 0600', (fs.statSync(path.join(rawBase, 'base')).mode & 0o777) === 0o700 && (fs.statSync(rawFile).mode & 0o777) === 0o600)
+  const seven = await runWith('raw-noprem', makeChain(101), () => respond(200, [{ ...pairOf(A, 120, 900_000), pairAddress: DEEP }]), { env: envOn })
+  check('a reading with no premium is not copied', seven.rows[0].premium === null && zlib.gunzipSync(fs.readFileSync(rawFile)).toString('utf8').trim().split('\n').length === 1)
+  const before = fs.statSync(rawFile).size
+  const eight = await runWith('raw-full', makeChain(), () => respond(200, listed()), { env: { ...envOn, STP_RAW_MAX_BYTES: '1' } })
+  check('a full store stops writing, and the reading is written all the same', fs.statSync(rawFile).size === before && eight.rows[0].premium != null)
+  const blocked = path.join(tmp, 'raw-is-a-file'); fs.writeFileSync(blocked, 'x')
+  const nine = await runWith('raw-broken', makeChain(), () => respond(200, listed()), { env: { STP_RAW_SNAPSHOTS: '1', STP_RAW_DIR: blocked } })
+  check('a store that cannot be written never costs the reading or fails the run', nine.rows.length === 1 && nine.rows[0].premium != null && runExitCode(nine.run) === 0)
 }
 
 console.log('reference assets come from the chain descriptors')

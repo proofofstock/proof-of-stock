@@ -1,18 +1,53 @@
 {
   "name": "@proofofstock/guard",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Pre-trade check for agents buying tokenized stocks on Base and Robinhood Chain: is this exact contract on the issuer's own registry?",
   "license": "MIT",
-  "repository": { "type": "git", "url": "git+https://github.com/proofofstock/proof-of-stock.git", "directory": "packages/proofofstock-guard" },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/proofofstock/proof-of-stock.git",
+    "directory": "packages/proofofstock-guard"
+  },
   "homepage": "https://proofofstock.xyz/docs/",
   "type": "module",
   "exports": {
-    ".": "./index.mjs",
-    "./agentkit": "./agentkit.mjs"
+    ".": {
+      "types": "./index.d.ts",
+      "import": "./index.mjs",
+      "require": "./index.mjs",
+      "default": "./index.mjs"
+    },
+    "./agentkit": {
+      "import": "./agentkit.mjs",
+      "require": "./agentkit.mjs",
+      "default": "./agentkit.mjs"
+    }
   },
-  "files": ["index.mjs", "agentkit.mjs", "README.md", "LICENSE"],
-  "engines": { "node": ">=18" },
-  "keywords": ["tokenized-stocks", "base", "robinhood-chain", "agentkit", "mcp", "impostor", "safety"],
-  "publishConfig": { "access": "public" },
-  "scripts": { "test": "node index.test.mjs", "demo": "node examples/demo.mjs" }
+  "files": [
+    "index.mjs",
+    "index.d.ts",
+    "agentkit.mjs",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=20.19"
+  },
+  "keywords": [
+    "tokenized-stocks",
+    "base",
+    "robinhood-chain",
+    "agentkit",
+    "mcp",
+    "impostor",
+    "safety"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "test": "node index.test.mjs",
+    "demo": "node examples/demo.mjs"
+  },
+  "types": "./index.d.ts"
 }

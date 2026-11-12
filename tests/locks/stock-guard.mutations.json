@@ -1,12 +1,15 @@
 {
   "_finding": "The guard is what stands between an agent and a fake stock token. It must refuse when it could not check (failing open would let every trade through during an outage), refuse an impostor, and refuse a listed token of a different stock from the one asked for.",
   "target": "packages/proofofstock-guard/index.mjs",
-  "runner": ["node", "packages/proofofstock-guard/index.test.mjs"],
+  "runner": [
+    "node",
+    "packages/proofofstock-guard/index.test.mjs"
+  ],
   "mutations": [
     {
       "name": "the guard fails open by default",
-      "find": "failOpen = false } = {}) {",
-      "replace": "failOpen = true } = {}) {",
+      "find": "failOpen = false, maxRegistryAgeS",
+      "replace": "failOpen = true, maxRegistryAgeS",
       "expect": "FAIL a registry that cannot be read refuses the buy"
     },
     {
@@ -20,6 +23,18 @@
       "find": "      if (claimedSymbol && ticker(claimedSymbol) !== ticker(b.symbol)) {",
       "replace": "      if (false) {",
       "expect": "FAIL a listed token of ANOTHER stock than the one asked for is refused"
+    },
+    {
+      "name": "a listed answer without list_proof is allowed",
+      "find": "      if (!p || !p.addresses_sha256) return unknown('the answer carries no list_proof')\n",
+      "replace": "",
+      "expect": "FAIL a listed answer without list_proof is unknown and refused"
+    },
+    {
+      "name": "a 429 is retried",
+      "find": "      if (r.status === 503 && attempt === 0)",
+      "replace": "      if ((r.status === 503 || r.status === 429) && attempt === 0)",
+      "expect": "FAIL a 429 is not retried"
     }
   ]
 }

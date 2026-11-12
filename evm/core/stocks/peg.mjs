@@ -23,6 +23,10 @@ export const MAX_REFERENCE_SPREAD = 0.01
 export const TOP_POOLS = 5
 // DexScreener's token-pairs endpoint returns at most this many pairs: a token that shows exactly this many may have more.
 export const DEXSCREENER_PAIR_CAP = 30
+// When the chain and an aggregator both price the deepest pool and their prices for the token differ by more than this,
+// neither is trusted and the premium is refused (sources_disagree). Measured 12.11 over every eligible pool: at most 0.2%
+// for pools with their own contract, 1% for one Uniswap v4 pool. A default the owner may still change; Infinity turns it off.
+export const MAX_SOURCE_DISAGREEMENT = 0.02
 
 // Refusals, in the order they are decided; a null premium always comes with exactly one. The list itself lives in
 // schemas/v2/enums.mjs, where the CI holds it equal to the schema's enum.
@@ -89,10 +93,13 @@ export function poolSummary (p) {
 
 /**
  * @param reference  { price_usd, bid?, ask?, spread? } in token units (see the header)
- * @param pairs      the DexScreener pairs array, or null when the read failed
+ * @param pairs      DexScreener-shaped pairs (DexScreener, GeckoTerminal, the chain: scripts/stocks/onchain-pools.mjs), or
+ *                   null when no source could be read. A pair may carry `_crossPrice`: another source's price for the
+ *                   token in the same pool, checked against MAX_SOURCE_DISAGREEMENT for the deepest pool.
  * @param opts.referenceAssets  lower-case addresses a pool's other token must be (see tokenPriceIn)
  * @returns {{ premium: number|null, premium_refused: string|null, dex_price_usd: number|null, dex_pool: string|null,
- *             dex_inside_quote: boolean|null, pools: { seen: number|null, eligible: number, capped: boolean, top: object[] } }}
+ *             dex_inside_quote: boolean|null, pools: { seen: number|null, eligible: number, capped: boolean, top: object[] },
+ *             _best: object|null }}  _best is the deepest eligible pair as given, for the recorder's evidence
  */
 export function pegReading (token, reference, pairs, { referenceAssets = null } = {}) {
   const ref = num(reference?.price_usd)
@@ -103,11 +110,13 @@ export function pegReading (token, reference, pairs, { referenceAssets = null } 
   // Where the issuer quotes both sides, whether the on-chain price sits inside that quote says more than any mid.
   const bid = num(reference?.bid), ask = num(reference?.ask)
   const inside = best && bid > 0 && ask > 0 && ask >= bid ? best.price_usd >= bid && best.price_usd <= ask : null
-  const out = (refused, premium = null) => ({ premium, premium_refused: refused, dex_price_usd: best?.price_usd ?? null, dex_pool: best?.pair_address ?? null, dex_inside_quote: inside, pools })
+  const out = (refused, premium = null) => ({ premium, premium_refused: refused, dex_price_usd: best?.price_usd ?? null, dex_pool: best?.pair_address ?? null, dex_inside_quote: inside, pools, _best: ok[0] || null })
   if (!(ref > 0)) return out('no_reference')
   if (pairs == null) return out('pairs_unavailable')
   if (seen === 0) return out('no_pairs')
   if (!best) return out('no_eligible_pool')
+  const cross = num(ok[0]._crossPrice)
+  if (cross > 0 && Math.abs(best.price_usd / cross - 1) > MAX_SOURCE_DISAGREEMENT) return out('sources_disagree')
   const spread = num(reference?.spread)
   if (spread != null && (spread < 0 || spread > MAX_REFERENCE_SPREAD)) return out('reference_spread_wide')
   return out(null, best.price_usd / ref - 1)

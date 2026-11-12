@@ -8,6 +8,8 @@
 //
 // The pools come back in DexScreener's shape so the same eligibility rules (evm/core/stocks/peg.mjs) apply to both.
 
+import { snapshotOf } from './raw-store.mjs'
+
 export const GECKO_PAGE_SIZE = 20
 export const GECKO_MAX_PAGES = 3
 const TIMEOUT_MS = 15_000
@@ -42,27 +44,31 @@ export function geckoToPairs (body) {
 }
 
 /**
- * Up to GECKO_MAX_PAGES pages of a token's pools. Returns { pairs, more } where `more` says there may be pools neither
- * source listed: the last page read was full, or a later page was refused. Throws only when the FIRST page fails; the
+ * Up to GECKO_MAX_PAGES pages of a token's pools. Returns { pairs, more, snaps } where `more` says there may be pools
+ * neither source listed: the last page read was full, or a later page was refused; `snaps` holds each page's bytes
+ * (scripts/stocks/raw-store.mjs, private). Throws only when the FIRST page fails; the
  * caller then keeps what it had.
  */
 export async function readGeckoPools (fetchImpl, network, address, { paceMs = 4500 } = {}) {
-  const pairs = []
+  const pairs = [], snaps = []
   let more = false
   for (let page = 1; page <= GECKO_MAX_PAGES; page++) {
     if (page > 1 && paceMs > 0) await sleep(paceMs)
-    const r = await fetchImpl(`https://api.geckoterminal.com/api/v2/networks/${network}/tokens/${address}/pools?page=${page}`, { signal: AbortSignal.timeout(TIMEOUT_MS), headers: { accept: 'application/json' } })
+    const url = `https://api.geckoterminal.com/api/v2/networks/${network}/tokens/${address}/pools?page=${page}`
+    const r = await fetchImpl(url, { signal: AbortSignal.timeout(TIMEOUT_MS), headers: { accept: 'application/json' } })
     if (!r.ok) {
       if (page === 1) throw new Error(`geckoterminal answered ${r.status}`)
       more = true
       break
     }
-    const got = geckoToPairs(await r.json())
+    const snap = await snapshotOf('geckoterminal', url, r)
+    snaps.push(snap)
+    const got = geckoToPairs(JSON.parse(snap.body))
     pairs.push(...got)
     more = got.length >= GECKO_PAGE_SIZE
     if (!more) break
   }
-  return { pairs, more }
+  return { pairs, more, snaps }
 }
 
 /** DexScreener pairs plus GeckoTerminal ones, deduplicated by pool address; DexScreener's entry wins on a tie. */

@@ -45,6 +45,12 @@
       "find": "  if (referenceAssets && !referenceAssets.has(low(isBase ? p?.quoteToken?.address : p?.baseToken?.address))) return null\n",
       "replace": "  if (referenceAssets && !['USDC', 'USDG', 'WETH'].includes(isBase ? p?.quoteToken?.symbol : p?.baseToken?.symbol)) return null\n",
       "expect": "FAIL ...and a look-alike symbol is not the reference asset: the address is"
+    },
+    {
+      "name": "two sources that disagree on the deepest pool still give a premium",
+      "find": "  if (cross > 0 && Math.abs(best.price_usd / cross - 1) > MAX_SOURCE_DISAGREEMENT) return out('sources_disagree')\n",
+      "replace": "",
+      "expect": "FAIL the chain and the aggregator more than 2% apart refuse the premium as sources_disagree"
     }
   ]
 }

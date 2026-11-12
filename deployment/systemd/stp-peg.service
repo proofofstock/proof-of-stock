@@ -28,7 +28,10 @@ NoNewPrivileges=true
 CapabilityBoundingSet=CAP_DAC_READ_SEARCH
 AmbientCapabilities=
 ProtectSystem=strict
-ReadWritePaths=/var/lib/stp/base/stock-peg /var/lib/stp/robinhood/stock-peg
+# /var/lib/stp-raw: short-lived private copies of the aggregators' answers (scripts/stocks/raw-store.mjs), outside
+# /var/lib/stp so the dataset's backups do not copy them. Written only with STP_RAW_SNAPSHOTS=1, which this unit does not
+# set: off until the aggregators' terms on private retention have been read. "-": no error while the directory is absent.
+ReadWritePaths=/var/lib/stp/base/stock-peg /var/lib/stp/robinhood/stock-peg -/var/lib/stp-raw
 ProtectHome=read-only
 PrivateTmp=true
 PrivateDevices=true

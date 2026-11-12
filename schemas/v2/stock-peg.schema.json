@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://proofofstock.xyz/schemas/v2/stock-peg.schema.json",
   "title": "Tokenized stock peg reading",
-  "description": "One reading of one issuer-listed tokenized stock: the issuer's reference price for one token, the DEX pools that trade it, and the premium of the deepest eligible pool over the reference. Written by scripts/stocks/stock-peg.mjs every run, one row per token. A sidecar: nothing in the product reads it. The reference is in TOKEN units on both chains (Coinbase nav_price is total return; Robinhood tokenBid/tokenAsk are scaled), so the premium is dex/reference - 1 with no multiplier applied; the multiplier is recorded for the reader. A stale reference is recorded with its age, not refused: how the DEX price moves against a held reference while the exchange is closed is what this series is for.",
+  "description": "One reading of one issuer-listed tokenized stock: the issuer's reference price for one token, the DEX pools that trade it (from DexScreener, GeckoTerminal and the chain itself), and the premium of the deepest eligible pool over the reference. Written by scripts/stocks/stock-peg.mjs every run, one row per token. A sidecar: nothing in the product reads it. The reference is in TOKEN units on both chains (Coinbase nav_price is total return; Robinhood tokenBid/tokenAsk are scaled), so the premium is dex/reference - 1 with no multiplier applied; the multiplier is recorded for the reader. A stale reference is recorded with its age, not refused: how the DEX price moves against a held reference while the exchange is closed is what this series is for.",
   "type": "object",
   "required": ["_schema_version", "run_id", "observed_at", "chain_id", "issuer", "token_address", "symbol", "isin", "multiplier", "multiplier_pending", "paused", "reference", "pools", "dex_price_usd", "dex_pool", "premium", "premium_refused"],
   "properties": {
@@ -37,11 +37,12 @@
       "type": "object",
       "required": ["source", "seen", "eligible", "capped", "error", "top"],
       "properties": {
-        "source": { "enum": ["dexscreener", "dexscreener+geckoterminal"], "description": "dexscreener alone, or with GeckoTerminal pools added when DexScreener's list hit its cap of 30" },
+        "source": { "enum": ["dexscreener", "dexscreener+geckoterminal", "dexscreener+onchain", "dexscreener+geckoterminal+onchain", "onchain"], "description": "the sources whose pools the reading used: DexScreener, GeckoTerminal (only when DexScreener's list hit its cap of 30), and the chain itself (scripts/stocks/onchain-pools.mjs), whose price and liquidity replace an aggregator's for a pool both see. onchain alone: DexScreener could not be read and the chain priced the pools it knew. dexscreener with error set: no source could be read" },
         "seen": { "type": ["integer", "null"], "description": "pairs the source returned; null when the read failed" },
         "eligible": { "type": "integer", "minimum": 0 },
         "capped": { "type": "boolean", "description": "there may be pools neither source listed: DexScreener returned its cap of 30 and, when GeckoTerminal was asked, its last page was full too" },
-        "error": { "type": ["string", "null"] },
+        "error": { "type": ["string", "null"], "description": "why DexScreener could not be read" },
+        "onchain_error": { "type": ["string", "null"], "description": "why the chain could not be read for this token; the reading stands on the aggregators. Absent from rows recorded before the recorder read the chain" },
         "top": {
           "type": "array",
           "maxItems": 5,
@@ -66,8 +67,44 @@
     "dex_price_usd": { "type": ["number", "null"] },
     "dex_pool": { "type": ["string", "null"] },
     "premium": { "type": ["number", "null"] },
-    "premium_refused": { "enum": ["no_reference", "pairs_unavailable", "no_pairs", "no_eligible_pool", "reference_spread_wide", null] },
-    "dex_inside_quote": { "type": ["boolean", "null"], "description": "whether the deepest pool's price sits inside the issuer's bid/ask; null when there is no bid/ask or no pool" }
+    "premium_refused": { "enum": ["no_reference", "pairs_unavailable", "no_pairs", "no_eligible_pool", "sources_disagree", "reference_spread_wide", null], "description": "sources_disagree: the chain and an aggregator both priced the deepest pool and differ by more than 2% (evm/core/stocks/peg.mjs MAX_SOURCE_DISAGREEMENT); dex_price_usd is the chain's" },
+    "dex_inside_quote": { "type": ["boolean", "null"], "description": "whether the deepest pool's price sits inside the issuer's bid/ask; null when there is no bid/ask or no pool" },
+    "price_evidence": {
+      "description": "what dex_price_usd rests on: the DEX leg only, never the issuer's reference (see reference_evidence). Null when there is no price. onchain: the chain's answer at one block, which anyone can ask again. none: an aggregator alone priced the pool; its answer cannot be asked for again, so there is no evidence. Absent from rows recorded before the recorder read the chain",
+      "oneOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "required": ["evidence", "block_number", "block_hash", "multicall", "calldata", "return_data", "decoder", "pool", "token0", "token1", "decimals", "usd_leg", "eth_pool", "rpc", "reproduce_needs", "reproduce"],
+          "properties": {
+            "evidence": { "const": "onchain" },
+            "block_number": { "type": "integer", "minimum": 1 },
+            "block_hash": { "type": "string", "pattern": "^0x[a-f0-9]{64}$" },
+            "multicall": { "type": "string", "pattern": "^0x[a-f0-9]{40}$", "description": "Multicall3; calldata is its aggregate3 of exactly the calls the price used" },
+            "calldata": { "type": "string", "pattern": "^0x82ad56cb[a-f0-9]*$" },
+            "return_data": { "type": "string", "pattern": "^0x[a-f0-9]*$", "description": "what the node returned for calldata at block_number, byte for byte" },
+            "decoder": { "enum": ["v3_slot0", "v2_reserves", "v4_stateview"] },
+            "pool": { "type": "string", "pattern": "^0x([a-f0-9]{40}|[a-f0-9]{64})$", "description": "the pool contract, or a Uniswap v4 pool id" },
+            "token0": { "type": "string", "pattern": "^0x[a-f0-9]{40}$" },
+            "token1": { "type": "string", "pattern": "^0x[a-f0-9]{40}$" },
+            "decimals": { "type": "array", "items": { "type": "integer" }, "minItems": 2, "maxItems": 2, "description": "of token0 and token1, read from the tokens; they do not change" },
+            "usd_leg": { "enum": ["stable_at_1", "weth_pool"], "description": "how the pool's other token became dollars: a stable at $1, or WETH priced from eth_pool in the same call" },
+            "eth_pool": { "type": ["string", "null"], "pattern": "^0x[a-f0-9]{40}$" },
+            "rpc": { "type": "string", "format": "uri", "description": "the chain's public RPC; the recorder may have used another" },
+            "reproduce_needs": { "enum": ["archive_rpc", null], "description": "archive_rpc: the public RPC keeps no state that old (Robinhood: under an hour), so reproduce needs a node that does" },
+            "reproduce": { "type": "string", "description": "a cast call of calldata at block_number; its output is return_data. slot0 is what the pool said at that block, not a fair price" }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": ["evidence"],
+          "properties": { "evidence": { "const": "none" } },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "reference_evidence": { "const": "issuer_api_not_reproducible", "description": "the issuer's reference is an API answer nobody can ask for again; price_evidence covers the DEX leg only. Absent from rows recorded before the recorder read the chain" }
   },
   "additionalProperties": false
 }

@@ -1,6 +1,6 @@
 # The passport answer
 
-`v0.5.0 · updated 2026-11-11`
+`v0.5.0 · updated 2026-11-12`
 
 The passport is the answer to "what can be said, with its time and source, about this one token?". It is the body of
 [`GET /api/passport`](./http-api.md#route-passport) and of the MCP tool [`stock_passport`](./tools.md#tool-stock_passport).
@@ -278,9 +278,10 @@ A null premium always carries exactly one reason. They are decided in this order
 | Value | When | `dex_price_usd` |
 |---|---|---|
 | `no_reference` | the issuer's `price_usd` is missing or not above 0 | set if a pool was eligible |
-| `pairs_unavailable` | the DexScreener read failed | `null` |
-| `no_pairs` | DexScreener returned zero pairs | `null` |
+| `pairs_unavailable` | the DexScreener read failed and the chain priced no pool for the token | `null` |
+| `no_pairs` | no source listed a pair | `null` |
 | `no_eligible_pool` | pairs exist, none is [eligible](#field-pools) | `null` |
+| `sources_disagree` | the chain and DexScreener or GeckoTerminal both priced the deepest eligible pool, and their prices for the token differ by more than 2% | set (the chain's) |
 | `reference_spread_wide` | the issuer's `spread` is above `0.01` (1%) or below 0 (crossed) | set |
 
 <a id="field-premium_at_reference_time"></a>
@@ -310,20 +311,26 @@ after `reference.updated_at`. So `0 <= lag_s <= 1800`.
 
 | Field | Type | Null means | Example |
 |---|---|---|---|
-| `seen` | integer or null | the DexScreener read failed | `4` |
+| `seen` | integer or null | the DexScreener read failed and the chain priced no pool | `4` |
 | `eligible` | integer | never null | `1` |
 | `capped` | boolean | never null. `true`: DexScreener returned its cap of 30 pairs, and GeckoTerminal was not asked (the run was near its time limit), failed, or its last page was full too. The count is a minimum (`pools_capped`) | `false` |
 | `top` | object[] | never null. The eligible pools, deepest first, at most 5 | |
 
 A pool is **eligible** when all of these hold:
 
-1. Its liquidity is at least **10,000 USD** (`MIN_POOL_LIQUIDITY_USD`).
+1. Its liquidity is at least **10,000 USD** (`MIN_POOL_LIQUIDITY_USD`): the pool's own balances read from the chain
+   where the chain read it (the stock token's side at the issuer's reference price, or not counted when there is
+   none), else (and for Uniswap v4 always) the aggregator's figure.
 2. The token is on one side of the pair.
 3. The other token is one of the chain's dollar stablecoins or its wrapped native token, **matched by address**, not
    by symbol. The addresses are listed in `sources.pools_counted.paired_with_addresses`. A pool against a memecoin is
    never eligible: that memecoin's dollar price is derived from the stock token itself.
-4. The pool can price the token: on the base side, the pair's `priceUsd`; on the quote side, GeckoTerminal's
-   `quotePriceUsd`, else `priceUsd / priceNative` (inversion).
+4. The pool can price the token: from the chain (`slot0`, reserves, or Uniswap v4 `getSlot0`) where the chain read
+   it; else on the base side, the pair's `priceUsd`; on the quote side, GeckoTerminal's `quotePriceUsd`, else
+   `priceUsd / priceNative` (inversion).
+
+How the chain is read, and the evidence each reading keeps, is in
+[the methodology](../explanation/methodology.md#the-chain-as-a-source).
 
 The deepest eligible pool by liquidity sets `dex_price_usd`, `dex_pool` and the premium.
 
@@ -396,6 +403,7 @@ Every gap in the answer is a code here. Codes appear in the order below, each at
 | `reading_stale` | `latest.age_s > 1800`: the recorder has missed two runs; `latest` is history. Past the window (`series.window_h`) `latest` is `null`: no price older than the window is shown |
 | `no_dex_price` | `latest.premium` is null and `premium_refused` is `pairs_unavailable`, `no_pairs` or `no_eligible_pool` |
 | `reference_spread_wide` | `latest.premium_refused` is `reference_spread_wide` |
+| `sources_disagree` | `latest.premium_refused` is `sources_disagree`: the chain and an aggregator priced the deepest pool more than 2% apart. `latest.dex_price_usd` is the chain's price |
 | `pools_capped` | `latest.pools.capped` is `true` |
 | `multiplier_change_pending` | `multiplier_pending` is not null and differs from `multiplier` |
 
@@ -488,7 +496,7 @@ Where every number comes from, per chain.
 |---|---|---|
 | `registry` | string (URL) | `"https://api.coinbase.com/v1/tokenized-stocks"` or `"https://api.robinhood.com/rhj/assets"` |
 | `reference` | string | `"Coinbase NAV per token (nav_price, total return), from the same registry"` |
-| `dex` | string | `"DexScreener token-pairs, completed from GeckoTerminal pools when DexScreener lists 30"` |
+| `dex` | string | `"the pools on the chain itself, read at one block, with DexScreener token-pairs (completed from GeckoTerminal when DexScreener lists 30); where both see a pool, the price and liquidity read from the chain are used"` |
 | `recorded_every_s` | integer | `900` |
 | `pools_counted.min_liquidity_usd` | number | `10000` |
 | `pools_counted.paired_with_addresses` | string[] | Base: USDC `0x8335…2913`, `0xd9aa…b6ca`, `0x50c5…f0cb` and WETH `0x4200…0006` |

@@ -1,0 +1,22 @@
+{
+  "_finding": "The recorder may keep short-lived private copies of DexScreener and GeckoTerminal answers in /var/lib/stp-raw (scripts/stocks/raw-store.mjs). They are not the site's: no route may serve them and the web app may not name them. These mutations give the site a path to them.",
+  "target": "apps/stocks-web.mjs",
+  "runner": [
+    "node",
+    "apps/stocks-web.test.mjs"
+  ],
+  "mutations": [
+    {
+      "name": "a route serves the private copies",
+      "find": "    if (STATIC[sub]) { const s = static_[sub]; return send(res, 200, s.body, s.type, { 'cache-control': 'public, max-age=86400' }) }",
+      "replace": "    if (sub.startsWith('/stp-raw/')) { try { return send(res, 200, fs.readFileSync(path.join(path.dirname(roots.base), sub)), 'application/octet-stream', {}) } catch (_) {} }\n    if (STATIC[sub]) { const s = static_[sub]; return send(res, 200, s.body, s.type, { 'cache-control': 'public, max-age=86400' }) }",
+      "expect": "FAIL no route serves a byte of the private copies, whatever the path"
+    },
+    {
+      "name": "the web app imports the store",
+      "find": "import { isEntryPoint } from '../scripts/lib/invoked-directly.mjs'",
+      "replace": "import { isEntryPoint } from '../scripts/lib/invoked-directly.mjs'\nimport '../scripts/stocks/raw-store.mjs'",
+      "expect": "FAIL the web app has no code path to them: no file in apps/ names the store, its module or its switch"
+    }
+  ]
+}

@@ -20,6 +20,8 @@ check('passport: in_registry without a proof, and Robinhood minted true, are two
 check('MCP verify: listed results need the batch proof; each result\'s minted is checked', evidenceViolations('mcp_verify', { listed: 1, list_proof: null, results: [{ issuer: 'robinhood', minted: true, address: '0x1' }] }).length === 2)
 check('list: a Robinhood token marked minted, or a Robinhood minted count, is a violation', evidenceViolations('list', { issuer: 'robinhood', tokens: [{ minted: true }], minted: null }).length === 1 && evidenceViolations('list', { issuer: 'robinhood', tokens: [{ minted: null }], minted: 3 }).length === 1)
 check('list: a Coinbase list with counts passes', evidenceViolations('list', { issuer: 'coinbase', tokens: [{ minted: true }, { minted: false }], minted: 1 }).length === 0)
+check('passport: a premium needs price_evidence, onchain or an explicit none', evidenceViolations('passport', { in_registry: true, list_proof: proof, latest: { premium: 0.01, price_evidence: null } }).length === 1 && evidenceViolations('passport', { in_registry: true, list_proof: proof, latest: { premium: 0.01, price_evidence: { evidence: 'onchain' } } }).length === 0 && evidenceViolations('passport', { in_registry: true, list_proof: proof, latest: { premium: 0.01, price_evidence: { evidence: 'none' } } }).length === 0)
+check('passport: no premium needs no price evidence', evidenceViolations('passport', { in_registry: true, list_proof: proof, latest: { premium: null, price_evidence: null } }).length === 0)
 check('an unknown kind or no answer is never a silent pass', evidenceViolations('other', {}).length === 1 && evidenceViolations('verify', null).length === 1)
 
 console.log(`\n${passed} passed, ${failed} failed`)

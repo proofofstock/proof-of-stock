@@ -19,9 +19,9 @@
     "note": {
       "enum": ["not_in_registry", "no_readings", "no_reference", "reference_held_market_closed", "reference_held_market_open",
         "trading_halted", "paused", "no_dex_price", "pools_capped", "multiplier_change_pending", "calendar_unknown",
-        "reference_spread_wide", "reading_stale", "not_minted"]
+        "reference_spread_wide", "reading_stale", "not_minted", "sources_disagree"]
     },
-    "premium_refused": { "enum": ["no_reference", "pairs_unavailable", "no_pairs", "no_eligible_pool", "reference_spread_wide", null] },
+    "premium_refused": { "enum": ["no_reference", "pairs_unavailable", "no_pairs", "no_eligible_pool", "sources_disagree", "reference_spread_wide", null] },
     "reference_kind": { "enum": ["nav_total_return", "token_bid_ask_mid"] },
     "market_now": {
       "type": "object",
@@ -114,10 +114,12 @@
     },
     "latest": {
       "type": "object",
-      "required": ["observed_at", "dex_price_usd", "dex_pool", "premium", "premium_refused", "dex_inside_quote", "age_s", "cadence_s", "premium_at_reference_time", "pools"],
+      "required": ["observed_at", "dex_price_usd", "dex_pool", "premium", "premium_refused", "dex_inside_quote", "price_evidence", "reference_evidence", "age_s", "cadence_s", "premium_at_reference_time", "pools"],
       "additionalProperties": false,
       "properties": {
         "observed_at": { "$ref": "#/definitions/iso_time" },
+        "price_evidence": { "type": ["object", "null"], "required": ["evidence"], "properties": { "evidence": { "enum": ["onchain", "none"] } }, "description": "what the DEX price rests on: the pool read at a block (onchain: block, calldata, return_data, reproduce), or none. null when there is no DEX price" },
+        "reference_evidence": { "type": "string", "description": "issuer_api_not_reproducible: the issuer price is an API answer nobody can ask for again" },
         "dex_price_usd": { "$ref": "#/definitions/number_or_null" },
         "dex_pool": { "$ref": "#/definitions/string_or_null" },
         "premium": { "$ref": "#/definitions/number_or_null" },

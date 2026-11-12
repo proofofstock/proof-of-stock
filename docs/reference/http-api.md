@@ -80,7 +80,12 @@ curl -s 'https://proofofstock.xyz/verify?chain=base&address=0xeeeeeeeeeeeeeeeeee
 | Parameter | Required | Constraint |
 |---|---|---|
 | `chain` | yes | `base` or `robinhood` |
-| `address` | yes | `0x` + 40 hex |
+| `address` | one of the two | `0x` + 40 hex |
+| `addresses` | one of the two | 1 to 50 addresses, comma-separated, each `0x` + 40 hex. Costs ⌈n/10⌉ units of the rate limit, as MCP `verify_stock_tokens` does. Larger batches are not served here |
+
+With `addresses` the answer is `{ chain, count, listed, impostors, results[], list_proof }`: one result per address, in
+the order given, all decided against one read of the list, and one `list_proof` for the batch. `address` and
+`addresses` together, an empty list, more than 50 or a malformed address are a 400 that says which.
 
 The fields are documented under [`verify_stock_tokens`](./tools.md#tool-verify_stock_tokens). `listed: false` means
 "not in this issuer's registry", never "fake".

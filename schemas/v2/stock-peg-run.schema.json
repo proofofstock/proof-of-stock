@@ -30,6 +30,19 @@
     "supplemented": { "type": "integer", "minimum": 0, "description": "tokens whose pools were completed from GeckoTerminal" },
     "supplement_errors": { "type": "integer", "minimum": 0, "description": "GeckoTerminal reads that failed; those rows keep the DexScreener pools" },
     "supplement_skipped": { "type": "integer", "minimum": 0, "description": "full lists not topped up from GeckoTerminal because the run was near its deadline; those rows keep the DexScreener pools" },
+    "onchain": {
+      "type": "object",
+      "description": "the chain's side of the run (scripts/stocks/onchain-pools.mjs); absent when the issuer list could not be read, and from runs before the recorder read the chain",
+      "required": ["rpc", "error", "discovered", "tokens_read", "read_errors"],
+      "properties": {
+        "rpc": { "enum": ["public", "custom"], "description": "custom: STP_RPC_BASE or STP_RPC_ROBINHOOD was set; the URL is never written" },
+        "error": { "type": ["string", "null"], "description": "set when the chain could not be reached at the start of the run; every reading then stands on the aggregators" },
+        "discovered": { "type": "integer", "minimum": 0, "description": "pools the factories returned that the pool book did not hold" },
+        "tokens_read": { "type": "integer", "minimum": 0 },
+        "read_errors": { "type": "integer", "minimum": 0, "description": "tokens whose chain read failed; those rows stand on the aggregators" }
+      },
+      "additionalProperties": false
+    },
     "aborted": { "type": ["string", "null"], "description": "set when the run stopped on an error or at its deadline after the registry was read; the rows before it stand" }
   },
   "additionalProperties": false

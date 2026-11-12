@@ -29,6 +29,30 @@
       "find": "  return new Set([...(d.stableAssets || []), d.wrappedNative].filter(Boolean)",
       "replace": "  return new Set([...(d.stableAssets || [])].filter(Boolean)",
       "expect": "FAIL Base: USDC and WETH, by address"
+    },
+    {
+      "name": "a chain read that throws loses the reading",
+      "find": "        if (c.e) { onchainError = String(c.e && c.e.message || c.e).slice(0, 200); run.onchain.read_errors++ } else if (c.r) { chainRead = c.r; run.onchain.tokens_read++ }",
+      "replace": "        if (c.e) throw c.e; else if (c.r) { chainRead = c.r; run.onchain.tokens_read++ }",
+      "expect": "FAIL a chain read that fails mid-run is named on the row, and the DexScreener reading stands"
+    },
+    {
+      "name": "the chain is not merged when DexScreener is down",
+      "find": "      if (chainRead && chainRead.reads.size) {",
+      "replace": "      if (pairs && chainRead && chainRead.reads.size) {",
+      "expect": "FAIL with DexScreener down the chain alone gives the reading"
+    },
+    {
+      "name": "an answer is copied for a reading with no premium",
+      "find": "        if (row.premium != null && raw.on) raw.keep(",
+      "replace": "        if (raw.on) raw.keep(",
+      "expect": "FAIL a reading with no premium is not copied"
+    },
+    {
+      "name": "an aggregator-only price carries a hash (the schema refuses the row)",
+      "find": "  return { evidence: 'none' }",
+      "replace": "  return { evidence: 'none', sha256: best._snap?.sha256 || 'ab'.repeat(32) }",
+      "expect": "FAIL an unminted token is not read: two rows for three records"
     }
   ]
 }

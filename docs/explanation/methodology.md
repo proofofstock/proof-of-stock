@@ -1,4 +1,4 @@
-v0.5.0 · updated 2026-11-11
+v0.5.0 · updated 2026-11-12
 
 # Methodology: where the data comes from and what counts as issuer-listed
 
@@ -20,9 +20,10 @@ This page explains why each of those layers works the way it does. The field-by-
 | Reference | `nav_price` from the same Coinbase records: a net asset value per token, total return | `tokenBid` / `tokenAsk` from `GET https://api.robinhood.com/rhj/prices`, mid of the two |
 | Pools | DexScreener `token-pairs/v1/base/<address>` | DexScreener `token-pairs/v1/robinhood/<address>` |
 | Pools, second source | GeckoTerminal, only when DexScreener lists 30 pairs (its cap), and not in the last 90 s of a run's time limit | the same |
+| Pools, the chain itself | every pool known for the token, read at one block through Multicall3 on `https://mainnet.base.org` | the same, on `https://rpc.mainnet.chain.robinhood.com` |
 
-None of these needs a key. The code is `evm/core/stocks/registries.mjs`, `scripts/stocks/stock-peg.mjs` and
-`scripts/stocks/gecko-pools.mjs`.
+None of these needs a key. The code is `evm/core/stocks/registries.mjs`, `scripts/stocks/stock-peg.mjs`,
+`scripts/stocks/gecko-pools.mjs` and `scripts/stocks/onchain-pools.mjs`.
 
 Some details that matter when you read a number:
 
@@ -37,6 +38,83 @@ Some details that matter when you read a number:
 - **Absent is not zero.** Coinbase omits fields that hold their default. A missing `nav_price` becomes `null`, never 0.
 - **GeckoTerminal is a supplement.** It is asked for up to three pages of 20 pools, paced, and merged with the
   DexScreener list by pool address. If it refuses, the DexScreener reading stands as it was.
+- **The chain is read too, and where it sees a pool it wins.** See [The chain as a source](#the-chain-as-a-source).
+  If the chain cannot be read, the aggregators' reading stands as it was; if DexScreener cannot be read, the chain's
+  pools give the reading on their own.
+
+## The chain as a source
+
+Every run reads each token's pools from the chain itself, at one block pinned for that token, in one `eth_call` to
+Multicall3 (`0xcA11bde05977b3631167028862bE2a173976CA11`, deployed on both chains). The public RPCs count every call
+in a JSON-RPC batch on its own, so the calls go inside Multicall3 instead.
+
+**Which pools.** A pool book per chain (`<root>/stock-peg/pool-book.json`) holds every pool DexScreener or
+GeckoTerminal ever listed for the token against a stablecoin or WETH, and every pool the main factories return for
+(token, USDC or USDG or WETH, fee or tick spacing). The factories are asked every 6 hours: on Base Uniswap v3 and both
+Aerodrome concentrated-liquidity factories; on Robinhood Chain Uniswap v3, SushiSwap v3, Aero, Ramses and Up.
+The chain is read while DexScreener answers, from the book as it stood, so a pool DexScreener lists for the first
+time is read from the chain from the next run on (15 minutes later); the factories' pools are read from the first.
+
+**What is read, per pool kind:**
+
+| Kind | Calls | Price | Liquidity |
+|---|---|---|---|
+| A pool with its own contract and `slot0` (Uniswap v3 and its forks) | `token0`, `token1`, `slot0`, each token's `balanceOf(pool)` | from `sqrtPriceX96` | both balances in dollars |
+| A constant-product pool | `token0`, `token1`, `getReserves`, `stable` | reserves ratio | both reserves in dollars; a pool whose `stable()` is true is a different curve and is not read |
+| Uniswap v4 | `StateView.getSlot0(poolId)` | from `sqrtPriceX96` | **not readable**: v4 keeps all pools' tokens in one contract, so the aggregator's figure is used |
+
+A stablecoin counts as $1. WETH is priced from the chain's deepest WETH/stable Uniswap v3 pool, read in the same call
+at the same block. **A pool does not set its own depth:** in "both balances in dollars", the stock token's balance is
+valued at the issuer's reference price, never at the pool's own price, and is not counted at all when the issuer gives
+no price (then only the stablecoin or WETH side counts). On 12.11 two Base pools whose `slot0` said about 1e40 dollars
+a token held dust of it; at their own price that dust would have been the deepest pool on the chain. A Uniswap v4 pool against WETH is not read: its currency may be native ETH, which sorts first, and
+the pool id alone does not say which. A pool whose `token0`/`token1` are not the token and the asset the listing
+claimed is not read either. Pools the code cannot decode (some forks) keep the aggregator's figures.
+
+**The chain wins.** For a pool both the chain and an aggregator see, the price is the chain's, and so is the liquidity
+unless the pool is Uniswap v4. This was decided on 12.11.2026, after the chain showed that 16 Base pools
+from one Aerodrome factory, which DexScreener reported tens of thousands of dollars deep, each held about $0.01. For
+14 of the 41 Base tokens that had an eligible pool, the premium had been read from one of them. **From the release of
+this change, those Base readings move to another pool or become `no_eligible_pool`.** Robinhood's figures matched the
+chain.
+
+**slot0 is what the pool said at that block, not a fair price.** A pool can be pushed for one block. The liquidity
+floor and the cross-check below are what stand against that, not the chain read itself.
+
+**The cross-check.** When the chain and an aggregator both price the deepest pool and their prices for the token differ
+by more than **2%**, the premium is refused as `sources_disagree`; the chain's price is kept in `dex_price_usd`. On
+12.11 they differed by at most 0.2% for pools with their own contract and 1% for one v4 pool. The 2% is provisional
+(`MAX_SOURCE_DISAGREEMENT` in `evm/core/stocks/peg.mjs`).
+
+The RPC can be replaced by setting `STP_RPC_BASE` or `STP_RPC_ROBINHOOD` (a keyed provider). The run row then says
+`onchain.rpc: "custom"`; the URL is never written, and the evidence always names the public RPC.
+
+## Evidence for each price
+
+Every reading says what its DEX price rests on, in `price_evidence`. It covers **the DEX leg only**. The issuer's
+reference is an answer from the issuer's API that nobody can ask for again as it was, and every reading says so:
+`reference_evidence: "issuer_api_not_reproducible"`.
+
+**`onchain`: anyone can ask the chain again.** The row holds the block number and hash, the Multicall3 calldata of
+exactly the calls the price used (the pool, and the WETH/USD pool when the pool is against WETH), and the bytes the
+node returned. `reproduce` is that call:
+
+```
+cast call --block <block_number> 0xca11bde05977b3631167028862be2a173976ca11 <calldata> --rpc-url <rpc>
+```
+
+Its output is `return_data`, byte for byte. Decode it with the `decoder` named on the row and the `decimals` beside
+it, and you have the price. On Base the public RPC answers at old blocks (checked back 120 days on 12.11).
+**Robinhood Chain's public RPC keeps no state older than about an hour,** so there `reproduce_needs` is
+`"archive_rpc"`: the call needs a node that keeps old state. The block hash still pins what was asked.
+
+**`none`: there is nothing to show.** When DexScreener or GeckoTerminal alone priced the deepest pool, the row says
+`price_evidence: { "evidence": "none" }`. Their answer cannot be asked for again, and a hash of it would not be
+evidence of anything.
+
+We may keep short-lived private copies of third-party responses for our own error checking; they are not published,
+not resold, and not evidence. They are off unless switched on, kept for 30 days, and stored apart from the published
+data (`scripts/stocks/raw-store.mjs`).
 
 ## Cadence of each layer
 
@@ -110,9 +188,10 @@ A pool prices the stock token only when **all** of these hold:
 2. The other side is one of the chain's dollar stablecoins or its wrapped ETH, **matched by contract address**. The
    addresses come from the chain descriptor (`evm/chains/<chain>/descriptor.mjs`) and every passport lists them in
    `sources.pools_counted.paired_with_addresses`.
-3. The pool holds at least **$10,000** of liquidity, as the source reports it.
-4. The source gives a usable price for the token on its side of the pool (base side: `priceUsd`; quote side:
-   GeckoTerminal's `quotePriceUsd`, else `priceUsd / priceNative`).
+3. The pool holds at least **$10,000** of liquidity: as the chain reads it, where the chain read the pool; else (and
+   for Uniswap v4 always) as the aggregator reports it.
+4. There is a usable price for the token on its side of the pool: the chain's, where the chain read the pool; else the
+   aggregator's (base side: `priceUsd`; quote side: GeckoTerminal's `quotePriceUsd`, else `priceUsd / priceNative`).
 
 Of the pools that pass, the deepest one sets the price.
 
@@ -122,8 +201,10 @@ launched paired with a stock token, so their dollar price is derived from the st
 back out of them returns a number unrelated to the share. Matching by address matters because a symbol such as `USDC`
 is free to copy.
 
-`pools.seen` counts every pool the sources listed. `pools.eligible` counts the ones that passed. `pools.capped` is
-true when the list may be incomplete: DexScreener returned its maximum of 30 and GeckoTerminal could not show the end.
+`pools.seen` counts every pool the sources listed or the chain read. `pools.eligible` counts the ones that passed.
+`pools.capped` is true when DexScreener returned its maximum of 30 and GeckoTerminal could not show the end; the pool
+book and the factories may still have found the rest. `pools.source` names the sources used: `dexscreener`,
+`dexscreener+geckoterminal`, either with `+onchain`, or `onchain` alone when DexScreener could not be read.
 
 ### The 1% spread gate
 
@@ -142,9 +223,10 @@ A null premium always comes with exactly one reason, decided in this order:
 | `premium_refused` | Meaning |
 |---|---|
 | `no_reference` | the issuer publishes no usable price for this token |
-| `pairs_unavailable` | DexScreener could not be read |
+| `pairs_unavailable` | DexScreener could not be read, and the chain priced no pool for the token |
 | `no_pairs` | no pool lists the token |
 | `no_eligible_pool` | pools exist, but none passes the rules above |
+| `sources_disagree` | the chain and an aggregator priced the deepest pool more than 2% apart; `dex_price_usd` is the chain's |
 | `reference_spread_wide` | the issuer's quote is wider than 1%, or crossed |
 
 ### The reference's age
@@ -230,9 +312,10 @@ field is missing, the statement is `null`, not `true`. The tests run every kind 
 |---|---|---|
 | `listed`, `in_registry` | [`list_proof`](../reference/passport.md#field-list_proof): the issuer list, its SHA-256 and a command to recompute it | no verdict: `/verify` answers 503 |
 | `minted: true` | the issuer's own supply field (Coinbase `total_supply`) | `minted: null`. Robinhood reports no supply, so nothing here says a Robinhood token is minted |
+| `premium` | `latest.price_evidence`: the pool read at a block, with a command to repeat it ([how](#evidence-for-each-price)) | `price_evidence: { evidence: "none" }`: an aggregator alone priced it, so the premium is a figure with its source and time, not a proof |
 
-The on-chain price (`premium`, the matrix `gap`) joins this table when each reading carries its pool read at a block.
-Until then a premium names its source and time, as described above, and is not a verdict.
+The passport shows `latest.price_evidence` from 12.11. A reading recorded before the chain was read says
+`evidence: "none"`. The matrix `gap` is a difference of two premiums: each side's evidence is in its passport.
 
 ## Known limitations
 

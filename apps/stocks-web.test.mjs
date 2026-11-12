@@ -8,6 +8,8 @@ import { passportLead } from './stocks-mcp-http.mjs'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
+import zlib from 'node:zlib'
+import { fileURLToPath } from 'node:url'
 import { createStocksWeb, SECURITY_HEADERS, PAGE_CACHE_MS } from './stocks-web.mjs'
 import { COINBASE_URL, ROBINHOOD_ASSETS_URL, ROBINHOOD_PRICES_URL } from '../evm/core/stocks/registries.mjs'
 import { loadWindow, readingsOf } from '../evm/core/stocks/readings-window.mjs'
@@ -75,6 +77,40 @@ console.log('health')
   const h = await get('/healthz')
   const j = await h.json()
   check('healthz is 200 with a registry loaded and names which ones', h.status === 200 && j.ok === true && j.registries.base === true, JSON.stringify(j))
+}
+
+console.log('the recorder\'s private copies of third-party answers are never served')
+{
+  // In production they sit beside the dataset roots, in /var/lib/stp-raw (scripts/stocks/raw-store.mjs). Here a canary
+  // sits beside the test roots the same way, as a gzip file and as plain text.
+  const CANARY = 'raw-canary-' + 'c4'.repeat(16)
+  const rawDir = path.join(tmp, 'stp-raw', 'base')
+  fs.mkdirSync(rawDir, { recursive: true })
+  fs.writeFileSync(path.join(rawDir, 'raw-2026-11-08.jsonl.gz'), zlib.gzipSync(JSON.stringify({ body: CANARY }) + '\n'))
+  fs.writeFileSync(path.join(rawDir, 'raw-2026-11-08.jsonl'), CANARY)
+  const tries = ['/stp-raw/base/raw-2026-11-08.jsonl', '/stocks/stp-raw/base/raw-2026-11-08.jsonl.gz', '/stocks/../stp-raw/base/raw-2026-11-08.jsonl',
+    '/stocks/%2e%2e/%2e%2e/stp-raw/base/raw-2026-11-08.jsonl', '/stocks/..%2fstp-raw%2fbase%2fraw-2026-11-08.jsonl', '/var/lib/stp-raw/base/raw-2026-11-08.jsonl',
+    '/stocks/docs/../../stp-raw/base/raw-2026-11-08.jsonl', '/stocks/static/..%2f..%2fstp-raw/base/raw-2026-11-08.jsonl', '/stocks/api/history/cases?chain=base&since=2026-11-01T00:00:00Z']
+  const leaks = []
+  for (const p of tries) {
+    const r = await get(p)
+    const body = Buffer.from(await r.arrayBuffer())
+    let text = body.toString('utf8')
+    try { text += zlib.gunzipSync(body).toString('utf8') } catch (_) { /* not gzip */ }
+    if (text.includes(CANARY)) leaks.push(p + ' ' + r.status)
+  }
+  check('no route serves a byte of the private copies, whatever the path', leaks.length === 0, leaks.join(', '))
+  const appsDir = new URL('.', import.meta.url)
+  const appFiles = []
+  const walk = (d) => { for (const e of fs.readdirSync(d, { withFileTypes: true })) { const p = path.join(d, e.name); if (e.isDirectory()) walk(p); else if (/\.(m?js|html)$/.test(e.name) && !/\.test\.mjs$/.test(e.name)) appFiles.push(p) } }
+  walk(fileURLToPath(appsDir))
+  const reaching = appFiles.filter((f) => /stp-raw|raw-store|STP_RAW/.test(fs.readFileSync(f, 'utf8')))
+  check('the web app has no code path to them: no file in apps/ names the store, its module or its switch', appFiles.length > 5 && reaching.length === 0, reaching.join(', '))
+  const webUnit = fs.readFileSync(new URL('../deployment/systemd/stp-web.service', import.meta.url), 'utf8')
+  const pegUnit = fs.readFileSync(new URL('../deployment/systemd/stp-peg.service', import.meta.url), 'utf8')
+  const vhostConf = fs.readFileSync(new URL('../deployment/nginx/proofofstock.xyz.conf', import.meta.url), 'utf8')
+  check('the web unit cannot see the directory at all, and nginx does not name it', /^InaccessiblePaths=-\/var\/lib\/stp-raw$/m.test(webUnit) && !/stp-raw/.test(vhostConf))
+  check('the recorder may write there, outside the backed-up /var/lib/stp, and is not switched on by its unit', /^ReadWritePaths=.* -\/var\/lib\/stp-raw$/m.test(pegUnit) && !/^Environment=.*STP_RAW_SNAPSHOTS=1/m.test(pegUnit))
 }
 
 console.log('the page')
@@ -176,6 +212,20 @@ console.log('the history archive')
       // server refuses to serve bytes under a name they do not hash to.
       const tampered = await get('/stocks/api/list/' + 'ab'.repeat(32), hdr)
       check('...an archived list whose bytes do not hash to its name is refused (500), never served', tampered.status === 500 && tampered.headers.get('cache-control') === 'no-store')
+    }
+    {
+      // Spec 3.1 (owner, 12.11: up to 50 free, like MCP): GET /verify?addresses=, one snapshot and one proof per batch.
+      const ip = (n) => ({ headers: { 'x-real-ip': '198.51.100.' + n } })
+      const b = await (await get(`/stocks/verify?chain=base&addresses=${A},${X}`, ip(41))).json()
+      check('a batch answers each address in order, with one proof for the batch, as MCP does', b.count === 2 && b.results[0].address === A && b.results[0].listed === true && b.results[1].address === X && b.listed === 1 && b.list_proof?.addresses_sha256 === lp.addresses_sha256 && b.results.every((r) => !('list_proof' in r)), JSON.stringify(b).slice(0, 200))
+      const st = async (q) => (await get(`/stocks/verify?chain=base&${q}`, ip(42))).status
+      const fifty = Array.from({ length: 50 }, (_, i) => '0x' + (i + 1).toString(16).padStart(40, '0'))
+      check('...address and addresses together, an empty list, 51 addresses or a bad one are each a 400', (await st(`address=${A}&addresses=${A}`)) === 400 && (await st('addresses=')) === 400 && (await st('addresses=' + [...fifty, A].join(','))) === 400 && /addresses\[1\]/.test(await (await get(`/stocks/verify?chain=base&addresses=${A},nope`, ip(43))).text()))
+      const codes = []
+      for (let i = 0; i < 13; i++) codes.push((await get(`/stocks/verify?chain=base&addresses=${fifty.join(',')}`, ip(44))).status)
+      check('...a batch of 50 costs 5 units: twelve fit in a minute, the thirteenth is 429', codes.slice(0, 12).every((s) => s === 200) && codes[12] === 429, codes.join(','))
+      const { evidenceViolations } = await import('../evm/core/stocks/evidence-rule.mjs')
+      check('...and the batch keeps the evidence rule (the MCP batch rule applies)', evidenceViolations('mcp_verify', b).length === 0)
     }
     check('...the passport and MCP verify carry the same proof, MCP once per answer and not per address', vp.list_proof?.addresses_sha256 === lp.addresses_sha256 && sc?.list_proof?.addresses_sha256 === lp.addresses_sha256 && sc.results.every((r) => !('list_proof' in r)), JSON.stringify(sc?.list_proof))
   }
@@ -286,7 +336,7 @@ console.log('the public MCP endpoint')
       list: listed.result.structuredContent,
     }
     const bad = Object.entries(ans).flatMap(([k, a]) => evidenceViolations(k, a).map((m) => `${k}: ${m}`)).concat(evidenceViolations('list', sc).map((m) => `list robinhood: ${m}`))
-    check('evidence rule: no answer states listed or minted without the field that backs it', bad.length === 0 && ans.verify.listed === true && ans.passport.in_registry === true, bad.join('; '))
+    check('evidence rule: no answer states listed, minted or a premium without the field that backs it', bad.length === 0 && ans.verify.listed === true && ans.passport.in_registry === true, bad.join('; '))
     check('the Robinhood list says nothing is known about minting, per token, in the count and in the lead', sc.minted === null && sc.tokens.every((t) => t.minted === null) && /the issuer reports no supply, so how many are minted is not known/.test(rl.result.content[0].text), JSON.stringify([sc.minted, sc.tokens.map((t) => t.minted)]))
   }
   const pass = await (await rpc({ jsonrpc: '2.0', id: 5, method: 'tools/call', params: { name: 'stock_passport', arguments: { chain: 'base', address: A } } })).json()

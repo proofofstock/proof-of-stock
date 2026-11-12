@@ -1,0 +1,22 @@
+{
+  "_finding": "Review of #66 (12.11): every recorded reading carries price_evidence, but the passport did not show it and the evidence rule did not ask for it. The passport now shows what its premium rests on (onchain, or an explicit none for a reading from before the chain was read); each mutation drops that, and the contract check must notice.",
+  "target": "evm/core/stocks/passport.mjs",
+  "runner": [
+    "node",
+    "apps/stocks-web.test.mjs"
+  ],
+  "mutations": [
+    {
+      "name": "the passport drops price_evidence",
+      "find": "      price_evidence: latest.price_evidence ?? (latest.dex_price_usd != null ? { evidence: 'none' } : null),\n",
+      "replace": "      price_evidence: null,\n",
+      "expect": "FAIL evidence rule: no answer states listed, minted or a premium without the field that backs it"
+    },
+    {
+      "name": "an old reading says nothing instead of none",
+      "find": "      price_evidence: latest.price_evidence ?? (latest.dex_price_usd != null ? { evidence: 'none' } : null),\n",
+      "replace": "      price_evidence: latest.price_evidence ?? null,\n",
+      "expect": "FAIL evidence rule: no answer states listed, minted or a premium without the field that backs it"
+    }
+  ]
+}

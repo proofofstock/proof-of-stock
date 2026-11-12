@@ -3,7 +3,9 @@
 //
 // Run: node evm/core/stocks/peg.test.mjs
 
-import { pegReading, eligiblePools, DEXSCREENER_PAIR_CAP, PEG_REFUSALS } from './peg.mjs'
+import fs from 'node:fs'
+import { pegReading, eligiblePools, DEXSCREENER_PAIR_CAP, PEG_REFUSALS, MAX_SOURCE_DISAGREEMENT } from './peg.mjs'
+import { POOL_SOURCES } from '../../../schemas/v2/enums.mjs'
 import { readCoinbase, readRobinhood, COINBASE_URL, ROBINHOOD_ASSETS_URL, ROBINHOOD_PRICES_URL } from './registries.mjs'
 
 let passed = 0, failed = 0
@@ -64,7 +66,25 @@ console.log('peg reading')
   check('...and a look-alike symbol is not the reference asset: the address is', pegReading(T, { price_usd: 4.095 }, [pair({ quoteToken: { address: MEME, symbol: 'USDG' }, priceUsd: '4.1' })], { referenceAssets: refs }).premium_refused === 'no_eligible_pool')
   check('a quote-side pool against the stable still prices it', pegReading(T, { price_usd: 100 }, [pair({ baseToken: { address: USD, symbol: 'USDG' }, quoteToken: { address: T }, priceUsd: '1', priceNative: '0.0099', liquidity: { usd: 80_000 } })], { referenceAssets: refs }).premium_refused === null)
 
-  check('every refusal is one of the schema enum', ['no_reference', 'pairs_unavailable', 'no_pairs', 'no_eligible_pool', 'reference_spread_wide'].every((x) => PEG_REFUSALS.includes(x)) && PEG_REFUSALS.length === 5)
+  check('every refusal is one of the schema enum', ['no_reference', 'pairs_unavailable', 'no_pairs', 'no_eligible_pool', 'sources_disagree', 'reference_spread_wide'].every((x) => PEG_REFUSALS.includes(x)) && PEG_REFUSALS.length === 6)
+  {
+    const schema = JSON.parse(fs.readFileSync(new URL('../../../schemas/v2/stock-peg.schema.json', import.meta.url), 'utf8'))
+    const inSchema = schema.properties.premium_refused.enum.filter((x) => x !== null)
+    check('the refusals in schemas/v2/enums.mjs are the schema enum, in order', JSON.stringify(inSchema) === JSON.stringify([...PEG_REFUSALS]), JSON.stringify(inSchema))
+    check('the pool sources in schemas/v2/enums.mjs are the schema enum', JSON.stringify(schema.properties.pools.properties.source.enum) === JSON.stringify([...POOL_SOURCES]))
+  }
+
+  // The chain and an aggregator both priced the deepest pool (scripts/stocks/onchain-pools.mjs mergeOnchain keeps the
+  // aggregator's price as _crossPrice): past MAX_SOURCE_DISAGREEMENT neither is trusted.
+  const agreeing = pegReading(T, { price_usd: 100 }, [pair({ priceUsd: '101', _crossPrice: 101.5 })])
+  check('the chain and the aggregator within 2% keep the premium, at the chain\'s price', agreeing.premium_refused === null && agreeing.dex_price_usd === 101)
+  const apart = pegReading(T, { price_usd: 100 }, [pair({ priceUsd: '101', _crossPrice: 110 })])
+  check('the chain and the aggregator more than 2% apart refuse the premium as sources_disagree', apart.premium === null && apart.premium_refused === 'sources_disagree' && apart.dex_price_usd === 101, JSON.stringify(apart.premium_refused))
+  check('...the threshold is 2%', MAX_SOURCE_DISAGREEMENT === 0.02)
+  check('a pool only one source priced is not a disagreement', pegReading(T, { price_usd: 100 }, [pair({ priceUsd: '101', _crossPrice: null })]).premium_refused === null)
+  const missing = pegReading(T, { price_usd: null }, [pair({ priceUsd: '101', _crossPrice: 150 })])
+  check('no reference is still decided first', missing.premium_refused === 'no_reference')
+  check('the deepest pair is handed back for the evidence', apart._best && apart._best._crossPrice === 110)
 
   const capped = pegReading(T, { price_usd: 100 }, Array.from({ length: DEXSCREENER_PAIR_CAP }, () => pair()))
   check('exactly the source cap of pairs is marked capped', capped.pools.capped === true && capped.pools.seen === DEXSCREENER_PAIR_CAP)

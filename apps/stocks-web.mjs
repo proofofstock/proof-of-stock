@@ -50,7 +50,7 @@ import { usEquitySession } from '../evm/core/stocks/market-session.mjs'
 import { createWindowCache, readingsOf, seriesPoints } from '../evm/core/stocks/readings-window.mjs'
 import { metaFor, injectMeta, withHead, headOf } from '../evm/core/stocks/page-meta.mjs'
 import { robotsTxt, securityTxt, sitemapXml, sitemapUrls, docUrl, homeJsonLd, docJsonLd, pageJsonLd } from './stocks-seo.mjs'
-import { createMcpHttp, SUPPORTED_VERSIONS } from './stocks-mcp-http.mjs'
+import { createMcpHttp, SUPPORTED_VERSIONS, MAX_VERIFY_BATCH } from './stocks-mcp-http.mjs'
 import { verifyToken, badgeSvg, badgeState } from '../evm/core/stocks/verify.mjs'
 import { mintedOf } from '../evm/core/stocks/registries.mjs'
 import { createDocsRenderer } from './stocks-docs.mjs'
@@ -445,7 +445,7 @@ export function createStocksWeb ({
       dex: inRegistry && p.latest && /^0x[0-9a-f]{40}$/.test(String(p.latest.dex_pool)) ? `https://www.geckoterminal.com/${C.gecko}/pools/${p.latest.dex_pool}` : `https://www.geckoterminal.com/${C.gecko}/tokens/${addr}`,
       explorer: C.explorer ? `${C.explorer}/token/${addr}` : null,
     }
-    const sources = { ...SOURCES[chain], dex: 'DexScreener token-pairs, completed from GeckoTerminal pools when DexScreener lists 30', recorded_every_s: RECORDER_CADENCE_S,
+    const sources = { ...SOURCES[chain], dex: 'the pools on the chain itself, read at one block, with DexScreener token-pairs (completed from GeckoTerminal when DexScreener lists 30); where both see a pool, the price and liquidity read from the chain are used', recorded_every_s: RECORDER_CADENCE_S,
       pools_counted: { min_liquidity_usd: MIN_POOL_LIQUIDITY_USD, paired_with_addresses: [...(C.referenceAssets || [])], rule: 'a pool prices the token only against the chain\'s dollar stablecoins or wrapped ETH, matched by address; the deepest one is used' } }
     return { status: 200, body: { ...p, chain, links, sources, list_proof: proofOf(chain, reg), same_stock_elsewhere: elsewhere, series_points: points, impostor_listing: listed ? { first_seen_at: listed.first_seen_at, same_deployer_impostors: listed.same_deployer_impostors ?? null } : null, case: caseSummary(chain, addr), readings_loaded: Boolean(w.window), registry_age_s: Math.round((now() - reg.at) / 1000) } }
   }
@@ -647,7 +647,33 @@ export function createStocksWeb ({
       return lm[2] ? send(res, 200, bytes.addresses, 'text/plain; charset=utf-8', imm) : send(res, 200, bytes.body, 'application/json; charset=utf-8', imm)
     }
     if (sub === '/verify' || sub === '/api/verify') {
-      if (limited(clientIp(req))) return send(res, 429, { error: 'too many requests, try again in a minute' }, undefined, { 'retry-after': '60', 'access-control-allow-origin': '*' })
+      const cors = { 'access-control-allow-origin': '*' }
+      const many = url.searchParams.get('addresses')
+      // A batch: up to MAX_VERIFY_BATCH addresses, ⌈n/10⌉ units of the limit, as MCP verify_stock_tokens charges. Bigger
+      // batches are for the paid route (owner, 12.11), not this one.
+      if (many != null) {
+        if (url.searchParams.get('address') != null) return send(res, 400, { error: 'give address or addresses, not both' }, undefined, cors)
+        const list = many.split(',').map((s) => s.trim()).filter(Boolean)
+        if (!list.length) return send(res, 400, { error: 'addresses needs at least one address' }, undefined, cors)
+        if (list.length > MAX_VERIFY_BATCH) return send(res, 400, { error: `addresses takes at most ${MAX_VERIFY_BATCH}` }, undefined, cors)
+        const bad = list.findIndex((a) => !/^0x[0-9a-fA-F]{40}$/.test(a))
+        if (bad >= 0) return send(res, 400, { error: `addresses[${bad}] must be 0x followed by 40 hex characters` }, undefined, cors)
+        if (limited(clientIp(req), Math.ceil(list.length / 10))) return send(res, 429, { error: 'too many requests, try again in a minute' }, undefined, { 'retry-after': '60', ...cors })
+        const c = url.searchParams.get('chain')
+        if (!CHAINS[c]) return send(res, 400, { error: `chain must be one of ${Object.keys(CHAINS).join(', ')}` }, undefined, cors)
+        // One registry snapshot for the whole batch and its one proof.
+        const reg = registries.get(c)
+        const results = []
+        for (const a of list) {
+          const r = verifyOf(c, a, reg)
+          if (r.status === 'unavailable') return send(res, 503, r.body, undefined, { ...cors, 'cache-control': 'no-store', 'retry-after': '60' })
+          results.push(r.body)
+        }
+        const proof = proofOf(c, reg)
+        const body = { chain: c, count: results.length, listed: results.filter((r) => r.listed).length, impostors: results.filter((r) => r.impostor).length, results, list_proof: proof }
+        return send(res, 200, body, undefined, { ...cors, 'cache-control': proof?.stale ? 'no-store' : 'public, max-age=60' })
+      }
+      if (limited(clientIp(req))) return send(res, 429, { error: 'too many requests, try again in a minute' }, undefined, { 'retry-after': '60', ...cors })
       const c = url.searchParams.get('chain')
       if (!CHAINS[c]) return send(res, 400, { error: `chain must be one of ${Object.keys(CHAINS).join(', ')}` }, undefined, { 'access-control-allow-origin': '*' })
       const reg = registries.get(c)
