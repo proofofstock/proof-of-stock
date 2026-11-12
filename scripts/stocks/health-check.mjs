@@ -33,7 +33,7 @@ const CHAIN_NAME = { base: 'Base', robinhood: 'Robinhood Chain' }
  * @param {number} p.now
  * @returns {{ key: string, bad: boolean, text: string }[]} one entry per check; bad ones are alerts, good ones clear them
  */
-export function evaluate ({ status, siteError = null, runs = {}, prevRuns = {}, now }) {
+export function evaluate ({ status, siteError = null, runs = {}, prevRuns = {}, mirrors = {}, now }) {
   const out = []
   const put = (key, bad, text) => out.push({ key, bad: Boolean(bad), text })
   put('site:down', !status, status ? 'the site answers again.' : `the site does not answer on the host (${siteError || 'no answer'}). Every verdict is unavailable until it does.`)
@@ -69,10 +69,27 @@ export function evaluate ({ status, siteError = null, runs = {}, prevRuns = {}, 
       put(`disagree:${c}`, dis > THRESHOLDS.disagree_share, dis > THRESHOLDS.disagree_share ? `${n}: for ${run.refused.sources_disagree} of ${tokens} tokens the chain and an aggregator disagree by more than 2% on the deepest pool. One of the sources may be wrong.` : `${n}: the price sources agree again.`)
     }
     slowRuns(put, n, 'slow:' + c, run, prevRuns[c])
+    mirrorChecks(put, n, c, mirrors[c], now)
     const sc = run.shape_changes || {}
     for (const [src, changes] of Object.entries(sc)) put(`shape:${c}:${src}:${run.finished_at}`, true, `${n}: the format of ${src} changed: ${changes.slice(0, 5).join('; ')}${changes.length > 5 ? `; and ${changes.length - 5} more` : ''}. Check the reader before it matters.`)
   }
   return out
+}
+
+/**
+ * The issuer's list against its factory on chain (scripts/stocks/issuer-mirror.mjs). A token on the list that the
+ * factory never created is the one that matters: the list, or the mirror, is wrong, and a person should look. A mirror
+ * that has not caught up says nothing; one not updated for 2 hours says so. Tokens the factory made that the list
+ * leaves out are normal (tests, delisted, not yet listed) and never alert.
+ */
+export function mirrorChecks (put, name, chain, mirror, now) {
+  if (mirror === undefined) return
+  const age = mirror?.updated_at ? Math.round((now - Date.parse(mirror.updated_at)) / 1000) : null
+  put('mirror-stale:' + chain, mirror === null || age == null || age > 7200, mirror === null || age == null ? name + ': the chain mirror of the issuer list has not been built yet.' : age > 7200 ? name + ': the chain mirror of the issuer list was last updated ' + Math.round(age / 60) + ' min ago (it runs every 15).' : name + ': the chain mirror of the issuer list is updated again.')
+  const c = mirror?.comparison
+  if (!c) return
+  const odd = c.on_list_not_created || []
+  put('mirror-list:' + chain, odd.length > 0, odd.length ? name + ': ' + odd.length + ' token(s) on the issuer list were never created by its factory on chain (first ' + odd[0] + '). The list or the mirror is wrong; verdicts still follow the list.' : name + ': every token on the issuer list was created by its factory on chain again.')
 }
 
 /**
@@ -127,7 +144,9 @@ if (isEntryPoint(import.meta.url)) {
   const recent = Object.fromEntries(Object.entries(roots).map(([c, root]) => [c, lastRuns(root, now, 2)]))
   const runs = Object.fromEntries(Object.entries(recent).map(([c, r]) => [c, r[0] || null]))
   const prevRuns = Object.fromEntries(Object.entries(recent).map(([c, r]) => [c, r[1] || null]))
-  const checks = evaluate({ status, siteError, runs, prevRuns, now })
+  const { readMirror } = await import('./issuer-mirror.mjs')
+  const mirrors = Object.fromEntries(Object.entries(roots).map(([c, root]) => [c, readMirror(path.join(root, 'stock-peg'), c)]))
+  const checks = evaluate({ status, siteError, runs, prevRuns, mirrors, now })
   const sent = []
   for (const ch of checks) sent.push([ch.key, await alert({ key: ch.key, text: ch.text, ok: !ch.bad })])
   const bad = checks.filter((c) => c.bad).map((c) => c.key)

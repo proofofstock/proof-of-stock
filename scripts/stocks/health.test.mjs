@@ -108,5 +108,24 @@ console.log('a recorder close to its deadline')
   fs.rmSync(dir, { recursive: true, force: true })
 }
 
+console.log('the chain mirror of the issuer list')
+{
+  const { mirrorChecks } = await import('./health-check.mjs')
+  const now = Date.parse('2026-11-12T22:00:00Z')
+  const said = []
+  const put = (key, bad, text) => said.push({ key, bad, text })
+  mirrorChecks(put, 'Robinhood Chain', 'robinhood', { updated_at: '2026-11-12T21:50:00Z', comparison: { on_list_not_created: ['0xdd'], created_not_on_list: ['0xcc'] } }, now)
+  check('a listed token the factory never created: an alert naming it; a fresh mirror is fine', said.find((x) => x.key === 'mirror-list:robinhood')?.bad === true && /0xdd/.test(said.find((x) => x.key === 'mirror-list:robinhood').text) && said.find((x) => x.key === 'mirror-stale:robinhood')?.bad === false)
+  said.length = 0
+  mirrorChecks(put, 'Base', 'base', { updated_at: '2026-11-12T21:50:00Z', comparison: { on_list_not_created: [], created_not_on_list: ['0xcc', '0xee'] } }, now)
+  check('...tokens the factory made that the list leaves out never alert', said.every((x) => x.bad === false))
+  said.length = 0
+  mirrorChecks(put, 'Base', 'base', { updated_at: '2026-11-12T19:00:00Z' }, now)
+  check('...a mirror not updated for 2 hours says so, and one still backfilling compares nothing', said.length === 1 && said[0].key === 'mirror-stale:base' && said[0].bad === true)
+  said.length = 0
+  mirrorChecks(put, 'Base', 'base', undefined, now)
+  check('...and a chain without a mirror says nothing', said.length === 0)
+}
+
 console.log(`\n${passed} passed, ${failed} failed`)
 if (failed) { for (const x of failures) console.log(x); process.exit(1) }

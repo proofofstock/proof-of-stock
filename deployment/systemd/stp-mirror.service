@@ -1,0 +1,35 @@
+# deployment/systemd/stp-mirror.service: each issuer's token list rebuilt from its factory's events on the chain
+# (scripts/stocks/issuer-mirror.mjs), compared with the issuer's API list. Every 15 minutes, 4 minutes of scanning at
+# most per chain, so the first backfill spreads over a few runs and then a run costs a call or two. It reads the issuers'
+# APIs and public RPCs, and writes only <root>/stock-peg/mirror.json.
+[Unit]
+OnFailure=stp-alert@%n.service
+Description=Stock Token Passport: issuer lists mirrored from the chain, Base and Robinhood
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+WorkingDirectory=/opt/stp/current
+ExecStart=/bin/sh -c 'rc=0; /usr/bin/node scripts/stocks/issuer-mirror.mjs --chain=base --root=/var/lib/stp/base --budget-s=240 || rc=1; /usr/bin/node scripts/stocks/issuer-mirror.mjs --chain=robinhood --root=/var/lib/stp/robinhood --budget-s=120 || rc=1; exit $rc'
+Nice=10
+TimeoutStartSec=8min
+NoNewPrivileges=true
+# Root only to reach the data roots (as stp-peg); its one capability is to READ past file permissions.
+CapabilityBoundingSet=CAP_DAC_READ_SEARCH
+AmbientCapabilities=
+ProtectSystem=strict
+ReadWritePaths=/var/lib/stp/base/stock-peg /var/lib/stp/robinhood/stock-peg
+ProtectHome=read-only
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
