@@ -163,8 +163,10 @@ export function createMcpHttp (data) {
       if (name === 'verify_stock_tokens') {
         const chain = CHAIN_NAME[args.chain]
         const results = []
+        // One registry snapshot for the whole batch and its proof: no address is judged against a different read.
+        const reg = data.snapshot ? data.snapshot(args.chain) : undefined
         for (const a of args.addresses) {
-          const r = data.verify(args.chain, a)
+          const r = data.verify(args.chain, a, reg)
           if (r.status === 'unavailable') return fail(`The ${chain} registry is unavailable right now (registry_age_s: ${r.body.registry_age_s}). No answer is given rather than a wrong one; try again in a minute.`)
           results.push(r.body)
         }
@@ -172,7 +174,7 @@ export function createMcpHttp (data) {
         const parts = [`${listed.length} of ${results.length} address${results.length === 1 ? '' : 'es'} ${listed.length === 1 ? 'is' : 'are'} issuer-listed on ${chain}${listed.length ? ' (' + listed.map((r) => r.symbol).join(', ') + ')' : ''}.`]
         if (imp.length) parts.push(`${imp.length} imitate${imp.length === 1 ? 's' : ''} a listed token: ` + imp.map((r) => `${r.address} ${r.impostor.imitates_symbol ? 'imitates ' + r.impostor.imitates_symbol + ', listed ' + r.impostor.listed_address : 'copies the issuer\'s naming'}`).join('; ') + '.')
         if (rest) parts.push(`${rest} ${rest === 1 ? 'is' : 'are'} not in the ${r0issuer(results)} registry (not necessarily fake: another issuer's token would be too).`)
-        return text({ chain: args.chain, count: results.length, listed: listed.length, impostors: imp.length, results }, parts.join(' '))
+        return text({ chain: args.chain, count: results.length, listed: listed.length, impostors: imp.length, results, list_proof: data.listProof ? data.listProof(args.chain, reg) : null }, parts.join(' '))
       }
       if (name === 'recent_impostors') {
         if (args.since && !isIsoTime(args.since)) return fail('since is not a valid time')

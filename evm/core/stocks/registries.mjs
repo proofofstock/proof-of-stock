@@ -54,7 +54,8 @@ export async function readCoinbase (fetchImpl = fetch, { chainId } = {}) {
       })
     }
     token = str(body.next_page_token)
-    if (!token) return out
+    // How many pages it took, for the list's proof (evm/core/stocks/list-proof.mjs): its one-page recipe holds only then.
+    if (!token) return Object.defineProperty(out, 'pages', { value: page + 1, enumerable: false })
   }
   throw new Error(`coinbase: more than ${MAX_PAGES} pages`)
 }

@@ -81,6 +81,7 @@ Addresses are shortened with `…` here only; the API always returns 42-characte
 - [`resembles`](#field-resembles) and [`impostor_listing`](#field-impostor_listing)
 - [`same_stock_elsewhere`](#field-same_stock_elsewhere)
 - [`links`](#field-links) and [`sources`](#field-sources)
+- [`list_proof`](#field-list_proof): the issuer list the answer was decided against, and how to check it
 
 <a id="units"></a>
 ## Units
@@ -144,6 +145,7 @@ lower-cased address is in the issuer registry the server holds for that chain (C
 | `series_points` | array[] | | only with `series=1` over HTTP, or `include_series: true` in MCP; left out otherwise | [`series_points`](#field-series_points) |
 | `links` | object | | never null | [`links`](#field-links) |
 | `sources` | object | | never null | [`sources`](#field-sources) |
+| `list_proof` | object or null | | before the first read of the list | [`list_proof`](#field-list_proof) |
 | `readings_loaded` | boolean | | never null. `false` until the server has loaded its readings window once; until then a listed token shows `latest: null` and `no_readings` | `true` |
 | `registry_age_s` | integer | seconds | never null | `120` |
 | `case` | object or null | | the address never had a case in the dated archive | `{ status, first_seen_at, flagged_at, source, archived_at, closed_at, events }`; `events` is a count, the events themselves are at [`/api/history/cases`](./http-api.md#route-history) |
@@ -491,5 +493,48 @@ Where every number comes from, per chain.
 | `pools_counted.min_liquidity_usd` | number | `10000` |
 | `pools_counted.paired_with_addresses` | string[] | Base: USDC `0x8335…2913`, `0xd9aa…b6ca`, `0x50c5…f0cb` and WETH `0x4200…0006` |
 | `pools_counted.rule` | string | the eligibility rule in words |
+
+<a id="field-list_proof"></a>
+## `list_proof`
+
+The issuer list this answer was decided against, stamped so you can check it yourself instead of taking our word. The same
+object rides on `GET /verify` and on MCP `verify_stock_tokens` (once per answer, for the whole batch). `null` before
+the server has read the list once.
+
+The lists are JSON from the issuers' APIs, not chain state, so there is no block number to cite, and the raw bytes change
+every few minutes because prices travel in the same body. What does not change while the issuer keeps the same tokens is
+the set of addresses, so that is what is hashed.
+
+| Field | Type | Example |
+|---|---|---|
+| `issuer` | string | `"coinbase"` |
+| `source` | string (URL) | `"https://api.coinbase.com/v1/tokenized-stocks?page_size=500"` |
+| `addresses` | integer | `338` |
+| `addresses_sha256` | string | SHA-256 (hex) of the list's contract addresses, lowercase, sorted bytewise, one per line, each line ending in a newline |
+| `registry_hash` | string | `"sha256:…"`: the canonical hash of the whole list (address, symbol, name, ISIN, multiplier, supplied, paused), the one the archive uses |
+| `reproduce` | string or null | a shell command that computes `addresses_sha256` from the issuer |
+| `reproduce_unavailable` | string or null | why there is no command, when there is none (a Coinbase list longer than one page of 500) |
+| `read_at` | string | when this server read the list |
+| `stale` | boolean | `true`: the latest read failed and this is the last good list |
+| `ledger` | string (URL) | `/api/history/registry?chain=…`: every change of the list, each row naming the hash before it (`prev_hash`) |
+| `note` | string | the same in words |
+
+To check a verdict, run `reproduce` (it needs `curl`, `jq` and `sha256sum`; on macOS use `shasum -a 256`):
+
+```sh
+curl -fsS 'https://api.coinbase.com/v1/tokenized-stocks?page_size=500' | jq -r '.tokens[].contract_address' \
+  | tr -d '\r' | tr 'A-F' 'a-f' | LC_ALL=C sort | sha256sum
+```
+
+The digest equals `addresses_sha256` while the issuer's list is unchanged; then look for the address in the same list.
+A different digest means the issuer has added or removed a token since `read_at`, and the archive at `ledger` shows what
+changed. `registry_hash` moves also when a token's name, multiplier or pause changes while `addresses_sha256` does not. Robinhood's
+API reports no supply, so for Robinhood `supplied` is always `true` in that hash and says nothing.
+
+The archive is written by the price recorder's own read every 15 minutes, apart from this server's read every 5, so a list
+this server has just read appears there, with the same `registry_hash`, once the recorder has read it too.
+
+What this does not prove: that the issuer's API told the truth, or that it told everyone the same. It proves which list
+the verdict used and lets anyone compare it with the issuer's list now.
 
 [Not investment advice](../legal.md)

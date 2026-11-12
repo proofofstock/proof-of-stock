@@ -12,11 +12,16 @@ The version is in `package.json`, and the site footer, the MCP `serverInfo.versi
 
 ## [Unreleased]
 
+### Added
+- **Every verdict names the list it was decided against, so anyone can check it** (`list_proof` on `GET /verify`, the passport and MCP `verify_stock_tokens`, once per batch). Each 5-minute read of an issuer list is stamped with the SHA-256 of its sorted addresses and a `curl | jq | sort | sha256sum` command that computes the same digest from the issuer's API (matched on both live APIs, 12.11), the canonical `registry_hash` the archive at `/api/history/registry` chains with `prev_hash`, when it was read, and `stale` when the latest read failed. A verdict and its proof come from one registry snapshot. Reviewed with Fable 5.2: the note says the archive holds a list "once the recorder has read it", never that it already does.
+- **The terminal waits with a cursor:** a quiet blinking block at the start of an empty, unfocused input line, so it reads as a real prompt; focus brings the browser's own caret. It does not blink under reduced motion.
+
 ### Changed
 - **The landing and the footer name no pool provider:** "public DEX pool data", with the methodology linked. The sources are still named where they matter: in the methodology, the passport reference and each answer's `sources`.
-
-### Added
-- **The terminal waits with a cursor:** a quiet blinking block at the start of an empty, unfocused input line, so it reads as a real prompt; focus brings the browser's own caret. It does not blink under reduced motion.
+- **The footer is tighter, and X, Telegram and GitHub are the last thing on the page:** three icons at the end of the bottom line, after the version; the GitHub pill leaves the link row. The docs footer ends with the same three icons.
+- **A listed passport says what listed is not:** on the site and as the last sentence of the MCP passport lead, "Listed says which contract is the issuer's, not that its price is fair."
+- **The row validator lives beside its schemas** (`schemas/v2/validate.mjs`, was `base/dataset-v2/schema-validator.mjs`): the old path looked like a published dataset. It held no data.
+- `marked` 18.2.0 (was 15.0.12); every docs page renders the same.
 
 ### Security
 - **From an external audit of the MCP server (12.11), three small items:** `/mcp` answers a body that is not `application/json` with 415 (a page on another site can send text/plain or a form without a preflight); nginx names no version on its own error pages (`server_tokens off`); `/.well-known/security.txt` (RFC 9116) names hello@proofofstock.xyz, GitHub's private reporting and SECURITY.md, and expires a year after each answer.
@@ -24,14 +29,6 @@ The version is in `package.json`, and the site footer, the MCP `serverInfo.versi
 
 ### Fixed
 - **The stdio MCP server holds callers to the schemas it advertises** (`hours` past 720, an unknown argument, a number as `query` ran) and answers bad input as the HTTP server does: an unknown tool or bad argument is `-32602`, an `id` of `null` is `-32600`, a client's response and every notification get no reply, and the protocol version is negotiated. Both servers share one argument check (`scripts/lib/mcp-args.mjs`).
-
-### Changed
-- **The footer is tighter, and X, Telegram and GitHub are the last thing on the page:** three icons at the end of the bottom line, after the version; the GitHub pill leaves the link row. The docs footer ends with the same three icons.
-- **A listed passport says what listed is not:** on the site and as the last sentence of the MCP passport lead, "Listed says which contract is the issuer's, not that its price is fair."
-- **The row validator lives beside its schemas** (`schemas/v2/validate.mjs`, was `base/dataset-v2/schema-validator.mjs`): the old path looked like a published dataset. It held no data.
-- `marked` 18.2.0 (was 15.0.12); every docs page renders the same.
-
-### Fixed
 - **The visit counter counts a landing section only after it has been on screen for a second.** It counted every section within half a second of some page loads (a restored scroll, a jump to the footer), which said the whole page had been read.
 - **`premium_at_reference_time` is the same value on every route:** the matrix took it from the 72 h the site holds, the passport from its 24 h, so with an issuer price over a day old (a weekend) the matrix showed a reading the passport did not. Both use the public window now (`PUBLIC_WINDOW_H`).
 - **The brand mark in the footer and the docs bar carries the icon inline:** as a file it was cached a day by the CDN and showed the old icon after 0.5.0.

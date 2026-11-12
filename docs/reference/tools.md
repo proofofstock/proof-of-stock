@@ -381,7 +381,8 @@ curl -s https://proofofstock.xyz/mcp -H 'content-type: application/json' \
 | `summary` | string | the lead sentence: listed count, impostors with what they imitate, the rest |
 | `chain` | string | |
 | `count`, `listed`, `impostors` | integer | addresses checked, listed, flagged as impostors |
-| `results[]` | object[] | one per address, in input order, the same object as [`GET /verify`](./http-api.md#route-verify) |
+| `results[]` | object[] | one per address, in input order, the same object as [`GET /verify`](./http-api.md#route-verify) without `list_proof` |
+| `list_proof` | object or null | the issuer list every result was decided against, once for the whole batch: [how to check it](./passport.md#field-list_proof) |
 
 Each result:
 
@@ -398,6 +399,7 @@ Each result:
 | `registry_age_s` | integer | seconds since the registry was read |
 | `passport` | string | the page for this token |
 | `case` | object or null | the address never had an impostor case. `{ status, source, first_seen_at, flagged_at, archived_at, closed_at, events }` (`events` is a count); see [history](./http-api.md#route-history) |
+| `list_proof` | object or null | `GET /verify` only (MCP carries it once per answer): the issuer list the verdict was decided against, with a command to check it yourself. [Fields](./passport.md#field-list_proof) |
 | `impostor_list_truncated` | boolean | present and `true` only when the address is not listed, not flagged, and the impostor list was cut at its cap |
 
 `listed: false` means "not in this issuer's registry", not "fake".

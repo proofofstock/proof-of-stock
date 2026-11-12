@@ -126,6 +126,30 @@ console.log('the history archive')
   check('a backfilled case later listed says both, with no flag time', vy.case?.status === 'listed_by_issuer' && vy.case.source === 'backfilled' && vy.case.flagged_at === null && vy.case.closed_at === '2026-11-08T12:23:00Z')
   const va = await (await get(`/stocks/api/verify?chain=base&address=${A}`)).json()
   check('an address that never was a case has case null', va.case === null)
+  {
+    // Every verdict names the list it was decided against, in a form anyone can check (evm/core/stocks/list-proof.mjs).
+    const lp = va.list_proof
+    check('/verify carries list_proof: the issuer list\'s digest, its source, when it was read and how to reproduce it', lp && lp.issuer === 'coinbase' && lp.addresses === 1 && /^[0-9a-f]{64}$/.test(lp.addresses_sha256) && /^sha256:[0-9a-f]{64}$/.test(lp.registry_hash) && /^curl -fsS 'https:\/\/api\.coinbase\.com\/v1\/tokenized-stocks\?page_size=500'/.test(lp.reproduce) && lp.stale === false && Number.isFinite(Date.parse(lp.read_at)) && lp.ledger === 'https://proofofstock.xyz/api/history/registry?chain=base', JSON.stringify(lp))
+    const vp = await (await get(`/stocks/api/passport?chain=base&address=${A}`)).json()
+    const mv = await (await get('/stocks/mcp', { method: 'POST', headers: { 'content-type': 'application/json', 'x-real-ip': '198.51.100.7' }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'verify_stock_tokens', arguments: { chain: 'base', addresses: [A, X] } } }) })).json()
+    const sc = mv.result?.structuredContent
+    {
+      // Review of #60: a failed read keeps the last good list and its stamp, says stale, and is not cached; a good read
+      // clears it.
+      let down = false
+      const flaky = createStocksWeb({ roots: { base: baseRoot, robinhood: rhRoot }, fetchImpl: (u) => (down && String(u).startsWith(COINBASE_URL) ? Promise.reject(new Error('down')) : fetchImpl(u)), now: () => NOW, log: () => {} })
+      const { port: fp } = await flaky.start(0, '127.0.0.1')
+      const ver = () => fetch(`http://127.0.0.1:${fp}/stocks/api/verify?chain=base&address=${A}`)
+      const before = (await (await ver()).json()).list_proof
+      down = true; await flaky.refreshAll()
+      const r1 = await ver(); const during = (await r1.json()).list_proof
+      down = false; await flaky.refreshAll()
+      const after = (await (await ver()).json()).list_proof
+      await flaky.stop()
+      check('after a failed read the proof keeps the last good digest and says stale, uncached; a good read clears it', before.stale === false && during.stale === true && during.addresses_sha256 === before.addresses_sha256 && r1.headers.get('cache-control') === 'no-store' && after.stale === false, JSON.stringify([before.stale, during?.stale, r1.headers.get('cache-control'), after.stale]))
+    }
+    check('...the passport and MCP verify carry the same proof, MCP once per answer and not per address', vp.list_proof?.addresses_sha256 === lp.addresses_sha256 && sc?.list_proof?.addresses_sha256 === lp.addresses_sha256 && sc.results.every((r) => !('list_proof' in r)), JSON.stringify(sc?.list_proof))
+  }
   const pp = await (await get(`/stocks/api/passport?chain=base&address=${X}`)).json()
   check('the passport carries the case too', pp.case?.status === 'open')
   const page = await get('/stocks/history')

@@ -84,6 +84,10 @@ curl -s 'https://proofofstock.xyz/verify?chain=base&address=0xeeeeeeeeeeeeeeeeee
 The fields are documented under [`verify_stock_tokens`](./tools.md#tool-verify_stock_tokens). `listed: false` means
 "not in this issuer's registry", never "fake".
 
+Every answer also carries `list_proof` (left out of the example above): the issuer list the verdict was decided against,
+its SHA-256 and a command that computes the same digest from the issuer, so you can check the verdict without trusting
+us. See [`list_proof`](./passport.md#field-list_proof).
+
 | Status | Body | Headers |
 |---|---|---|
 | 200 | the result | `Cache-Control: public, max-age=300` when listed, `max-age=60` otherwise; `Access-Control-Allow-Origin: *` |

@@ -193,6 +193,25 @@
         "explorer": { "type": ["string", "null"], "pattern": "^https://.+/token/0x[0-9a-f]{40}$" }
       }
     },
+    "list_proof": {
+      "description": "The issuer list this answer was decided against (evm/core/stocks/list-proof.mjs). Run reproduce to compute addresses_sha256 from the issuer yourself; registry_hash matches the archive rows at ledger. null before the first read.",
+      "type": ["object", "null"],
+      "required": ["issuer", "source", "addresses", "addresses_sha256", "registry_hash", "reproduce", "reproduce_unavailable", "read_at", "stale", "ledger", "note"],
+      "additionalProperties": false,
+      "properties": {
+        "issuer": { "enum": ["coinbase", "robinhood"] },
+        "source": { "type": ["string", "null"], "format": "uri" },
+        "addresses": { "type": "integer", "minimum": 0 },
+        "addresses_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "registry_hash": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+        "reproduce": { "type": ["string", "null"] },
+        "reproduce_unavailable": { "type": ["string", "null"], "description": "why there is no reproduce command, when there is none" },
+        "stale": { "type": "boolean", "description": "true: the latest read of the list failed and this is the last good one" },
+        "read_at": { "type": ["string", "null"], "format": "date-time" },
+        "ledger": { "type": "string", "format": "uri" },
+        "note": { "type": "string" }
+      }
+    },
     "sources": {
       "type": "object",
       "required": ["registry", "reference", "dex", "recorded_every_s", "pools_counted"],
@@ -289,6 +308,7 @@
         "chain": { "$ref": "#/definitions/chain" },
         "links": { "$ref": "#/definitions/links" },
         "sources": { "$ref": "#/definitions/sources" },
+        "list_proof": { "$ref": "#/definitions/list_proof" },
         "same_stock_elsewhere": { "type": "array", "items": { "$ref": "#/definitions/elsewhere" } },
         "series_points": { "description": "Only with series=1 on /api/passport, or include_series in MCP.", "type": "array", "maxItems": 401, "items": { "$ref": "#/definitions/series_point" } },
         "impostor_listing": { "type": "null" },
@@ -327,6 +347,7 @@
         "chain": { "$ref": "#/definitions/chain" },
         "links": { "$ref": "#/definitions/links" },
         "sources": { "$ref": "#/definitions/sources" },
+        "list_proof": { "$ref": "#/definitions/list_proof" },
         "same_stock_elsewhere": { "type": "array", "maxItems": 0 },
         "series_points": { "type": "array", "maxItems": 0 },
         "impostor_listing": { "$ref": "#/definitions/impostor_listing" },

@@ -53,6 +53,7 @@ import { robotsTxt, securityTxt, sitemapXml, sitemapUrls, docUrl, homeJsonLd, do
 import { createMcpHttp, SUPPORTED_VERSIONS } from './stocks-mcp-http.mjs'
 import { verifyToken, badgeSvg, badgeState } from '../evm/core/stocks/verify.mjs'
 import { createDocsRenderer } from './stocks-docs.mjs'
+import { stampList, listProof } from '../evm/core/stocks/list-proof.mjs'
 import { isIsoTime } from '../scripts/lib/mcp-args.mjs'
 import { statusPage } from './stocks-status.mjs'
 import { createHistoryStore, historyPage, BULK_WINDOW_DAYS, BULK_MAX, FULL_ARCHIVE } from './stocks-history.mjs'
@@ -242,10 +243,10 @@ export function createStocksWeb ({
         for (const r of prev) if (!kept.has(r.address) && !gone.has(r.address)) gone.set(r.address, { at: now(), symbol: r.symbol })
         for (const a of kept) gone.delete(a)
       }
-      registries.set(chain, { records, at: now(), error: null })
+      registries.set(chain, { records, at: now(), error: null, stamp: stampList({ issuer: C.issuer, chainId: C.chainId, records }) })
     } catch (e) {
       const prev = registries.get(chain)
-      registries.set(chain, { records: prev?.records || null, at: prev?.at || null, error: internal(`registry ${chain}`, e, 'the issuer registry could not be read') })
+      registries.set(chain, { records: prev?.records || null, at: prev?.at || null, stamp: prev?.stamp || null, error: internal(`registry ${chain}`, e, 'the issuer registry could not be read') })
     }
   }
   // The impostor list is written by its own timer; read it whole, keep the last good copy if a read fails.
@@ -397,7 +398,7 @@ export function createStocksWeb ({
     }
     const sources = { ...SOURCES[chain], dex: 'DexScreener token-pairs, completed from GeckoTerminal pools when DexScreener lists 30', recorded_every_s: RECORDER_CADENCE_S,
       pools_counted: { min_liquidity_usd: MIN_POOL_LIQUIDITY_USD, paired_with_addresses: [...(C.referenceAssets || [])], rule: 'a pool prices the token only against the chain\'s dollar stablecoins or wrapped ETH, matched by address; the deepest one is used' } }
-    return { status: 200, body: { ...p, chain, links, sources, same_stock_elsewhere: elsewhere, series_points: points, impostor_listing: listed ? { first_seen_at: listed.first_seen_at, same_deployer_impostors: listed.same_deployer_impostors ?? null } : null, case: caseSummary(chain, addr), readings_loaded: Boolean(w.window), registry_age_s: Math.round((now() - reg.at) / 1000) } }
+    return { status: 200, body: { ...p, chain, links, sources, list_proof: proofOf(chain, reg), same_stock_elsewhere: elsewhere, series_points: points, impostor_listing: listed ? { first_seen_at: listed.first_seen_at, same_deployer_impostors: listed.same_deployer_impostors ?? null } : null, case: caseSummary(chain, addr), readings_loaded: Boolean(w.window), registry_age_s: Math.round((now() - reg.at) / 1000) } }
   }
 
   /** What the server holds, per chain, with ages: the numbers behind /api/status and /status. */
@@ -424,8 +425,9 @@ export function createStocksWeb ({
   }
 
   /** The one-bit answer for an address (evm/core/stocks/verify.mjs), from memory only. */
-  function verifyOf (chain, address) {
-    const reg = registries.get(chain)
+  // `reg`: the registry snapshot to decide against; the caller passes the same one to proofOf, so a verdict and its
+  // list_proof can never come from two different reads.
+  function verifyOf (chain, address, reg = registries.get(chain)) {
     const addr = String(address || '').toLowerCase()
     const imp = impostors.get(chain)
     const r = verifyToken({
@@ -477,6 +479,8 @@ export function createStocksWeb ({
   }
 
   // When and from where a registry answer comes: the issuer's own list, as the server last read it.
+  // The list a verdict was decided against, stamped so anyone can check it again (evm/core/stocks/list-proof.mjs).
+  const proofOf = (c, r = registries.get(c)) => listProof(r?.stamp, { readAt: r?.at, stale: Boolean(r?.error), ledgerUrl: `${publicOrigin}${publicPath}/api/history/registry?chain=${c}` })
   const sourceOf = (c) => { const r = registries.get(c); return { generated_at: new Date(now()).toISOString(), source: `${CHAINS[c].issuer} issuer registry`, registry_age_s: r?.at ? Math.round((now() - r.at) / 1000) : null } }
   const mcp = createMcpHttp({
     chains: Object.keys(CHAINS),
@@ -491,6 +495,8 @@ export function createStocksWeb ({
     },
     passport: passportOf,
     verify: verifyOf,
+    snapshot: (c) => registries.get(c),
+    listProof: proofOf,
     recent: recentImpostors,
     matrix: matrixFor,
   })
@@ -583,10 +589,12 @@ export function createStocksWeb ({
       if (limited(clientIp(req))) return send(res, 429, { error: 'too many requests, try again in a minute' }, undefined, { 'retry-after': '60', 'access-control-allow-origin': '*' })
       const c = url.searchParams.get('chain')
       if (!CHAINS[c]) return send(res, 400, { error: `chain must be one of ${Object.keys(CHAINS).join(', ')}` }, undefined, { 'access-control-allow-origin': '*' })
-      const r = verifyOf(c, url.searchParams.get('address'))
+      const reg = registries.get(c)
+      const r = verifyOf(c, url.searchParams.get('address'), reg)
       if (r.status === 'bad_address') return send(res, 400, r.body, undefined, { 'access-control-allow-origin': '*' })
       if (r.status === 'unavailable') return send(res, 503, r.body, undefined, { 'access-control-allow-origin': '*', 'cache-control': 'no-store', 'retry-after': '60' })
-      return send(res, 200, r.body, undefined, { 'access-control-allow-origin': '*', 'cache-control': r.body.listed ? 'public, max-age=300' : 'public, max-age=60' })
+      const proof = proofOf(c, reg)
+      return send(res, 200, { ...r.body, list_proof: proof }, undefined, { 'access-control-allow-origin': '*', 'cache-control': proof?.stale ? 'no-store' : r.body.listed ? 'public, max-age=300' : 'public, max-age=60' })
     }
     if (sub === '/status') {
       analytics.load(clientIp(req), req.headers, '/status')
