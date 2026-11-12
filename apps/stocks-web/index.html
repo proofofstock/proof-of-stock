@@ -38,6 +38,17 @@
       <button type="button" class="chip" data-run="impostors">known fakes</button>
       <button type="button" class="chip" data-run="help">help</button>
     </div>
+    <a class="wire" href="#mcp" aria-label="Ask it from your agent: a public MCP server, read-only, no key. Go to the setup.">
+      <span class="wire-head" aria-hidden="true"><span class="wire-node">agent</span><span class="wire-cable"><span class="wire-packet"></span></span><span class="wire-node">proof of stock</span></span>
+      <span class="wire-body" aria-hidden="true">
+        <span class="wire-l"><b>&rsaquo;</b> verify_stock_tokens("0xb200&hellip;108c")</span>
+        <span class="wire-l"><i>"symbol":</i> "NVDAc",</span>
+        <span class="wire-l"><i>"listed":</i> <span class="wire-ok">true</span>,</span>
+        <span class="wire-l"><i>"impostor":</i> null,</span>
+        <span class="wire-l"><i>"list_proof":</i> { &hellip; }</span>
+      </span>
+      <span class="wire-foot" aria-hidden="true"><span>read-only &middot; no key</span><span class="wire-go">connect your agent<span class="i i-arrow"></span></span></span>
+    </a>
   </header>
 
   <main class="term" id="terminal" aria-label="Proof of Stock terminal">
@@ -66,7 +77,7 @@
 
     <footer class="statusbar">
       <span id="status" class="status">connecting</span>
-      <span class="hint"><span class="key"><kbd>↑↓</kbd> history</span><span class="key"><kbd>help</kbd> commands</span><button type="button" class="key" data-win="clear"><kbd>clear</kbd> screen</button></span>
+      <span class="hint"><button type="button" class="key" data-hist title="The last command again (or press the up arrow)"><kbd>↑↓</kbd> history</button><button type="button" class="key" data-run="help"><kbd>help</kbd> commands</button><button type="button" class="key" data-win="clear"><kbd>clear</kbd> screen</button></span>
     </footer>
   </main>
 

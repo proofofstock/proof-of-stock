@@ -689,7 +689,7 @@ export function createStocksWeb ({
     }
     if (sub === '/history') {
       analytics.load(clientIp(req), req.headers, '/history')
-      return send(res, 200, cachedPage('/history', () => withPageHead('/history', historyPage({ store: history, chains: Object.keys(CHAINS), now: now(), version: appVersion, assets: { css: `style.css?v=${version('/style.css')}`, docsCss: `docs.css?v=${version('/docs.css')}`, beacon: `beacon.js?v=${version('/beacon.js')}` } }))), 'text/html; charset=utf-8', { 'cache-control': 'public, max-age=300' })
+      return send(res, 200, cachedPage('/history', () => withPageHead('/history', historyPage({ store: history, chains: Object.keys(CHAINS), explorers: Object.fromEntries(Object.entries(CHAINS).map(([c, v]) => [c, v.explorer])), now: now(), version: appVersion, assets: { css: `style.css?v=${version('/style.css')}`, docsCss: `docs.css?v=${version('/docs.css')}`, beacon: `beacon.js?v=${version('/beacon.js')}` } }))), 'text/html; charset=utf-8', { 'cache-control': 'public, max-age=300' })
     }
     if (!sub.startsWith('/api/')) return send(res, 404, { error: 'not found' })
 

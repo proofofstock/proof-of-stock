@@ -53,6 +53,11 @@ console.log('history fields are escaped')
   }
   const page = historyPage({ store, chains: ['base'], now: Date.now(), version: '0', assets: { css: 'a', docsCss: 'b' } })
   check('a hostile address or record count in an archive file renders as text', !page.includes('<img src=x') && page.includes('&lt;img'))
+  const out = historyPage({ store, chains: ['base'], explorers: { base: 'https://basescan.org' }, now: Date.now(), version: '0', assets: { css: 'a', docsCss: 'b' } })
+  check('...and an address that is not 0x and 40 hex gets no explorer link at all', !out.includes('basescan.org/token') &&!out.includes('<img src=x'))
+  const sym = { ...store, cases: () => ({ archive_started_at: '2026-11-10T00:00:00Z', counts: { open: 1, listed: 0 }, count: 1, events: [{ event: 'opened', at: '2026-11-10T00:00:00Z', source: 'observed', address: '0x' + 'ab'.repeat(20), symbol: 'X', kind: 'registry_symbol', imitates_symbol: evil }] }) }
+  const out2 = historyPage({ store: sym, chains: ['base'], explorers: { base: 'https://basescan.org' }, now: Date.now(), version: '0', assets: { css: 'a', docsCss: 'b' } })
+  check('...a hostile imitated symbol inside the warning renders as text', out2.includes('href="https://basescan.org/token/0x' + 'ab'.repeat(20) + '"') && !out2.includes('<img src=x') && out2.includes('&lt;img'))
 }
 
 console.log('docs links')

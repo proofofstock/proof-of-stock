@@ -654,7 +654,7 @@
   // included. A token's own symbol is its creator's text: it goes into a table cell as text (h() never parses HTML),
   // never into a sentence, a title or a label. No links out, no deployer: the board must not advertise a fake.
   const BOARD_STATUS = { opened: 'open', listed: 'later listed by the issuer: we were early or wrong', gone: 'gone from our list', kind_changed: 'kind changed' }
-  async function board () {
+  async function findingsBoard () {
     const rows = $('#board-rows'), counts = $('#board-counts'), empty = $('#board-empty')
     if (!rows) return
     let r
@@ -748,6 +748,8 @@
       else if (uq) run(uq)
     })
     for (const b of document.querySelectorAll('[data-run]')) b.addEventListener('click', () => { toTerminal(); run(b.dataset.run) })
+    // The status bar's history key does what the up arrow does: the previous command, back in the prompt.
+    for (const b of document.querySelectorAll('[data-hist]')) b.addEventListener('click', () => { if (past.length) { hpos = Math.max(0, hpos - 1); input.value = past[hpos] } input.focus() })
     // Window controls: red (and "clear screen") empties the feed, yellow is the normal size, green toggles the larger one.
     const term = $('#terminal'), grow = document.querySelector('[data-win="large"]')
     const sized = (large) => { term.classList.toggle('large', large); grow.setAttribute('aria-pressed', String(large)); if (large) toTerminal() }
@@ -767,8 +769,8 @@
     }
     tape()
     setInterval(() => { if (!document.hidden) tape() }, 60e3)
-    board()
-    setInterval(() => { if (!document.hidden) board() }, 5 * 60e3)
+    findingsBoard()
+    setInterval(() => { if (!document.hidden) findingsBoard() }, 5 * 60e3)
     if (!('ontouchstart' in window)) input.focus({ preventScroll: true })
   })
 })()

@@ -103,8 +103,21 @@ const KIND = { registry_symbol: (e) => `uses the symbol ${e.imitates_symbol}`, i
 const short = (a) => (a ? `${a.slice(0, 6)}…${a.slice(-4)}` : '')
 const CHAIN = { base: ['Base', 'Coinbase'], robinhood: ['Robinhood Chain', 'Robinhood'] }
 
+// A flagged address opens on the chain's explorer only through a warning, as the passport does: the first click unfolds
+// what the contract is not, the second opens it. A details element, so it works without a page script under the CSP.
+function addressOut (e, explorer) {
+  const code = `<code>${esc(short(e.address))}</code>`
+  if (!explorer || !/^0x[0-9a-f]{40}$/i.test(String(e.address))) return code
+  const host = (() => { try { return new URL(explorer).host } catch (_) { return 'the explorer' } })()
+  const href = `${esc(explorer)}/token/${esc(String(e.address).toLowerCase())}`
+  // The issuer has listed it since: it is the stock token now, and opens without a warning.
+  if (e.event === 'listed') return `<a class="hs-plain" href="${href}" target="_blank" rel="noopener noreferrer nofollow" title="Open on ${esc(host)}">${code}</a>`
+  const what = e.imitates_symbol ? `the issuer's ${esc(e.imitates_symbol)}` : 'a listed stock token'
+  return `<details class="hs-out"><summary title="Open on ${esc(host)}, after a warning">${code}</summary><div class="hs-warn" role="note"><b>&#9888; This is a look-alike, not the stock.</b> It is not ${what}. Reading it on the explorer is safe; do not buy it, approve it or send anything to it. <a href="${href}" target="_blank" rel="noopener noreferrer nofollow">I understand, open the contract on ${esc(host)}</a></div></details>`
+}
+
 /** The /history page for people: per chain, the registry snapshots and the case timeline, each with its date and source. */
-export function historyPage ({ store, chains, now, version, assets }) {
+export function historyPage ({ store, chains, now, version, assets, explorers = {} }) {
   const sections = chains.map((c) => {
     const [chainName, issuer] = CHAIN[c] || [c, c]
     const cs = store.cases(c, { limit: BULK_MAX })
@@ -114,7 +127,7 @@ export function historyPage ({ store, chains, now, version, assets }) {
       const word = { opened: 'flagged', kind_changed: 'changed', listed: 'listed by issuer', gone: 'left the list' }[e.event] || e.event
       const how = e.source === 'backfilled' ? `<span class="hs-src" title="Archived from our collector's earlier history when the archive began; first seen ${esc(String(e.first_seen_at || '').slice(0, 10))}">from collector history</span>` : ''
       const href = `./?chain=${esc(c)}&amp;address=${esc(e.address)}`
-      return `<li class="hs-row"><span class="hs-date">${esc(String(e.source === 'backfilled' ? e.first_seen_at || e.at : e.at).slice(0, 10))}</span><span class="hs-ev ${esc(e.event)}">${esc(word)}</span><span class="hs-what"><a href="${href}">${esc(e.symbol || '?')}</a> <code>${esc(short(e.address))}</code> ${esc((KIND[e.kind] || (() => e.kind))(e))}, not in the ${esc(issuer)} registry ${how}</span></li>`
+      return `<li class="hs-row"><span class="hs-date">${esc(String(e.source === 'backfilled' ? e.first_seen_at || e.at : e.at).slice(0, 10))}</span><span class="hs-ev ${esc(e.event)}">${esc(word)}</span><span class="hs-what"><a href="${href}">${esc(e.symbol || '?')}</a> ${esc((KIND[e.kind] || (() => e.kind))(e))}, not in the ${esc(issuer)} registry &middot; ${addressOut(e, explorers[c])} ${how}</span></li>`
     }).join('')
     return `<section class="hs-chain"><h2>${esc(chainName)}</h2>
   <div class="hs-stats"><div><b>${cs.counts.open}</b><span>open cases</span></div><div><b>${cs.counts.listed}</b><span>later listed by ${esc(issuer)}</span></div><div><b>${reg.count}</b><span>registry snapshot${reg.count === 1 ? '' : 's'}</span></div><div><b>${esc(cs.archive_started_at ? cs.archive_started_at.slice(0, 10) : 'not yet')}</b><span>${cs.archive_started_at ? 'case archive began' : 'case archive starts with the next impostor run'}</span></div></div>

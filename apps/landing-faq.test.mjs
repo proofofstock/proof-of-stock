@@ -71,8 +71,31 @@ console.log('the wall of findings')
   check('...says what it is and is not, and has an honest empty state', /A claim with evidence, not a verdict\./.test(board) && /No new look-alikes flagged in the last 7 days\./.test(board))
   check('...links nowhere outside the site: it must not advertise a fake', !/href="https?:/.test(board))
   const js = fs.readFileSync(new URL('./stocks-web/app.js', import.meta.url), 'utf8')
-  const fn = (js.match(/async function board \(\) \{[\s\S]*?\n {2}\}\n/) || [''])[0]
+  const fn = (js.match(/async function findingsBoard \(\) \{[\s\S]*?\n {2}\}\n/) || [''])[0]
   check('...fills its rows as text only, from the 7-day case window, and shows our misses', fn && !/innerHTML|insertAdjacentHTML/.test(fn) && /api\/history\/cases\?limit=8/.test(fn) && /later listed by the issuer: we were early or wrong/.test(js))
+}
+
+console.log('the terminal script')
+{
+  const js = fs.readFileSync(new URL('./stocks-web/app.js', import.meta.url), 'utf8')
+  // 12.11: a second "function board" (the wall of findings) silently replaced the one behind the "now" command, and
+  // the "biggest gaps now" button did nothing. A name declared twice is a bug, always.
+  const names = [...js.matchAll(/^\s*(?:async\s+)?function\s+([A-Za-z_$][\w$]*)\s*\(/gm)].map((m) => m[1])
+  const twice = [...new Set(names.filter((n, i) => names.indexOf(n) !== i))]
+  check('no function is declared twice in app.js', twice.length === 0, twice.join(', '))
+  const bar = (html.match(/<footer class="statusbar">[\s\S]*?<\/footer>/) || [''])[0]
+  check('every key in the status bar is a button that does something: history, help, clear', /<button type="button" class="key" data-hist[^>]*><kbd>/.test(bar) && /<button type="button" class="key" data-run="help"><kbd>help<\/kbd>/.test(bar) && /<button type="button" class="key" data-win="clear"><kbd>clear<\/kbd>/.test(bar) && !/<span class="key">/.test(bar))
+  check('...and the history key has its handler', /querySelectorAll\('\[data-hist\]'\)/.test(js))
+}
+
+console.log('the agent wire in the hero')
+{
+  const css = fs.readFileSync(new URL('./stocks-web/style.css', import.meta.url), 'utf8')
+  const hero = (html.match(/<header class="hero">[\s\S]*?<\/header>/) || [''])[0]
+  const wire = (hero.match(/<a class="wire"[\s\S]*?<\/a>/) || [''])[0]
+  check('it leads to the agents section on the page and nowhere else', /^<a class="wire" href="#mcp" aria-label="[^"]+">/.test(wire) && html.includes('id="mcp"') && !/href="https?:/.test(wire))
+  check('...shows a real tool, a real listed address and real field names', /verify_stock_tokens\("0xb200&hellip;108c"\)/.test(wire) && /"listed":<\/i> <span class="wire-ok">true/.test(wire) && /"impostor":<\/i> null/.test(wire) && /"list_proof":/.test(wire))
+  check('...only on a wide screen, still under reduced motion, with the lede kept clear of it', /\.wire \{ display: none; \}/.test(css) && /@media \(min-width: 1100px\) \{\n {2}\.hero \.lede \{ max-width: calc\(100% - 372px\); \}/.test(css) && /prefers-reduced-motion: reduce\) \{ \.wire-l \{ animation: none; opacity: 1; \} \.wire-packet \{ animation: none; \}/.test(css))
 }
 
 console.log('the prompt waits with a cursor')

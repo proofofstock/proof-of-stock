@@ -235,6 +235,12 @@ console.log('the history archive')
   const html = await page.text()
   check('the history page lists the last 7 days, no backfilled row, and says each address keeps its case', page.status === 200 && /registry snapshot/.test(html) && !/from collector history/.test(html) && /listed by issuer/.test(html) && /last 7 days/.test(html) && /on request/.test(html))
   check('the history page escapes names from data', !/<img src=x/.test(html))
+  {
+    const out = (html.match(/<details class="hs-out">[\s\S]*?<\/details>/) || [''])[0]
+    check('a flagged address opens on the explorer only through a warning that says what it is not', /<summary[^>]*><code>0x/.test(out) && out.includes('This is a look-alike, not the stock.') && out.includes('do not buy it, approve it or send anything to it') && /href="https:\/\/basescan\.org\/token\/0x[0-9a-f]{40}" target="_blank" rel="noopener noreferrer nofollow">I understand, open the contract on basescan\.org</.test(out), out.slice(0, 300))
+    const listedRow = (html.match(/<li class="hs-row">[^]*?class="hs-ev listed"[^]*?<\/li>/) || [''])[0]
+    check('...but a token the issuer has listed since opens without one, and the warning never sits mid-sentence', /<a class="hs-plain" href="https:\/\/basescan\.org\/token\/0x[0-9a-f]{40}"/.test(listedRow) && !listedRow.includes('hs-warn') && /registry &middot; <details class="hs-out">/.test(html), listedRow.slice(0, 300))
+  }
   check('the main page links to the history', /href="history"/.test(await (await get('/stocks/')).text()))
 }
 
