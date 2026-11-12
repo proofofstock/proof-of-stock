@@ -1,0 +1,45 @@
+# Publishes server.json to the official MCP registry (registry.modelcontextprotocol.io) as xyz.proofofstock/proof-of-stock.
+# The registry proves the name by HTTP: it reads https://proofofstock.xyz/.well-known/mcp-registry-auth (the public key,
+# deployment/mcp-registry-auth) and checks a signature made here with the private half, the MCP_REGISTRY_KEY secret,
+# which the owner created and nobody else has seen. Run by hand after a version bump; public repository only.
+name: MCP registry
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: mcp-registry
+  cancel-in-progress: false
+jobs:
+  publish:
+    if: github.repository == 'proofofstock/proof-of-stock'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      MCP_PUBLISHER_VERSION: v1.8.9
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - name: The version published is the package's
+        run: test "$(jq -r .version server.json)" = "$(jq -r .version package.json)"
+      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+      - name: Download mcp-publisher and verify its signature
+        run: |
+          set -euo pipefail
+          archive="mcp-publisher_linux_amd64.tar.gz"
+          base_url="https://github.com/modelcontextprotocol/registry/releases/download/${MCP_PUBLISHER_VERSION}"
+          curl --fail --location --silent --show-error --output "$archive" "$base_url/$archive"
+          curl --fail --location --silent --show-error --output "$archive.sigstore.json" "$base_url/$archive.sigstore.json"
+          cosign verify-blob \
+            --bundle "$archive.sigstore.json" \
+            --certificate-identity "https://github.com/modelcontextprotocol/registry/.github/workflows/release.yml@refs/tags/${MCP_PUBLISHER_VERSION}" \
+            --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+            "$archive"
+          tar xzf "$archive" mcp-publisher
+          rm -f "$archive" "$archive.sigstore.json"
+      - name: Prove the domain and publish
+        env:
+          MCP_REGISTRY_KEY: ${{ secrets.MCP_REGISTRY_KEY }}
+        run: |
+          set -euo pipefail
+          ./mcp-publisher login http --domain proofofstock.xyz --private-key "$MCP_REGISTRY_KEY"
+          ./mcp-publisher publish

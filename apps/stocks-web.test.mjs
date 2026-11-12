@@ -10,7 +10,7 @@ import os from 'node:os'
 import path from 'node:path'
 import zlib from 'node:zlib'
 import { fileURLToPath } from 'node:url'
-import { createStocksWeb, SECURITY_HEADERS, PAGE_CACHE_MS } from './stocks-web.mjs'
+import { createStocksWeb, SECURITY_HEADERS, PAGE_CACHE_MS, MCP_REGISTRY_AUTH_RE } from './stocks-web.mjs'
 import { COINBASE_URL, ROBINHOOD_ASSETS_URL, ROBINHOOD_PRICES_URL } from '../evm/core/stocks/registries.mjs'
 import { loadWindow, readingsOf } from '../evm/core/stocks/readings-window.mjs'
 
@@ -310,6 +310,15 @@ console.log('the public MCP endpoint')
     const exp = Date.parse((t.match(/^Expires: (.+)$/m) || [])[1])
     check('security.txt (RFC 9116): a contact, an expiry under a year ahead, the canonical address', r.status === 200 && /^text\/plain/.test(r.headers.get('content-type')) && /^Contact: mailto:hello@proofofstock\.xyz$/m.test(t) && exp > NOW && exp - NOW <= 366 * 864e5 && /^Canonical: https:\/\/proofofstock\.xyz\/\.well-known\/security\.txt$/m.test(t), t)
     check('...and no other mailbox', (t.match(/[\w.+-]+@[\w.-]+/g) || []).every((m) => m === 'hello@proofofstock.xyz'))
+  }
+  {
+    // The MCP registry's proof of the domain: the committed public key, served as one line, or 404 while there is none.
+    let line = null
+    try { line = fs.readFileSync(new URL('../deployment/mcp-registry-auth', import.meta.url), 'utf8').trim() } catch (_) {}
+    const r = await get('/stocks/.well-known/mcp-registry-auth')
+    const t = await r.text()
+    check('/.well-known/mcp-registry-auth serves the committed public key as one line, or 404 without one', line && MCP_REGISTRY_AUTH_RE.test(line) ? r.status === 200 && t === line + '\n' && /^text\/plain/.test(r.headers.get('content-type')) : r.status === 404, r.status + ' ' + t.slice(0, 80))
+    check('...and the format admits nothing but an Ed25519 public key line', MCP_REGISTRY_AUTH_RE.test('v=MCPv1; k=ed25519; p=' + 'A'.repeat(43) + '=') && !MCP_REGISTRY_AUTH_RE.test('v=MCPv1; k=ed25519; p=' + 'A'.repeat(43) + '=\n<script>') && !MCP_REGISTRY_AUTH_RE.test('-----BEGIN PRIVATE KEY-----'))
   }
   const init = await (await rpc({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-03-26', capabilities: {}, clientInfo: { name: 't', version: '0' } } })).json()
   check('initialize answers the version the client asked for, when supported', init.result.protocolVersion === '2025-03-26' && init.result.capabilities.tools && /not advice: https:\/\/proofofstock.xyz\/docs\/legal\.md/.test(init.result.instructions))
@@ -753,6 +762,14 @@ console.log('deployment')
   check('the vhost allows GET and HEAD only, and rate limits', /limit_except GET HEAD \{ deny all; \}/.test(vhost) && /limit_req zone=stocks_req56/.test(vhost))
   check('every server block hides the nginx version on its own error pages', (vhost.match(/^server \{/gm) || []).length === (vhost.match(/^    server_tokens off;/gm) || []).length && /server_tokens off;/.test(vhost))
   check('security.txt is served though dot-paths are refused: an exact location, before the rule', vhost.indexOf('location = /.well-known/security.txt') > 0 && vhost.indexOf('location = /.well-known/security.txt') < vhost.indexOf('location ~ /\\. { return 404; }') && /proxy_pass http:\/\/127\.0\.0\.1:3005\/stocks\/\.well-known\/security\.txt;/.test(vhost))
+  check('...and so is the MCP registry proof, the same way: GET only, before the rule', vhost.indexOf('location = /.well-known/mcp-registry-auth') > 0 && vhost.indexOf('location = /.well-known/mcp-registry-auth') < vhost.indexOf('location ~ /\\. { return 404; }') && /proxy_pass http:\/\/127\.0\.0\.1:3005\/stocks\/\.well-known\/mcp-registry-auth;/.test(vhost))
+  {
+    const sj = JSON.parse(fs.readFileSync(new URL('../server.json', import.meta.url), 'utf8'))
+    // The registry refuses a description over 100 characters; the name proves the domain the remote is on.
+    check('server.json: named by our domain, one remote, a description within the registry\'s 100', sj.name === 'xyz.proofofstock/proof-of-stock' && sj.remotes?.length === 1 && sj.description.length <= 100 && !sj.packages, sj.description.length + ' ' + sj.name)
+    const wf = fs.readFileSync(new URL('../.github/workflows/mcp-registry.yml', import.meta.url), 'utf8')
+    check('the registry workflow: by hand, public repository only, actions by commit, the publisher verified, the key only in its step', /on:\n {2}workflow_dispatch:\npermissions:/.test(wf) && /if: github\.repository == 'proofofstock\/proof-of-stock'/.test(wf) && (wf.match(/uses: [^\n]+/g) || []).every((l) => /@[0-9a-f]{40}\b/.test(l)) && /cosign verify-blob/.test(wf) && (wf.match(/secrets\.MCP_REGISTRY_KEY/g) || []).length === 1 && /contents: read/.test(wf) && !/contents: write/.test(wf))
+  }
   // Each server block on 443, up to the next server block.
   const servers443 = vhost.split(/\nserver \{/).filter((b) => /listen 443 ssl;/.test(b))
   const serving = servers443.filter((b) => /proxy_pass/.test(b))

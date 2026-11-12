@@ -18,18 +18,19 @@ npm publish               # publishConfig.access is public
 
 `server.json` at the repository root describes the remote server (`https://proofofstock.xyz/mcp`). Its `version` must match `package.json`, and a test checks this.
 
+The name is on our own domain, `xyz.proofofstock/proof-of-stock` (reverse DNS of proofofstock.xyz, the registry's form), so a reader sees the listing comes from the domain the server runs on (owner, 12.11). The registry proves it over HTTP:
+
+- `deployment/mcp-registry-auth` holds one line, `v=MCPv1; k=ed25519; p=<public key>`. The site serves it at `https://proofofstock.xyz/.well-known/mcp-registry-auth` (an exact nginx location, like security.txt).
+- The private half lives only in the public repository's secret `MCP_REGISTRY_KEY`. The owner made the pair on their own machine and put the private half straight into the secret; it is in no file here and no host.
+- `.github/workflows/mcp-registry.yml` (run by hand, public repository only) verifies the `mcp-publisher` release by its Sigstore signature, logs in with `login http`, and publishes.
+
+To make or replace the key (the owner, in Git Bash, OpenSSL 3), then commit the printed line to `deployment/mcp-registry-auth` and deploy:
+
 ```bash
-# mcp-publisher: https://github.com/modelcontextprotocol/registry/releases
-mcp-publisher login github     # device flow in the browser, as an admin of the proofofstock organisation
-mcp-publisher publish          # run from the repository root
+openssl genpkey -algorithm Ed25519 -out pos-mcp-key.pem && openssl pkey -in pos-mcp-key.pem -noout -text | grep -A3 'priv:' | tail -n +2 | tr -d ' :\n' | gh secret set MCP_REGISTRY_KEY -R proofofstock/proof-of-stock && echo "v=MCPv1; k=ed25519; p=$(openssl pkey -in pos-mcp-key.pem -pubout -outform DER | tail -c 32 | base64)"
 ```
 
-The name `io.github.proofofstock/proof-of-stock` is tied to the `proofofstock` organisation on GitHub, which holds the
-public copy of the source. Publish once the repository is public, so the listing's link works.
-
-A name on our own domain (`xyz.proofofstock/passport`) is the alternative. It needs a key pair, with the public key served at `/.well-known/mcp-registry-auth`; that is a later change.
-
-Several catalogs (PulseMCP, Glama and others) read from the official registry.
+Several catalogs (PulseMCP, GitHub's MCP list and others) read from the official registry.
 
 ## 3. Smithery
 
@@ -58,8 +59,8 @@ The site's GitHub links (a footer chip, the docs top bar and the docs footer) po
    Every commit of the public history becomes visible, so an old one must pass today's deny list too (checked 11.11).
 2. Make `proofofstock/proof-of-stock` public (Settings → Danger zone → Change visibility).
 3. Set `"stp": { "source_public": true }` in `package.json`, merge and deploy. The links appear with that release.
-4. `mcp-publisher publish` (section 2).
+4. Run the MCP registry workflow (section 2).
 
 ## Each release
 
-Bump `version` in `package.json` and `server.json` together, then run `mcp-publisher publish` again. Bump the guard's own `version` only when its code changes.
+Bump `version` in `package.json` and `server.json` together, then run the MCP registry workflow again: `gh workflow run mcp-registry.yml -R proofofstock/proof-of-stock`. Bump the guard's own `version` only when its code changes.

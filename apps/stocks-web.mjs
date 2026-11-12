@@ -80,6 +80,9 @@ const STATIC = Object.freeze({
   '/favicon.svg': ['favicon.svg', 'image/svg+xml'],
   '/favicon.ico': ['logo.png', 'image/png'],
 })
+/** The one line the MCP registry reads at /.well-known/mcp-registry-auth: an Ed25519 public key, base64 of 32 bytes. */
+export const MCP_REGISTRY_AUTH_RE = /^v=MCPv1; k=ed25519; p=[A-Za-z0-9+/]{43}=$/
+
 export const SECURITY_HEADERS = Object.freeze({
   'content-security-policy': "default-src 'none'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
   'x-content-type-options': 'nosniff',
@@ -226,6 +229,9 @@ export function createStocksWeb ({
   const site = publicOrigin + publicPath
   const seo = { image: `${site}/og.png?v=${version('/og.png')}`, logo: `${site}/logo.png?v=${version('/logo.png')}` }
   const robots = robotsTxt(site, publicPath)
+  // The official MCP registry proves we own proofofstock.xyz by this file: the public half of the key the publish
+  // workflow signs with (.github/workflows/mcp-registry.yml). Only a well-formed line is served; otherwise 404.
+  const registryAuth = (() => { try { const t = fs.readFileSync(new URL('../deployment/mcp-registry-auth', import.meta.url), 'utf8').trim(); return MCP_REGISTRY_AUTH_RE.test(t) ? t + '\n' : null } catch (_) { return null } })()
   docsPages = createDocsRenderer({ docs, version: appVersion, released, sourceUrl, base: publicPath, assets: { css: `style.css?v=${version('/style.css')}`, docsCss: `docs.css?v=${version('/docs.css')}`, docsJs: `docs.js?v=${version('/docs.js')}`, beacon: `beacon.js?v=${version('/beacon.js')}` } })
 
   // ⚠ A RAW ERROR NEVER REACHES A RESPONSE. A file system or fetch error can carry an internal path or a piece of a file;
@@ -605,6 +611,7 @@ export function createStocksWeb ({
     // The old address of the changelog: it is a docs page now.
     if (sub === '/CHANGELOG.md') { res.writeHead(301, { location: publicPath + '/docs/changelog.md', 'cache-control': 'public, max-age=3600' }); return res.end() }
     if (sub === '/robots.txt') return send(res, 200, robots, 'text/plain; charset=utf-8', { 'cache-control': 'public, max-age=3600' })
+    if (sub === '/.well-known/mcp-registry-auth') return registryAuth ? send(res, 200, registryAuth, 'text/plain; charset=utf-8', { 'cache-control': 'public, max-age=300' }) : send(res, 404, { error: 'not found' })
     if (sub === '/.well-known/security.txt') return send(res, 200, securityTxt(site, sourceUrl, now()), 'text/plain; charset=utf-8', { 'cache-control': 'public, max-age=3600' })
     // The listed tokens come from the registries in memory, so the sitemap follows a listing within PAGE_CACHE_MS.
     if (sub === '/sitemap.xml') {

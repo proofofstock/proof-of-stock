@@ -1,11 +1,14 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
-  "name": "io.github.proofofstock/proof-of-stock",
+  "name": "xyz.proofofstock/proof-of-stock",
   "title": "Proof of Stock",
-  "description": "Check a tokenized stock on Base or Robinhood Chain: issuer registry, reference price and its age, DEX premium.",
+  "description": "Is this stock token the real one? Checks Base and Robinhood Chain tokens against the issuers' lists.",
   "version": "0.5.0",
-  "repository": { "url": "https://github.com/proofofstock/proof-of-stock", "source": "github" },
-  "websiteUrl": "https://proofofstock.xyz/docs/",
+  "websiteUrl": "https://proofofstock.xyz",
+  "repository": {
+    "url": "https://github.com/proofofstock/proof-of-stock",
+    "source": "github"
+  },
   "remotes": [
     {
       "type": "streamable-http",
