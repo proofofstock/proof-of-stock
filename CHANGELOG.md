@@ -12,6 +12,17 @@ The version is in `package.json`, and the site footer, the MCP `serverInfo.versi
 
 ## [Unreleased]
 
+### Changed
+- **The footer is tighter, and X, Telegram and GitHub are the last thing on the page:** three icons at the end of the bottom line, after the version; the GitHub pill leaves the link row. The docs footer ends with the same three icons.
+- **A listed passport says what listed is not:** on the site and as the last sentence of the MCP passport lead, "Listed says which contract is the issuer's, not that its price is fair."
+- **The row validator lives beside its schemas** (`schemas/v2/validate.mjs`, was `base/dataset-v2/schema-validator.mjs`): the old path looked like a published dataset. It held no data.
+- `marked` 18.2.0 (was 15.0.12); every docs page renders the same.
+
+### Fixed
+- **The visit counter counts a landing section only after it has been on screen for a second.** It counted every section within half a second of some page loads (a restored scroll, a jump to the footer), which said the whole page had been read.
+- **`premium_at_reference_time` is the same value on every route:** the matrix took it from the 72 h the site holds, the passport from its 24 h, so with an issuer price over a day old (a weekend) the matrix showed a reading the passport did not. Both use the public window now (`PUBLIC_WINDOW_H`).
+- **The brand mark in the footer and the docs bar carries the icon inline:** as a file it was cached a day by the CDN and showed the old icon after 0.5.0.
+
 ## [0.5.0] - 2026-11-11
 
 ### Added

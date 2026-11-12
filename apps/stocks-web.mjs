@@ -45,7 +45,7 @@ const SOURCES = Object.freeze({
   base: { registry: COINBASE_URL, reference: 'Coinbase NAV per token (nav_price, total return), from the same registry' },
   robinhood: { registry: ROBINHOOD_ASSETS_URL, reference: `Robinhood token bid/ask (${ROBINHOOD_PRICES_URL}): the share quote times the token multiplier, so per TOKEN; with multiplier 1 it equals the share's mid` },
 })
-import { buildPassport, DEFAULT_WINDOW_H } from '../evm/core/stocks/passport.mjs'
+import { buildPassport, DEFAULT_WINDOW_H, PUBLIC_WINDOW_H } from '../evm/core/stocks/passport.mjs'
 import { usEquitySession } from '../evm/core/stocks/market-session.mjs'
 import { createWindowCache, readingsOf, seriesPoints } from '../evm/core/stocks/readings-window.mjs'
 import { metaFor, injectMeta, withHead, headOf } from '../evm/core/stocks/page-meta.mjs'
@@ -95,6 +95,9 @@ const STATUS_DESCRIPTION = 'Is Proof of Stock up to date? The issuer registries,
 // directories and files are public; internal notes in docs/ (the TZ, the ssh-based agent note) are not.
 const DOCS_DIR = path.join(path.dirname(path.dirname(fileURLToPath(import.meta.url))), 'docs')
 const PUBLIC_DOCS = /^(README\.md|legal\.md|(explanation|tutorials|how-to|reference)\/[a-z0-9-]+\.(md|schema\.json))$/
+/** The source as the third icon at the bottom, after X and Telegram (apps/stocks-web/index.html .foot-social). */
+export const sourceIcon = (url) => `<a class="foot-ic" href="${url}" target="_blank" rel="me noopener noreferrer" aria-label="Proof of Stock source on GitHub" title="GitHub: ${url.replace('https://github.com/', '')}"><span class="i i-gh" aria-hidden="true"></span></a>`
+
 export function loadDocs (dir = DOCS_DIR) {
   const out = new Map()
   const walk = (rel) => {
@@ -136,7 +139,7 @@ export function llmsTxt (docs, origin, version) {
 // ⚠ THE RECORDER'S PRICE HISTORY IS OURS, A PASSPORT IS NOT A DOWNLOAD. A passport shows at most PUBLIC_HOURS of
 //   readings, its chart points only when asked (series=1), and costs PASSPORT_UNITS of the per-minute limit, so walking
 //   every token every day to rebuild the dataset takes hours instead of minutes. The site keeps 72 h for its own stats.
-export const PUBLIC_HOURS = 24
+export const PUBLIC_HOURS = PUBLIC_WINDOW_H
 export const PASSPORT_UNITS = 3
 export function batchUnits (raw) {
   try {
@@ -211,7 +214,7 @@ export function createStocksWeb ({
   const version = (k) => crypto.createHash('sha256').update(static_[k].body).digest('hex').slice(0, 12)
   static_['/'].body = Buffer.from(String(static_['/'].body).replace('href="style.css"', `href="style.css?v=${version('/style.css')}"`).replace('src="app.js"', `src="app.js?v=${version('/app.js')}"`).replace('src="beacon.js"', `src="beacon.js?v=${version('/beacon.js')}"`)
     .replaceAll('__MCP_URL__', publicOrigin + publicPath + '/mcp').replaceAll('__VERSION__', appVersion).replaceAll('__RELEASED__', released)
-    .replace('<!--source-->', sourceUrl ? `<a class="foot-link" href="${sourceUrl}" target="_blank" rel="noopener noreferrer"><span class="i i-gh" aria-hidden="true"></span>GitHub</a>` : ''))
+    .replace('<!--source-->', sourceUrl ? sourceIcon(sourceUrl) : ''))
   // What crawlers and link previews read: the preview image and logo by content hash (a new image is a new URL, so
   // X and Telegram fetch it again), robots.txt and the head tags every page gets.
   const site = publicOrigin + publicPath

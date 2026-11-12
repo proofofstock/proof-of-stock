@@ -95,7 +95,8 @@ The first line of every answer is one plain sentence. It looks like this (the va
 
 ```
 ISSUER-LISTED: SNDKc on Base is in the Coinbase registry. Issuer reference $… per token, 40 h old. Deepest on-chain
-price $…, +0.42% against the reference, read 6 min ago. Notes: reference_held_market_closed.
+price $…, +0.42% against the reference, read 6 min ago. Notes: reference_held_market_closed. Listed says which
+contract is the issuer's, not that its price is fair.
 ```
 
 The full passport is in `structuredContent`, and again as JSON in the second content block.

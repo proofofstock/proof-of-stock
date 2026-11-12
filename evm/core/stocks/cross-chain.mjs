@@ -9,7 +9,7 @@
 // issued by different issuers under different terms — the comparison shows prices side by side, it does not say they
 // are interchangeable.
 
-import { premiumAt } from './passport.mjs'
+import { premiumAt, PUBLIC_WINDOW_H } from './passport.mjs'
 import { readingsOf } from './readings-window.mjs'
 
 const tickerish = (r) => (r.issuer === 'coinbase' && typeof r.symbol === 'string' ? r.symbol.replace(/c$/, '') : r.symbol)
@@ -163,7 +163,9 @@ function venueOf (chain, r, window, now, staleS) {
     premium: l ? l.premium ?? null : null,
     // The reading's own refusal; with no reading at all, the passport's code for why there is none.
     premium_refused: l ? (l.premium == null ? l.premium_refused ?? 'unknown' : null) : (minted ? 'no_readings' : 'not_minted'),
-    premium_at_reference_time: l ? premiumAt(readingsOf(entry, r.address), ref && ref.updated_at) : null,
+    // From the passport's own window (24 h), not all the site holds (72 h): with an issuer price older than a day, as on a
+    // weekend, the passport says null and so must the cell.
+    premium_at_reference_time: l ? premiumAt(readingsOf(entry, r.address).filter((x) => Date.parse(x.observed_at) >= now - PUBLIC_WINDOW_H * 3600e3), ref && ref.updated_at) : null,
     observed_at: l ? l.observed_at : null, reading_age_s: readingAge,
     stale: readingAge != null && readingAge > staleS,
   }

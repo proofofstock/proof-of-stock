@@ -27,6 +27,9 @@ export const RECORDER_CADENCE_S = 900
 // shows is history, not now.
 export const READING_STALE_S = 1800
 export const DEFAULT_WINDOW_H = 72
+// The most a public answer shows: the site and MCP passport (PUBLIC_HOURS in apps/stocks-web.mjs) and the matrix cells
+// built to equal it (evm/core/stocks/cross-chain.mjs). One number, so the same value never differs by route.
+export const PUBLIC_WINDOW_H = 24
 export const NOTE_CODES = Object.freeze([
   'not_in_registry', 'no_readings', 'no_reference', 'reference_held_market_closed', 'reference_held_market_open',
   'trading_halted', 'paused', 'no_dex_price', 'pools_capped', 'multiplier_change_pending', 'calendar_unknown',

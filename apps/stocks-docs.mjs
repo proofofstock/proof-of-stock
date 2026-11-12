@@ -7,6 +7,7 @@
 // everything else is escaped. The only script is docs.js, the search box; the page reads fully without it.
 
 import { Marked } from 'marked'
+import { PROFILES } from './stocks-seo.mjs'
 
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))
 export const slug = (s) => String(s).toLowerCase().replace(/<[^>]+>/g, '').replace(/&[a-z]+;/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
@@ -110,6 +111,10 @@ export function createDocsRenderer ({ docs, version, released, assets, sourceUrl
       },
     })
     const body = rel === 'README.md' ? home() : marked.parse(md)
+    // X, Telegram and, once the repository is public, GitHub: the same icons and order as the site's footer.
+    const ICON = { 'x.com': ['x', 'Proof of Stock on X'], 't.me': ['tg', 'Proof of Stock on Telegram'] }
+    const socials = '<span class="dx-social" aria-label="News and source">' + PROFILES.map((u) => { const [k, label] = ICON[new URL(u).hostname]; return `<a class="dx-ic" href="${esc(u)}" target="_blank" rel="me noopener noreferrer" aria-label="${label}"><span class="i i-${k}" aria-hidden="true"></span></a>` }).join('') +
+      (sourceUrl ? `<a class="dx-ic" href="${esc(sourceUrl)}" target="_blank" rel="me noopener noreferrer" aria-label="Proof of Stock source on GitHub"><span class="i i-gh" aria-hidden="true"></span></a>` : '') + '</span>'
     const up = rel.split('/').length - 1
     const toRoot = up ? '../'.repeat(up) : './'
     const site = toRoot + '../'
@@ -158,7 +163,7 @@ export function createDocsRenderer ({ docs, version, released, assets, sourceUrl
       <div class="dx-crumbs">${section ? esc(section.label) : 'Docs'}<span class="dx-ver"><span class="beta-tag">beta</span>v${esc(version)} · ${esc(released)}</span></div>
       <article class="prose">${body}</article>
       ${pager}
-      <footer class="dx-foot"><span>© 2026 Proof of Stock. Code under the MIT licence.</span><span><a href="${href('legal.md')}">Not investment advice</a> · <a href="?format=md">View as markdown</a>${sourceUrl ? ` · <a href="${esc(sourceUrl)}" target="_blank" rel="noopener noreferrer">Source on GitHub</a>` : ''}</span></footer>
+      <footer class="dx-foot"><span>© 2026 Proof of Stock. Code under the MIT licence.</span><span><a href="${href('legal.md')}">Not investment advice</a> · <a href="?format=md">View as markdown</a></span>${socials}</footer>
     </main>
     ${tocHtml}
   </div>

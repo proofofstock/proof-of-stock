@@ -270,7 +270,7 @@ curl -s https://proofofstock.xyz/mcp -H 'content-type: application/json' \
   "jsonrpc": "2.0", "id": 3,
   "result": {
     "content": [
-      { "type": "text", "text": "ISSUER-LISTED: NVDA on Robinhood Chain is in the Robinhood registry. Issuer reference $180.05 per token, 16 min old. Deepest on-chain price $180.5, +0.25% against the reference, read 15 min ago." },
+      { "type": "text", "text": "ISSUER-LISTED: NVDA on Robinhood Chain is in the Robinhood registry. Issuer reference $180.05 per token, 16 min old. Deepest on-chain price $180.5, +0.25% against the reference, read 15 min ago. Listed says which contract is the issuer's, not that its price is fair." },
       { "type": "text", "text": "{\"summary\":\"ISSUER-LISTED: NVDA on Robinhood Chain …\", …}" }
     ],
     "structuredContent": {
@@ -311,7 +311,7 @@ NOT an issuer token: 0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee is not in the is
 The lead sentence, in order: `ISSUER-LISTED: <symbol> on <chain> is in the <Issuer> registry.`; `Listed but not minted
 on this chain yet, so it does not trade.` when `issuer.minted` is `false` (Base only); `Issuer reference $<price> per token, <age> old.` when there is
 a price; the deepest on-chain price, the premium as a percent and the reading's age, or `No on-chain price
-(<premium_refused>)`; then `Notes: <codes>.` In the lead the premium is a percent (`+0.25%`); in the JSON it is a
+(<premium_refused>)`; then `Notes: <codes>.`; last, `Listed says which contract is the issuer's, not that its price is fair.` In the lead the premium is a percent (`+0.25%`); in the JSON it is a
 fraction (`0.0025`).
 
 ### Errors

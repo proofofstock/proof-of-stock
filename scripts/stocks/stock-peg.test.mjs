@@ -8,7 +8,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { runStockPeg, runExitCode, CHAINS, SUPPLEMENT_STOP_MS } from './stock-peg.mjs'
-import { validateV2 } from '../../base/dataset-v2/schema-validator.mjs'
+import { validateV2 } from '../../schemas/v2/validate.mjs'
 import { COINBASE_URL, ROBINHOOD_ASSETS_URL, ROBINHOOD_PRICES_URL } from '../../evm/core/stocks/registries.mjs'
 
 let passed = 0, failed = 0

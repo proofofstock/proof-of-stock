@@ -7,7 +7,7 @@ import path from 'node:path'
 import { replayCases, caseEvents, recordCases, canonicalRegistry, registryHash, recordRegistry, HISTORY_DIR } from './history.mjs'
 import { createHistoryStore } from '../../../apps/stocks-history.mjs'
 import { eachJsonl } from '../../../scripts/lib/jsonl.mjs'
-import { validateV2 } from '../../../base/dataset-v2/schema-validator.mjs'
+import { validateV2 } from '../../../schemas/v2/validate.mjs'
 
 let passed = 0, failed = 0
 const check = (label, cond, detail) => { if (cond) { passed++; console.log('  ok   ' + label) } else { failed++; console.log('  FAIL ' + label + (detail ? ': ' + detail : '')) } }

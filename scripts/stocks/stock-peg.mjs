@@ -15,7 +15,7 @@
 // (evm/core/stocks/peg.mjs decides what counts). On Base only tokens with supply are read: an unminted token has no
 // pool, and asking for it 227 times a run is a cost with no reading in it.
 //
-// Usage: node scripts/stocks/stock-peg.mjs --chain=base|robinhood --root=<dataset-v2 root> [--pace-ms=250] [--deadline=<unix s>]
+// Usage: node scripts/stocks/stock-peg.mjs --chain=base|robinhood --root=<data root> [--pace-ms=250] [--deadline=<unix s>]
 //
 // ⚠ THE DEADLINE KEEPS THE RUN ROW. systemd kills the unit at TimeoutStartSec, and a killed run writes nothing about
 // itself. With --deadline (deployment/systemd/stp-peg.service passes one, short of the timeout) the run stops topping up
@@ -26,7 +26,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import crypto from 'node:crypto'
 import { isEntryPoint } from '../lib/invoked-directly.mjs'
-import { validateV2 } from '../../base/dataset-v2/schema-validator.mjs'
+import { validateV2 } from '../../schemas/v2/validate.mjs'
 import { readCoinbase, readRobinhood } from '../../evm/core/stocks/registries.mjs'
 import { BASE_DESCRIPTOR } from '../../evm/chains/base/descriptor.mjs'
 import { ROBINHOOD_DESCRIPTOR } from '../../evm/chains/robinhood/descriptor.mjs'
@@ -174,6 +174,6 @@ if (isEntryPoint(import.meta.url)) {
   const arg = (k) => (process.argv.find((a) => a.startsWith(`--${k}=`)) || '').slice(k.length + 3) || null
   const dl = arg('deadline')
   if (dl != null && !(Number(dl) > 0)) throw new Error(`--deadline must be unix seconds, got ${dl}`)
-  const run = await runStockPeg({ chain: arg('chain'), root: arg('root') || 'data/dataset-v2', paceMs: Number(arg('pace-ms') ?? 250), deadline: dl != null ? Number(dl) * 1000 : null })
+  const run = await runStockPeg({ chain: arg('chain'), root: arg('root') || 'data', paceMs: Number(arg('pace-ms') ?? 250), deadline: dl != null ? Number(dl) * 1000 : null })
   process.exitCode = runExitCode(run)
 }

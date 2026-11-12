@@ -1,11 +1,11 @@
-// base/dataset-v2/schema-validator.mjs — validate a row against a stock-peg schema (ajv, draft-07).
+// schemas/v2/validate.mjs — validate a row against one of the schemas beside it (ajv, draft-07).
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import Ajv from 'ajv'
 import addFormats from 'ajv-formats'
 
-const SCHEMA_DIR = path.join(path.dirname(path.dirname(path.dirname(fileURLToPath(import.meta.url)))), 'schemas', 'v2')
+const SCHEMA_DIR = path.dirname(fileURLToPath(import.meta.url))
 function compile (file) {
   const schema = JSON.parse(fs.readFileSync(path.join(SCHEMA_DIR, file), 'utf8'))
   const ajv = new Ajv({ strict: false, allErrors: true, validateSchema: false })

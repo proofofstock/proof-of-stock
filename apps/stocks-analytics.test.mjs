@@ -193,7 +193,7 @@ console.log('the report')
   const md = report({ dir, days: 2, today: '2026-11-10' })
   check('the report has a section per day and says when a day has no file', /## 2026-11-09\n\nno file/.test(md) && /## 2026-11-10/.test(md) && /\*\*people:\*\* 2/.test(md))
   check('actions count people, once each, and never a bot', JSON.stringify(s.actions.chip) === JSON.stringify([['NVDA', 2]]) && JSON.stringify(s.actions.section) === JSON.stringify([['faq', 1]]))
-  check('the report has a line per kind of action', md.includes('**buttons under the headline** (people): NVDA 2') && md.includes('**scrolled to** (people): faq 1') && md.includes('**searches (kind:outcome)** (people): —'))
+  check('the report has a line per kind of action', md.includes('**buttons under the headline** (people): NVDA 2') && md.includes('**sections seen (a second on screen)** (people): faq 1') && md.includes('**searches (kind:outcome)** (people): —'))
   check('the report prints no pseudonym', !/\bp1\b|\bm1\b/.test(md))
 }
 
@@ -235,6 +235,34 @@ console.log('the beacon in a page')
   const n = sent.length
   listeners.click[0]({ target: new FakeEl('p') })
   check('a click on anything else sends nothing', sent.length === n)
+}
+{
+  // Sections: a section passed on the way down (as when a restored scroll or #faq jumps past it) is not counted; one
+  // that stays half on screen for a second is, once.
+  const src = fs.readFileSync(new URL('./stocks-web/beacon.js', import.meta.url), 'utf8')
+  const sent = [], timers = new Map()
+  let tid = 0, observer = null
+  const els = Object.fromEntries(['.checks', '.why', '.agents', '.faq', '.foot'].map((s) => [s, { sel: s, dataset: {} }]))
+  const ctx = vm.createContext({
+    URL, URLSearchParams, location: { host: 'proofofstock.xyz', pathname: '/', search: '', href: 'https://proofofstock.xyz/' }, history: { pushState () {}, replaceState () {} },
+    document: { currentScript: { src: 'https://proofofstock.xyz/beacon.js' }, visibilityState: 'visible', referrer: '', addEventListener () {}, querySelectorAll: () => [], querySelector: (s) => els[s] || null },
+    Element: class {}, addEventListener () {}, fetch: (u) => { sent.push(Object.fromEntries(new URL(u).searchParams)); return Promise.resolve() },
+    Date: { now: () => 1_000_000 }, Math,
+    setTimeout: (fn) => { timers.set(++tid, fn); return tid }, clearTimeout: (id) => timers.delete(id),
+    IntersectionObserver: class { constructor (cb) { this.cb = cb; this.watched = new Set(); observer = this } observe (el) { this.watched.add(el) } unobserve (el) { this.watched.delete(el) } },
+  })
+  ctx.window = ctx
+  vm.runInContext(src, ctx)
+  const seen = (s, on) => observer.cb([{ target: els[s], isIntersecting: on }])
+  const tick = () => { const fns = [...timers.values()]; timers.clear(); for (const f of fns) f() }
+  const sections = () => sent.filter((e) => e.x === 'section').map((e) => e.v)
+  seen('.checks', true); seen('.why', true); seen('.checks', false); seen('.why', false)
+  tick()
+  check('sections passed by in an instant are not counted', sections().length === 0, JSON.stringify(sections()))
+  seen('.faq', true); tick()
+  check('a section a second on screen is counted', JSON.stringify(sections()) === '["faq"]')
+  seen('.faq', false); seen('.faq', true); tick()
+  check('...once per page load', JSON.stringify(sections()) === '["faq"]' && !observer.watched.has(els['.faq']))
 }
 
 console.log(`\n${passed} passed, ${failed} failed`)

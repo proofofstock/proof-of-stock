@@ -23,7 +23,7 @@ import { eachJsonl, dayFiles } from '../lib/jsonl.mjs'
 import { resemblance, resemblances, prefixSelfCheck, RESEMBLANCE_KINDS, ADDRESS_SIGNAL_KINDS } from '../../evm/core/stocks/impostor.mjs'
 import { CHAINS } from './stock-peg.mjs'
 import { recordCases } from '../../evm/core/stocks/history.mjs'
-import { validateV2 } from '../../base/dataset-v2/schema-validator.mjs'
+import { validateV2 } from '../../schemas/v2/validate.mjs'
 
 export const STRONG_KINDS = Object.freeze(['registry_symbol', 'issuer_name_suffix'])
 // A safety cap on the file, not a display limit: the site's verify lookup is built from every item (the API pages them).

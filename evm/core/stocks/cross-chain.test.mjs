@@ -5,7 +5,7 @@
 // Run: node evm/core/stocks/cross-chain.test.mjs
 
 import { findAcross, sameStockElsewhere, overview, matrix, isinsOfTicker } from './cross-chain.mjs'
-import { buildPassport } from './passport.mjs'
+import { buildPassport, PUBLIC_WINDOW_H } from './passport.mjs'
 import { readingsOf } from './readings-window.mjs'
 
 let passed = 0, failed = 0
@@ -143,6 +143,18 @@ console.log('the Base and Robinhood matrix')
   const p = buildPassport({ address: a(1), chainId: 8453, registry: [rec('coinbase', 'NVDAc', 'NVIDIA', I.nvda, a(1))], readings: readingsOf(ent(rd(a(1), 0.004), [[Date.parse('2026-11-08T13:15:00Z'), 0.001], [Date.parse('2026-11-08T13:45:00Z'), 0.002]]), a(1)), now: NOW })
   check('each cell equals the passport', n.base.premium === p.latest.premium && n.base.reference_age_s === p.reference.age_s && n.base.multiplier === p.issuer.multiplier && n.base.dex_price_usd === p.latest.dex_price_usd &&
     JSON.stringify(n.base.premium_at_reference_time) === JSON.stringify(p.latest.premium_at_reference_time) && n.base.premium_at_reference_time?.premium === 0.002, JSON.stringify([n.base.premium_at_reference_time, p.latest.premium_at_reference_time]))
+  {
+    // A weekend: the issuer's price is 30 h old, and the site still holds a reading from just after it (it keeps 72 h).
+    // The passport shows 24 h, so it has no reading of that moment: the cell must say null too, not the old reading.
+    const OLD = '2026-11-07T08:00:00Z'
+    const base0 = rd(a(1), 0.004)
+    const old = { ...base0, reference: { ...base0.reference, updated_at: OLD } }
+    const e = ent(old, [[Date.parse('2026-11-07T08:10:00Z'), 0.009]])
+    const mw = matrix({ base: { records: [rec('coinbase', 'NVDAc', 'NVIDIA', I.nvda, a(1))], window: w([e]) }, robinhood: { records: [rec('robinhood', 'NVDA', 'NVIDIA  Robinhood Token', I.nvda, a(7))], window: w([ent(rd(a(7), -0.06, RH))]) } }, { now: NOW })
+    const pp = (windowH) => buildPassport({ address: a(1), chainId: 8453, registry: [rec('coinbase', 'NVDAc', 'NVIDIA', I.nvda, a(1))], readings: readingsOf(e, a(1)), now: NOW, windowH })
+    check('M9: an issuer price older than the public window gives the cell what the passport gives, null', mw.rows[0].base.premium_at_reference_time === null && pp(PUBLIC_WINDOW_H).latest.premium_at_reference_time === null, JSON.stringify(mw.rows[0].base.premium_at_reference_time))
+    check('...though the reading of that moment is held (a 72 h window would find it)', pp(72).latest.premium_at_reference_time?.premium === 0.009)
+  }
   check('a matrix without the time is refused', (() => { try { matrix({}); return false } catch (_) { return true } })())
   check('one chain missing is an empty matrix, not an error', matrix({ base: { records: [rec('coinbase', 'NVDAc', 'NVIDIA', I.nvda, a(1))], window: null } }, { now: NOW }).pairs === 0)
   const reg = { base: { records: [rec('coinbase', 'NVDAc', 'NVIDIA', I.nvda, a(1))] }, robinhood: { records: [rec('robinhood', 'NVDA', 'NVIDIA', I.nvda, a(7))] } }

@@ -210,8 +210,10 @@ console.log('the public MCP endpoint')
   const pass = await (await rpc({ jsonrpc: '2.0', id: 5, method: 'tools/call', params: { name: 'stock_passport', arguments: { chain: 'base', address: A } } })).json()
   check('the passport tool returns the same passport as the page', pass.result.structuredContent.in_registry === true && pass.result.structuredContent.links.explorer.startsWith('https://basescan.org/token/'))
   check('...opening with the verdict, the numbers and their true ages', /^ISSUER-LISTED: NVDAc on Base is in the Coinbase registry\. Issuer reference \$180 per token, 41 h old\. Deepest on-chain price \$181, \+0\.56% against the reference, read 15 min ago\./.test(pass.result.content[0].text), pass.result.content[0].text.slice(0, 220))
+  check('...and closing with what listed is not: a verdict on the price', pass.result.content[0].text.endsWith(' Listed says which contract is the issuer\'s, not that its price is fair.'), pass.result.content[0].text.slice(-120))
   const fake = await (await rpc({ jsonrpc: '2.0', id: 12, method: 'tools/call', params: { name: 'stock_passport', arguments: { chain: 'base', address: X } } })).json()
   check('an impostor\'s passport opens with NOT and names the official contract', /^NOT an issuer token: 0x(ee){20} is not in the issuer registry on Base; its symbol or name imitates NVDAc \(official contract 0x(aa){20}\)\./.test(fake.result.content[0].text), fake.result.content[0].text.slice(0, 200))
+  check('...and an impostor lead does not say what listed is (it is not listed)', !/Listed says/.test(fake.result.content[0].text))
   const bad = await (await rpc({ jsonrpc: '2.0', id: 6, method: 'tools/call', params: { name: 'stock_passport', arguments: { chain: 'base', address: 'nope' } } })).json()
   check('an argument that breaks the schema is a protocol error -32602', bad.error && bad.error.code === -32602 && /address has the wrong form/.test(bad.error.message), JSON.stringify(bad).slice(0, 200))
   const callWith = (id, name, args) => rpc({ jsonrpc: '2.0', id, method: 'tools/call', params: { name, arguments: args } }).then((r) => r.json())
@@ -535,6 +537,10 @@ console.log('search engines, AI crawlers and link previews')
     const pages = await Promise.all(['/stocks/', '/stocks/docs/', '/stocks/history', '/stocks/status'].map(async (u) => iconOf(await (await g(u, { accept: 'text/html' })).text())))
     check('the icon is the owner\'s: a #4B87FF disc and a #070C18 notched band', /fill="#4B87FF"/.test(icon) && /M0 8h6V6h4v2h6v1H9V7H7v2H0z/.test(icon))
     check('...and every kind of page carries that same icon', pages.every((p) => p && p === pages[0]) && decodeURIComponent(pages[0]).includes('M0 8h6V6h4v2h6v1H9V7H7v2H0z') && !pages.some((p) => p.includes('0052ff')), JSON.stringify(pages.map((p) => (p || 'none').slice(0, 30))))
+    // The brand marks (footer, docs bar) draw the icon from the stylesheet itself: a URL to /favicon.svg is cached a day
+    // by the CDN without a version, and showed the old icon for hours after 0.5.0 (12.11).
+    const css = ['style.css', 'docs.css'].map((f) => fs.readFileSync(new URL('./stocks-web/' + f, import.meta.url), 'utf8'))
+    check('...and the brand marks carry it inline, never as an unversioned file', css.every((s) => !/url\("?favicon\.svg/.test(s)) && css.every((s) => [...s.matchAll(/data:image\/svg\+xml,([^"]+)"/g)].some((m) => decodeURIComponent(m[1]).includes('M0 8h6V6h4v2h6v1H9V7H7v2H0z'))))
     const png = Buffer.from(await (await g('/stocks/logo.png')).arrayBuffer())
     check('...and its PNG is 512 px', png.readUInt32BE(16) === 512 && png.readUInt32BE(20) === 512)
   }
@@ -566,7 +572,17 @@ console.log('source link')
   const hidden = await pages({ source: null })
   check('while the repository is private, no page links to it (no GitHub 404 for a visitor)', !hidden.home.includes('github.com') && !hidden.doc.includes('github.com') && !hidden.home.includes('<!--source-->'))
   const shown = await pages({ source: GH })
-  check('once it is public, the footer and the docs link to the source', shown.home.includes(`href="${GH}"`) && shown.doc.includes(`href="${GH}"`) && /Source on GitHub/.test(shown.doc))
+  check('once it is public, the footer and the docs link to the source', shown.home.includes(`href="${GH}"`) && shown.doc.includes(`href="${GH}"`))
+  {
+    // The bottom of every page: X, Telegram, GitHub, in that order and nothing after them (owner, 12.11).
+    const icons = (html, cls) => [...html.matchAll(new RegExp(`<a class="${cls}" href="([^"]+)"`, 'g'))].map((m) => m[1])
+    const order = JSON.stringify(['https://x.com/proofofstock', 'https://t.me/proofofstock1', GH])
+    const foot = (shown.home.match(/<footer class="foot">[\s\S]*?<\/footer>/) || [''])[0]
+    check('the site: X, Telegram and GitHub are the last thing in the footer, not in the link row', JSON.stringify(icons(foot, 'foot-ic')) === order && /<\/span>\s*<\/span>\s*<\/div>\s*<\/footer>/.test(foot) && !/foot-link[^>]*github/.test(foot) && foot.lastIndexOf('foot-ic') > foot.indexOf('foot-bottom'))
+    const dfoot = (shown.doc.match(/<footer class="dx-foot">[\s\S]*?<\/footer>/) || [''])[0]
+    check('the docs: the same three icons at the bottom, each named for a screen reader', JSON.stringify(icons(dfoot, 'dx-ic')) === order && (dfoot.match(/aria-label="Proof of Stock[^"]*"><span class="i i-(x|tg|gh)" aria-hidden="true">/g) || []).length === 3)
+    check('...and while private, the docs show X and Telegram only', JSON.stringify(icons((hidden.doc.match(/<footer class="dx-foot">[\s\S]*?<\/footer>/) || [''])[0], 'dx-ic')) === JSON.stringify(['https://x.com/proofofstock', 'https://t.me/proofofstock1']))
+  }
   const pkg = JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url), 'utf8'))
   const byDefault = await pages({})
   const want = pkg.stp?.source_public === true ? pkg.repository.url : null

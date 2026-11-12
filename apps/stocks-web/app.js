@@ -440,7 +440,7 @@
       listedCase,
       officialLinks(p),
       ...folds,
-      line('Holder rights are set by the issuer\'s prospectus. This is not advice.', 'faint'))
+      line('Listed says which contract is the issuer\'s, not that its price is fair or that it is safe to buy. Holder rights are set by the issuer\'s prospectus. This is not advice.', 'faint'))
   }
 
   // The difference over time: SVG from DOM nodes, never an HTML string.

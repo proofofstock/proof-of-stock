@@ -54,7 +54,7 @@ Fonts, so your browser asks Google for them. For each visit we keep:
 - which passport was open, and the host name of the site that linked here, if any;
 - what was done on the page, as a kind from a fixed list: which button under the headline, what kind of search
   (ticker, name, ISIN or address) and whether it found anything, which question was opened, which sections were
-  scrolled into view, what was copied, which kind of outside link was followed. Never the text typed, never a
+  on screen for a second, what was copied, which kind of outside link was followed. Never the text typed, never a
   position on the screen, never a recording;
 - the country Cloudflare reports, and whether the requester looks like a browser, a bot or a tool;
 - for the MCP server, the method and the tool name, never the arguments.

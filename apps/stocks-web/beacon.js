@@ -54,11 +54,21 @@
   }, true)
   // Which question was opened: its place in the list, not its text.
   for (const [i, d] of [...document.querySelectorAll('.faq details')].entries()) d.addEventListener('toggle', () => { if (d.open) act('faq', 'q' + (i + 1)) })
-  // How far down the landing a visitor got: each section once per page load, when half of it is on screen.
+  // How far down the landing a visitor got: each section once per page load, when half of it has stayed on screen for a
+  // second. Counting the moment it crossed the screen counted every section within half a second of some loads (a
+  // restored scroll, a jump to #faq or the footer), which is passing by, not reading (12.11).
   if ('IntersectionObserver' in window) {
     const SECTIONS = [['.checks', 'checks'], ['.why', 'why'], ['.agents', 'agents'], ['.faq', 'faq'], ['.foot', 'foot']]
-    const seen = new Set()
-    const io = new IntersectionObserver((es) => { for (const en of es) { const n = en.target.dataset.posSection; if (en.isIntersecting && !seen.has(n)) { seen.add(n); act('section', n); io.unobserve(en.target) } } }, { threshold: 0.5 })
+    const DWELL_MS = 1000
+    const timers = new Map(), done = new Set()
+    const io = new IntersectionObserver((es) => {
+      for (const en of es) {
+        const el = en.target, n = el.dataset.posSection
+        if (done.has(n)) continue
+        if (!en.isIntersecting) { clearTimeout(timers.get(n)); timers.delete(n); continue }
+        if (!timers.has(n)) timers.set(n, setTimeout(() => { if (document.visibilityState === 'visible') { done.add(n); act('section', n); io.unobserve(el) } else timers.delete(n) }, DWELL_MS))
+      }
+    }, { threshold: 0.5 })
     for (const [sel, n] of SECTIONS) { const el = document.querySelector(sel); if (el) { el.dataset.posSection = n; io.observe(el) } }
   }
   addEventListener('popstate', () => { if (document.visibilityState === 'visible') { hide(); viewed = false; show() } })
