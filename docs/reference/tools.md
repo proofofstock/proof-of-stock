@@ -32,7 +32,7 @@ curl -s https://proofofstock.xyz/mcp \
 | CORS | `Access-Control-Allow-Origin: *`, methods `POST, OPTIONS`. `OPTIONS` answers 204 |
 | Caching | `Cache-Control: no-store` on every answer |
 | Rate limit | 60 units per minute per client IP (IPv6: per /56). Every POST costs 1 unit; `stock_passport` costs 3; `verify_stock_tokens` with n addresses costs ⌈n/10⌉ |
-| Body | at most 16 KB |
+| Body | one JSON-RPC message as `Content-Type: application/json`, at most 16 KB |
 | Methods | `initialize`, `ping`, `tools/list`, `tools/call`. Notifications (no `id`) and client responses (`id` with `result` or `error`) get 202 with no body |
 
 ```bash
@@ -91,6 +91,7 @@ tool arguments, then the tool itself.
 | 400 | `error.code: -32600` | a batch (JSON array); `jsonrpc` is not `"2.0"`; `id` is null, a float or an object; `method` is not a string; an `id` with no `method`, `result` or `error`; an unsupported `MCP-Protocol-Version` header |
 | 405 | `{ "error": "POST one JSON-RPC message; this server offers no SSE stream" }`, header `Allow: POST, OPTIONS` | `GET` (other than a browser) and `DELETE`. The proxy refuses any other method (`PUT`, `PATCH`, …) with 403 before it reaches the app |
 | 413 | `error.code: -32600`, `"request too large"` | body over 16 KB |
+| 415 | `error.code: -32600`, `"Content-Type must be application/json"` | a `Content-Type` other than `application/json` (a charset is fine), or none |
 | 429 | `error.code: -32000`, `"too many requests, try again in a minute"`, header `Retry-After: 60` | over 60 units in the current minute |
 
 Argument validation is strict: an unknown argument, a wrong type, a string that fails its pattern, an out-of-range

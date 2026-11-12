@@ -35,6 +35,24 @@ export const AI_CRAWLERS = Object.freeze([
  * @param {string} site  origin plus public path, e.g. https://proofofstock.xyz
  * @param {string} [path] the public path alone ('' in production)
  */
+/**
+ * /.well-known/security.txt (RFC 9116): where to report a vulnerability. Expires a year ahead of each answer, so it is
+ * never stale; once the source is public it also names GitHub's private reporting and the policy (SECURITY.md).
+ */
+export function securityTxt (site, sourceUrl, now) {
+  const expires = new Date(now + 365 * 864e5)
+  expires.setUTCHours(0, 0, 0, 0)
+  return [
+    `Contact: mailto:${CONTACT_EMAIL}`,
+    ...(sourceUrl ? [`Contact: ${sourceUrl}/security/advisories/new`] : []),
+    `Expires: ${expires.toISOString().replace('.000Z', 'Z')}`,
+    'Preferred-Languages: en',
+    `Canonical: ${site}/.well-known/security.txt`,
+    ...(sourceUrl ? [`Policy: ${sourceUrl}/blob/main/SECURITY.md`] : []),
+    '',
+  ].join('\n')
+}
+
 export function robotsTxt (site, path = '') {
   const rules = [`Allow: ${path}/`, `Disallow: ${path}/api/`, `Disallow: ${path}/mcp`, `Disallow: ${path}/verify`]
   return [

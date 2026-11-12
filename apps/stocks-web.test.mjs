@@ -189,6 +189,19 @@ console.log('rate limit')
 console.log('the public MCP endpoint')
 {
   const rpc = (body, extra = {}) => get('/stocks/mcp', { method: 'POST', headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream', 'x-real-ip': '198.51.100.1', ...extra }, body: typeof body === 'string' ? body : JSON.stringify(body) })
+  // External audit, 12.11: a JSON-RPC body is JSON. text/plain and form bodies are what another site's page can send
+  // without a preflight; they get 415, and so does a body with no type at all.
+  const typed = async (ct) => { const h = { accept: 'application/json, text/event-stream', 'x-real-ip': '198.51.100.3' }; if (ct) h['content-type'] = ct; return get('/stocks/mcp', { method: 'POST', headers: h, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'ping' }) }) }
+  const refused = await Promise.all(['text/plain', 'application/x-www-form-urlencoded', 'multipart/form-data; boundary=x', null].map(typed))
+  check('/mcp refuses a body that is not JSON with 415 and says why', refused.every((r) => r.status === 415) && /Content-Type must be application\/json/.test(await refused[0].text()) && refused[0].headers.get('access-control-allow-origin') === '*')
+  check('...and takes application/json with a charset', (await typed('application/json; charset=utf-8')).status === 200)
+  {
+    const r = await get('/stocks/.well-known/security.txt')
+    const t = await r.text()
+    const exp = Date.parse((t.match(/^Expires: (.+)$/m) || [])[1])
+    check('security.txt (RFC 9116): a contact, an expiry under a year ahead, the canonical address', r.status === 200 && /^text\/plain/.test(r.headers.get('content-type')) && /^Contact: mailto:hello@proofofstock\.xyz$/m.test(t) && exp > NOW && exp - NOW <= 366 * 864e5 && /^Canonical: https:\/\/proofofstock\.xyz\/\.well-known\/security\.txt$/m.test(t), t)
+    check('...and no other mailbox', (t.match(/[\w.+-]+@[\w.-]+/g) || []).every((m) => m === 'hello@proofofstock.xyz'))
+  }
   const init = await (await rpc({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-03-26', capabilities: {}, clientInfo: { name: 't', version: '0' } } })).json()
   check('initialize answers the version the client asked for, when supported', init.result.protocolVersion === '2025-03-26' && init.result.capabilities.tools && /not advice: https:\/\/proofofstock.xyz\/docs\/legal\.md/.test(init.result.instructions))
   const odd = await (await rpc({ jsonrpc: '2.0', id: 2, method: 'initialize', params: { protocolVersion: '1999-01-01' } })).json()
@@ -613,6 +626,8 @@ console.log('deployment')
   check('www, the older names and plain http go to https://proofofstock.xyz', (vhost.match(/return 301 https:\/\/proofofstock\.xyz\$request_uri;/g) || []).length === 4 && /server_name tickerproof\.xyz www\.tickerproof\.xyz;/.test(vhost) && /server_name stockofproof\.xyz www\.stockofproof\.xyz;/.test(vhost))
   check('the older names still serve /mcp in place: a redirected POST is not followed', (vhost.match(/proxy_pass http:\/\/127\.0\.0\.1:3005\/stocks\/mcp;/g) || []).length === 3)
   check('the vhost allows GET and HEAD only, and rate limits', /limit_except GET HEAD \{ deny all; \}/.test(vhost) && /limit_req zone=stocks_req56/.test(vhost))
+  check('every server block hides the nginx version on its own error pages', (vhost.match(/^server \{/gm) || []).length === (vhost.match(/^    server_tokens off;/gm) || []).length && /server_tokens off;/.test(vhost))
+  check('security.txt is served though dot-paths are refused: an exact location, before the rule', vhost.indexOf('location = /.well-known/security.txt') > 0 && vhost.indexOf('location = /.well-known/security.txt') < vhost.indexOf('location ~ /\\. { return 404; }') && /proxy_pass http:\/\/127\.0\.0\.1:3005\/stocks\/\.well-known\/security\.txt;/.test(vhost))
   // Each server block on 443, up to the next server block.
   const servers443 = vhost.split(/\nserver \{/).filter((b) => /listen 443 ssl;/.test(b))
   const serving = servers443.filter((b) => /proxy_pass/.test(b))

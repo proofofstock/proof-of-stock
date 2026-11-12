@@ -56,5 +56,13 @@ console.log('the footer: the project\'s own profiles')
   check('the organisation names the same profiles as sameAs', JSON.stringify(PROFILES) === JSON.stringify(['https://x.com/proofofstock', 'https://t.me/proofofstock1']))
 }
 
+console.log('the prompt waits with a cursor')
+{
+  const css = fs.readFileSync(new URL('./stocks-web/style.css', import.meta.url), 'utf8')
+  const form = (html.match(/<form id="prompt"[\s\S]*?<\/form>/) || [''])[0]
+  check('a cursor block sits in the input line, hidden from screen readers', /<span class="cmd-wrap"><input id="cmd"[^>]*><span class="cmd-cursor" aria-hidden="true"><\/span><\/span>/.test(form))
+  check('...shown only on an empty, unfocused line, blinking, and still under reduced motion', /\.cmd-wrap:focus-within \.cmd-cursor, \.cmd-wrap input:not\(:placeholder-shown\) \+ \.cmd-cursor \{ display: none; \}/.test(css) && /\.cmd-cursor \{[^}]*animation: blink/.test(css) && /prefers-reduced-motion: reduce\) \{ \.cmd-cursor \{ animation: none; \} \}/.test(css))
+}
+
 console.log(`\n${passed} passed, ${failed} failed`)
 if (failed) { for (const x of failures) console.log(x); process.exit(1) }

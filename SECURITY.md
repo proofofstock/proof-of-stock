@@ -2,7 +2,7 @@
 
 ## Reporting a vulnerability
 
-Write to **hello@proofofstock.xyz** with "security" in the subject. Please do not open a public issue for a
+Write to **hello@proofofstock.xyz** with "security" in the subject (also in https://proofofstock.xyz/.well-known/security.txt). Please do not open a public issue for a
 vulnerability. Say what you found, how to reproduce it and what it lets someone do. We reply as soon as we can and
 tell you when a fix is live.
 

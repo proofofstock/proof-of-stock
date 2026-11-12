@@ -185,6 +185,13 @@ a.btn { text-decoration: none; display: inline-block; }
 .ps1 .chain-ps1 { color: var(--dim); margin-right: 4px; }
 .prompt input { flex: 1; min-width: 0; background: transparent; border: 0; outline: none; color: var(--text); font: 15px var(--mono); caret-color: var(--accent-hi); padding: 4px 0; }
 .prompt input::placeholder { color: var(--faint); }
+/* A real prompt waits with a cursor (owner, 12.11): the same block as the typed greeting, quieter and slower, at the start
+   of an empty, unfocused line. Focus brings the browser's own caret; typing hides the block. Still under reduced motion. */
+.cmd-wrap { flex: 1; min-width: 0; position: relative; display: flex; align-items: center; }
+.cmd-cursor { position: absolute; left: 0; top: 50%; width: .55em; height: 1.1em; margin-top: -.55em; font-size: 15px; background: var(--accent-hi); opacity: .5; border-radius: 1px; pointer-events: none; animation: blink 1.2s steps(1) infinite; }
+.cmd-wrap:focus-within .cmd-cursor, .cmd-wrap input:not(:placeholder-shown) + .cmd-cursor { display: none; }
+.cmd-wrap:not(:focus-within) input:placeholder-shown { text-indent: 1em; }
+@media (prefers-reduced-motion: reduce) { .cmd-cursor { animation: none; } }
 .go { background: var(--accent); color: var(--on-accent); border: 0; border-radius: 7px; padding: 6px 14px; font-weight: 600; }
 .go:hover { filter: brightness(1.08); }
 .statusbar { display: flex; justify-content: space-between; gap: 12px; padding: 6px 14px; border-top: 1px solid var(--line); font-size: 11.5px; color: var(--faint); }
@@ -301,6 +308,7 @@ a.btn { text-decoration: none; display: inline-block; }
 .foot-link:hover, .foot-link:focus-visible { color: var(--text); border-color: var(--accent-hi); background: color-mix(in srgb, var(--accent) 12%, var(--glass-2)); outline: none; }
 .foot-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--ok); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ok) 22%, transparent); }
 .foot-note { margin: 12px 0 0; max-width: 92ch; font-size: 12px; line-height: 1.55; color: var(--faint); }
+.foot-note a { color: var(--dim); border-bottom: 1px dotted currentColor; } .foot-note a:hover { color: var(--accent-hi); }
 .foot-bottom { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 12px; padding-top: 10px; border-top: 1px dashed var(--line); color: var(--faint); font: 11.5px/1.4 var(--mono); }
 .foot-meta { display: inline-flex; align-items: center; gap: 14px; flex-wrap: wrap; }
 .beta-tag { display: inline-block; margin-right: 8px; padding: 1px 7px; border: 1px solid color-mix(in srgb, var(--warn) 55%, transparent); border-radius: 999px; color: var(--warn); font: 600 10px/1.5 var(--mono); letter-spacing: .08em; text-transform: uppercase; vertical-align: 1px; }

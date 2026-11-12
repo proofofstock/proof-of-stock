@@ -12,7 +12,14 @@ The version is in `package.json`, and the site footer, the MCP `serverInfo.versi
 
 ## [Unreleased]
 
+### Changed
+- **The landing and the footer name no pool provider:** "public DEX pool data", with the methodology linked. The sources are still named where they matter: in the methodology, the passport reference and each answer's `sources`.
+
+### Added
+- **The terminal waits with a cursor:** a quiet blinking block at the start of an empty, unfocused input line, so it reads as a real prompt; focus brings the browser's own caret. It does not blink under reduced motion.
+
 ### Security
+- **From an external audit of the MCP server (12.11), three small items:** `/mcp` answers a body that is not `application/json` with 415 (a page on another site can send text/plain or a form without a preflight); nginx names no version on its own error pages (`server_tokens off`); `/.well-known/security.txt` (RFC 9116) names hello@proofofstock.xyz, GitHub's private reporting and SECURITY.md, and expires a year after each answer.
 - **`since` must be a whole ISO time** (MCP `recent_impostors`, `/api/history/cases`). `Date.parse` accepts `2026-11-09 (any text)`, and the MCP lead, the sentence an agent is told to quote, repeated `since` as given: a caller's text could ride on a valid date into our own words. Anything after the time is now `-32602` (HTTP: 400). From a GLM audit of the MCP servers, 12.11.
 
 ### Fixed

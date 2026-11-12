@@ -49,7 +49,7 @@ import { buildPassport, DEFAULT_WINDOW_H, PUBLIC_WINDOW_H } from '../evm/core/st
 import { usEquitySession } from '../evm/core/stocks/market-session.mjs'
 import { createWindowCache, readingsOf, seriesPoints } from '../evm/core/stocks/readings-window.mjs'
 import { metaFor, injectMeta, withHead, headOf } from '../evm/core/stocks/page-meta.mjs'
-import { robotsTxt, sitemapXml, sitemapUrls, docUrl, homeJsonLd, docJsonLd, pageJsonLd } from './stocks-seo.mjs'
+import { robotsTxt, securityTxt, sitemapXml, sitemapUrls, docUrl, homeJsonLd, docJsonLd, pageJsonLd } from './stocks-seo.mjs'
 import { createMcpHttp, SUPPORTED_VERSIONS } from './stocks-mcp-http.mjs'
 import { verifyToken, badgeSvg, badgeState } from '../evm/core/stocks/verify.mjs'
 import { createDocsRenderer } from './stocks-docs.mjs'
@@ -512,6 +512,9 @@ export function createStocksWeb ({
     }
     if (req.method !== 'POST') return send(res, 405, { error: 'POST one JSON-RPC message; this server offers no SSE stream' }, undefined, { ...MCP_HEADERS, allow: 'POST, OPTIONS' })
     if (limited(clientIp(req))) return send(res, 429, { jsonrpc: '2.0', id: null, error: { code: -32000, message: 'too many requests, try again in a minute' } }, undefined, { ...MCP_HEADERS, 'retry-after': '60' })
+    // A JSON-RPC message is JSON. Anything else is 415 (external audit, 12.11): text/plain and form bodies are what a
+    // browser can send from another site without asking first.
+    if (!/^application\/json\s*(;|$)/i.test(String(req.headers['content-type'] || ''))) return send(res, 415, { jsonrpc: '2.0', id: null, error: { code: -32600, message: 'Content-Type must be application/json' } }, undefined, MCP_HEADERS)
     // Streamable HTTP: a client names the protocol version it negotiated; one this server does not speak is a 400.
     const pv = req.headers['mcp-protocol-version']
     if (pv && !SUPPORTED_VERSIONS.includes(String(pv))) return send(res, 400, { jsonrpc: '2.0', id: null, error: { code: -32600, message: `unsupported MCP-Protocol-Version ${String(pv).slice(0, 40)}; this server speaks ${SUPPORTED_VERSIONS.join(', ')}` } }, undefined, MCP_HEADERS)
@@ -547,6 +550,7 @@ export function createStocksWeb ({
     // The old address of the changelog: it is a docs page now.
     if (sub === '/CHANGELOG.md') { res.writeHead(301, { location: publicPath + '/docs/changelog.md', 'cache-control': 'public, max-age=3600' }); return res.end() }
     if (sub === '/robots.txt') return send(res, 200, robots, 'text/plain; charset=utf-8', { 'cache-control': 'public, max-age=3600' })
+    if (sub === '/.well-known/security.txt') return send(res, 200, securityTxt(site, sourceUrl, now()), 'text/plain; charset=utf-8', { 'cache-control': 'public, max-age=3600' })
     // The listed tokens come from the registries in memory, so the sitemap follows a listing within PAGE_CACHE_MS.
     if (sub === '/sitemap.xml') {
       const build = () => sitemapXml(sitemapUrls({ site, docs: docs.keys(), released: releasedIso, symbols: Object.fromEntries(Object.keys(CHAINS).map((c) => [c, (registries.get(c)?.records || []).map((r) => r.symbol).filter(Boolean)])) }))
