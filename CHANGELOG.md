@@ -12,24 +12,13 @@ The version is in `package.json`, and the site footer, the MCP `serverInfo.versi
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-11-11
+
 ### Added
+- **The source is public:** https://github.com/proofofstock/proof-of-stock. The site footer and the docs link to it.
 - **The footer links the project on X (@proofofstock) and on Telegram (t.me/proofofstock1)**, with icons drawn in the site's own line style; the organisation's JSON-LD names the same profiles as `sameAs`.
 - **The visit counter sees what people do, as kinds of action:** which button under the headline, what kind of search (ticker, name, ISIN, address) and whether it found anything, typed commands, which question opened, which sections were scrolled into view, what was copied, which kind of outside link was followed, the chain switch. A fixed list of kinds and values; never the text typed, no recording, no third party (docs/legal.md). The daily report has a line per kind.
-
-### Security
-- **Both CIs name every GitHub Action by its commit** (`actions/checkout` and `actions/setup-node` v4.4.0), not by a tag that can be moved; a test keeps it so.
-
-### Changed
-- **robots.txt names the search and AI crawlers** of OpenAI, Anthropic, Google, Perplexity, Meta, Apple, Amazon, Mistral, Microsoft, Common Crawl, DuckDuckGo and Cohere, with the same rules as every other crawler: the pages, docs and llms.txt open, the JSON API and /mcp out.
-
-### Added
 - **Questions on the landing** (`#faq`): six questions a visitor or an agent developer doubts before trusting it (listed is not a price verdict, not listed is not proof of a fake, where the data comes from, how old an answer can be and what happens when a source is down, whether an agent is safe, cost), in words that stay true as issuers are added; the same text as FAQPage JSON-LD. The hero names no single issuer in its sentence.
-
-### Security
-- **A token's own symbol and name are treated as a stranger's text.** For a token outside the issuer registry they are published as one-line labels (invisible and control characters removed, cut to 32 and 64 characters), never put into a sentence the service says (the MCP lead of `recent_impostors`, an impostor page's title and link preview), and every answer that carries them says so in `untrusted_text`. The MCP server's instructions say the same. An agent reading our answers could otherwise be handed instructions through a token's name.
-- **The impostor rule compares normalized text:** an invisible character or a full-width letter in a symbol was a way past the exact comparison. Rule version `impostor-strong-v2`.
-
-### Added
 - **Search engines, AI crawlers and link previews** (from an 11.11 audit of the live site: no robots rules, no sitemap, no canonical link, a text-only preview on `/` and none elsewhere, no structured data):
   - `/robots.txt` allows every page and keeps `/api/`, `/verify` and `/mcp` out; it names `/sitemap.xml`, which lists the home, the docs, `/status`, `/history` and one short link per issuer-listed token (`/?base=NVDAc`), from the registries in memory.
   - Every page names its canonical link (the docs home is `/docs/`; a token is its short link), and a markdown docs page points at its HTML one with a `Link` header. JSON answers carry `X-Robots-Tag: noindex`, and so does the empty passport of an address that is neither listed nor a listed impostor.
@@ -39,10 +28,17 @@ The version is in `package.json`, and the site footer, the MCP `serverInfo.versi
   - **The site is named Proof of Stock** in every `<title>`, link preview, the JSON-LD and `/llms.txt` (was Stock Token Passport); a token's page keeps its ticker and chain first (`NVDAc (NVIDIA) on Base: … · Proof of Stock`).
 
 ### Changed
+- **A new site icon** (the owner's): a blue disc cut by a notched band. It is the favicon on every page, the touch icon and the organisation's logo (512 px), the brand mark in the footer and the docs bar, and the mark on the link preview.
+- **robots.txt names the search and AI crawlers** of OpenAI, Anthropic, Google, Perplexity, Meta, Apple, Amazon, Mistral, Microsoft, Common Crawl, DuckDuckGo and Cohere, with the same rules as every other crawler: the pages, docs and llms.txt open, the JSON API and /mcp out.
 - **The name is Proof of Stock** on every page, in MCP (`serverInfo.name: proof-of-stock`) and in `server.json`; the guard is `@proofofstock/guard` (not published yet). The rights line says the code is MIT.
 - **The first screen says what the site is:** "Is this stock token the real one?", one sentence on what it checks, and chips "biggest gaps now" and "known fakes". A passport opens with the verdict in words and when the issuer list was read; "reference" is "issuer price" and "difference" is "on-chain vs issuer", with what + means and the reading's age. The greeting says how many listed tokens have prices. The colour legend matches the colours (green above the issuer, red below). Errors are sentences (no connection, too many checks). A section says what the service cannot do: it only reads.
 - **Accessibility:** faint text at 4.7:1 contrast, the headline is the page's h1, the chain switch is toggle buttons, the typed greeting is announced once.
 - **The changelog is a docs page:** `/docs/changelog.md`, in the docs menu under Releases; the footer version links there and `/CHANGELOG.md` redirects to it.
+
+### Security
+- **Both CIs name every GitHub Action by its commit** (`actions/checkout` and `actions/setup-node` v4.4.0), not by a tag that can be moved; a test keeps it so.
+- **A token's own symbol and name are treated as a stranger's text.** For a token outside the issuer registry they are published as one-line labels (invisible and control characters removed, cut to 32 and 64 characters), never put into a sentence the service says (the MCP lead of `recent_impostors`, an impostor page's title and link preview), and every answer that carries them says so in `untrusted_text`. The MCP server's instructions say the same. An agent reading our answers could otherwise be handed instructions through a token's name.
+- **The impostor rule compares normalized text:** an invisible character or a full-width letter in a symbol was a way past the exact comparison. Rule version `impostor-strong-v2`.
 
 ### Fixed
 - **The same share on the other chain shows no price older than the passport's window**, like the passport's own `latest` (it could show one up to 72 h old).

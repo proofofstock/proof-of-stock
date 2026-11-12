@@ -3,7 +3,7 @@
   "name": "io.github.proofofstock/proof-of-stock",
   "title": "Proof of Stock",
   "description": "Check a tokenized stock on Base or Robinhood Chain: issuer registry, reference price and its age, DEX premium.",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "repository": { "url": "https://github.com/proofofstock/proof-of-stock", "source": "github" },
   "websiteUrl": "https://proofofstock.xyz/docs/",
   "remotes": [

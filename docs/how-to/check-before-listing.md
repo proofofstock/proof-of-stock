@@ -1,4 +1,4 @@
-v0.4.0 · updated 2026-11-11
+v0.5.0 · updated 2026-11-11
 
 # Check a contract before listing or buying it
 

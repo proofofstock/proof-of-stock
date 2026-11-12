@@ -30,7 +30,7 @@ body.dx a { text-decoration: none; }
 .dx-bar { position: sticky; top: 0; z-index: 20; display: grid; grid-template-columns: 260px minmax(0, 1fr) auto auto; align-items: center; gap: 20px;
   height: 60px; padding: 0 24px; background: color-mix(in srgb, #08090c 86%, transparent); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border-bottom: 1px solid var(--hair); }
 .dx-brand { display: inline-flex; align-items: center; gap: 10px; color: var(--text); font: 600 15px/1 var(--sans); white-space: nowrap; }
-.dx-logo { width: 26px; height: 26px; border-radius: 7px; display: grid; place-items: center; background: var(--accent); color: #fff; font-size: 13px; box-shadow: 0 4px 18px rgba(0, 82, 255, .35); }
+.dx-logo { width: 26px; height: 26px; border-radius: 7px; display: block; background: #070C18 url("favicon.svg") center / cover no-repeat; box-shadow: 0 4px 18px rgba(0, 82, 255, .35); }
 .dx-docs { color: var(--faint); font-weight: 500; }
 .dx-search { position: relative; justify-self: center; width: min(440px, 100%); display: flex; align-items: center; gap: 10px; height: 38px; padding: 0 10px 0 12px;
   background: var(--panel); border: 1px solid var(--hair); border-radius: 10px; color: var(--faint); cursor: text; transition: border-color .15s; }

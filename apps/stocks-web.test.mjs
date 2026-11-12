@@ -527,6 +527,17 @@ console.log('search engines, AI crawlers and link previews')
   const og = await png('/stocks/og.png'), logo = await png('/stocks/logo.png')
   check('/og.png is a 1200×630 PNG and /logo.png a 512×512 one', og.type === 'image/png' && og.sig === 'PNG' && og.w === 1200 && og.h === 630 && logo.sig === 'PNG' && logo.w === 512 && logo.h === 512, JSON.stringify({ og, logo }))
   check('/favicon.ico answers an image instead of a JSON 404', (await g('/stocks/favicon.ico')).status === 200 && /^image\//.test((await g('/stocks/favicon.svg')).headers.get('content-type')))
+  {
+    // The site's icon (owner, 11.11): the blue disc with the notched band. Every kind of page carries the same one inline,
+    // /favicon.svg is that file, and the PNG (touch icon, /favicon.ico, the organisation's logo) is its 512 px raster.
+    const icon = (await (await g('/stocks/favicon.svg')).text())
+    const iconOf = (html) => (html.match(/<link rel="icon" type="image\/svg\+xml" href="data:image\/svg\+xml,([^"]+)">/) || [])[1]
+    const pages = await Promise.all(['/stocks/', '/stocks/docs/', '/stocks/history', '/stocks/status'].map(async (u) => iconOf(await (await g(u, { accept: 'text/html' })).text())))
+    check('the icon is the owner\'s: a #4B87FF disc and a #070C18 notched band', /fill="#4B87FF"/.test(icon) && /M0 8h6V6h4v2h6v1H9V7H7v2H0z/.test(icon))
+    check('...and every kind of page carries that same icon', pages.every((p) => p && p === pages[0]) && decodeURIComponent(pages[0]).includes('M0 8h6V6h4v2h6v1H9V7H7v2H0z') && !pages.some((p) => p.includes('0052ff')), JSON.stringify(pages.map((p) => (p || 'none').slice(0, 30))))
+    const png = Buffer.from(await (await g('/stocks/logo.png')).arrayBuffer())
+    check('...and its PNG is 512 px', png.readUInt32BE(16) === 512 && png.readUInt32BE(20) === 512)
+  }
 
   const llms = await (await g('/stocks/llms.txt')).text()
   check('llms.txt starts an agent at the MCP server, the HTTP API, the guard and the full text', /## Start here\n\n- \[MCP server\]\(https:\/\/proofofstock\.xyz\/mcp\)/.test(llms) && /\[HTTP API\]\(https:\/\/proofofstock\.xyz\/docs\/reference\/http-api\.md\)/.test(llms) && /@proofofstock\/guard/.test(llms) && /\[Every page in one file\]\(https:\/\/proofofstock\.xyz\/llms-full\.txt\)/.test(llms) && /hello@proofofstock\.xyz/.test(llms))

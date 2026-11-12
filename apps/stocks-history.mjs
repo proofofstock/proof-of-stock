@@ -131,6 +131,7 @@ export function historyPage ({ store, chains, now, version, assets }) {
   <title>History · Proof of Stock</title>
   <meta name="description" content="What each issuer listed and which contracts imitated their stock tokens, dated, append-only.">
   <meta name="theme-color" content="#08090c">
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' fill='%23070C18'%3E%3C/rect%3E%3Ccircle cx='8' cy='8' r='7' fill='%234B87FF'%3E%3C/circle%3E%3Cpath d='M0 8h6V6h4v2h6v1H9V7H7v2H0z' fill='%23070C18'%3E%3C/path%3E%3C/svg%3E">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Martian+Mono:wght@300;400;600&amp;family=Onest:wght@400;500;600;700&amp;display=swap">
@@ -140,7 +141,7 @@ export function historyPage ({ store, chains, now, version, assets }) {
 </head>
 <body class="dx">
   <header class="dx-bar">
-    <a class="dx-brand" href="./"><span class="dx-logo" aria-hidden="true"><span class="i i-chev"></span></span><span>Proof of Stock</span><span class="dx-docs">History</span></a>
+    <a class="dx-brand" href="./"><span class="dx-logo" aria-hidden="true"></span><span>Proof of Stock</span><span class="dx-docs">History</span></a>
     <span></span>
     <nav class="dx-links"><a href="./"><span class="ic ic-terminal" aria-hidden="true"></span>Terminal</a><a href="status"><span class="ic ic-pulse" aria-hidden="true"></span>Status</a><a href="docs/"><span class="ic ic-doc" aria-hidden="true"></span>Docs</a></nav>
     <a class="dx-cta" href="docs/tutorials/connect-an-agent.md"><span aria-hidden="true">+</span> Connect an agent</a>

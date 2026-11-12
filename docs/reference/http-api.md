@@ -1,6 +1,6 @@
 # HTTP API
 
-`v0.4.0 · updated 2026-11-11`
+`v0.5.0 · updated 2026-11-11`
 
 Read-only JSON routes on `https://proofofstock.xyz`. No key, no account, no cookies. (`GET /api/hit` is the site's
 own visit counter, [What we count](../legal.md#what-we-count); it answers 204 and is not for integrations.)

@@ -1,6 +1,6 @@
 # The passport answer
 
-`v0.4.0 · updated 2026-11-11`
+`v0.5.0 · updated 2026-11-11`
 
 The passport is the answer to "what can be said, with its time and source, about this one token?". It is the body of
 [`GET /api/passport`](./http-api.md#route-passport) and of the MCP tool [`stock_passport`](./tools.md#tool-stock_passport).

@@ -1,6 +1,6 @@
 # MCP tools
 
-`v0.4.0 · updated 2026-11-11`
+`v0.5.0 · updated 2026-11-11`
 
 Six read-only tools on a public MCP server. None of them trades, signs or holds a key.
 
@@ -46,7 +46,7 @@ curl -s https://proofofstock.xyz/mcp -H 'content-type: application/json' \
   "result": {
     "protocolVersion": "2025-06-18",
     "capabilities": { "tools": { "listChanged": false } },
-    "serverInfo": { "name": "proof-of-stock", "title": "Proof of Stock", "version": "0.4.0", "websiteUrl": "https://proofofstock.xyz" },
+    "serverInfo": { "name": "proof-of-stock", "title": "Proof of Stock", "version": "0.5.0", "websiteUrl": "https://proofofstock.xyz" },
     "instructions": "Checks tokenized stocks on Base (Coinbase registry) and Robinhood Chain (Robinhood registry): …"
   }
 }

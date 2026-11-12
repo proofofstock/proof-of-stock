@@ -14,7 +14,7 @@
   .glow.b { width: 520px; height: 380px; right: -140px; bottom: -200px; background: #0052ff40; }
   .wrap { position: absolute; inset: 56px 64px; display: flex; flex-direction: column; }
   .brand { display: flex; align-items: center; gap: 16px; font: 600 22px 'Martian Mono', monospace; letter-spacing: .02em; }
-  .logo { width: 44px; height: 44px; border-radius: 10px; background: #0052ff; display: grid; place-items: center; }
+  .logo { width: 44px; height: 44px; border-radius: 10px; overflow: hidden; display: block; }
   .kicker { margin-left: auto; font: 400 16px 'Martian Mono', monospace; color: #8b94a8; }
   h1 { margin: 44px 0 0; font: 700 68px/1.05 'Onest', sans-serif; letter-spacing: -.02em; }
   h1 em { font-style: normal; color: #4d8bff; }
@@ -29,7 +29,7 @@
   <div class="grid"></div><div class="glow a"></div><div class="glow b"></div>
   <div class="wrap">
     <div class="brand">
-      <span class="logo"><svg width="28" height="28" viewBox="0 0 32 32"><path d="M8 11l6 5-6 5" stroke="#fff" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/><path d="M16 22h8" stroke="#fff" stroke-width="3" stroke-linecap="round"/></svg></span>
+      <span class="logo"><svg width="44" height="44" viewBox="0 0 16 16"><rect width="16" height="16" fill="#070C18"/><circle cx="8" cy="8" r="7" fill="#4B87FF"/><path d="M0 8h6V6h4v2h6v1H9V7H7v2H0z" fill="#070C18"/></svg></span>
       Proof of Stock
       <span class="kicker">Base · Robinhood Chain</span>
     </div>

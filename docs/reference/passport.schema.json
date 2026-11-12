@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://proofofstock.xyz/docs/reference/passport.schema.json",
   "title": "Proof of Stock passport answer (GET /api/passport)",
-  "description": "v0.4.0. The body of a 200 answer from GET /api/passport, built by evm/core/stocks/passport.mjs buildPassport and extended by apps/stocks-web.mjs passportOf. Two shapes, told apart by in_registry. Premium and spread are fractions (0.0025 = 0.25%). Prices are USD per token. The MCP tool stock_passport returns the same object in structuredContent, plus `summary`, and without `series_points` unless include_series is true. Held equal to the code by docs/reference/passport-schema.test.mjs.",
+  "description": "v0.5.0. The body of a 200 answer from GET /api/passport, built by evm/core/stocks/passport.mjs buildPassport and extended by apps/stocks-web.mjs passportOf. Two shapes, told apart by in_registry. Premium and spread are fractions (0.0025 = 0.25%). Prices are USD per token. The MCP tool stock_passport returns the same object in structuredContent, plus `summary`, and without `series_points` unless include_series is true. Held equal to the code by docs/reference/passport-schema.test.mjs.",
   "oneOf": [
     { "$ref": "#/definitions/in_registry" },
     { "$ref": "#/definitions/not_in_registry" }
