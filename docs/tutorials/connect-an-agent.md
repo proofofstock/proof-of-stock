@@ -168,7 +168,7 @@ reference, with the age of each number. Next:
 - [Compare one stock across Base and Robinhood Chain](../how-to/compare-venues.md)
 - [Why the numbers are computed the way they are](../explanation/methodology.md)
 
-The server allows 60 units per minute per client address (an IPv6 client by its /56), shared with the HTTP API: most
+The server allows 60 units in any 60 seconds per client address (an IPv6 client by its /56), shared with the HTTP API: most
 calls cost 1, `stock_passport` 3, `verify_stock_tokens` ⌈n/10⌉ for n addresses. Over that it answers 429 with
 `Retry-After: 60`.
 

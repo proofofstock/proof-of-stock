@@ -1,0 +1,28 @@
+{
+  "_finding": "No evidence, no claim (spec 1.1, 12.11): a listed verdict must carry the list it was decided against, and nothing may say a Robinhood token is minted, because Robinhood reports no supply. Each mutation removes one piece of evidence or restores the old assertion; the contract check must notice.",
+  "target": "apps/stocks-web.mjs",
+  "runner": [
+    "node",
+    "apps/stocks-web.test.mjs"
+  ],
+  "mutations": [
+    {
+      "name": "the passport drops its list_proof",
+      "find": "list_proof: proofOf(chain, reg), same_stock_elsewhere: elsewhere,",
+      "replace": "list_proof: null, same_stock_elsewhere: elsewhere,",
+      "expect": "FAIL evidence rule: no answer states listed or minted without the field that backs it"
+    },
+    {
+      "name": "the list says every token is minted again",
+      "find": "minted: mintedOf(r) }))",
+      "replace": "minted: r.supplied !== false }))",
+      "expect": "FAIL evidence rule: no answer states listed or minted without the field that backs it"
+    },
+    {
+      "name": "the list counts minted tokens whatever the issuer reports",
+      "find": "minted: tokens.some((t) => t.minted == null) ? null : tokens.filter((t) => t.minted).length,",
+      "replace": "minted: tokens.filter((t) => t.minted).length,",
+      "expect": "FAIL evidence rule: no answer states listed or minted without the field that backs it"
+    }
+  ]
+}

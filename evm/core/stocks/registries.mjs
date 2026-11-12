@@ -32,6 +32,13 @@ async function getJson (fetchImpl, url) {
   return r.json()
 }
 
+/**
+ * Whether a listed token is minted on its chain, as far as the issuer SAYS: true or false from Coinbase's total_supply,
+ * null for Robinhood, whose API reports no supply (its records carry supplied: true only so the recorder reads them;
+ * canonicalRegistry keeps that field, so registry_hash does not move). The one place this is decided.
+ */
+export const mintedOf = (r) => (!r ? null : r.issuer === 'robinhood' || r.supply_known === false ? null : r.supplied !== false)
+
 /** Coinbase tokenized stocks (on Base). Throws unless every page was read. */
 export async function readCoinbase (fetchImpl = fetch, { chainId } = {}) {
   if (!Number.isInteger(chainId)) throw new Error('coinbase: chainId is required')
@@ -87,7 +94,8 @@ export async function readRobinhood (fetchImpl = fetch, { chainId } = {}) {
     out.push({
       issuer: 'robinhood', chain_id: chainId, address, symbol: str(a.tokenSymbol), name: str(a.tokenName), isin: str(a.isin),
       multiplier: num(a.currentMultiplier), multiplier_pending: num(a.pendingMultiplier),
-      supplied: true,
+      // Not read: Robinhood reports no supply. true keeps the recorder reading the token; supply_known says it means nothing.
+      supplied: true, supply_known: false,
       paused: a.status && a.status !== 'ASSET_STATUS_ACTIVE' ? [String(a.status)] : [],
       reference: {
         kind: 'token_bid_ask_mid',

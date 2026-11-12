@@ -28,6 +28,7 @@ curl -s 'https://proofofstock.xyz/verify?chain=base&address=0xaaaaaaaaaaaaaaaaaa
 - [`GET /api/overview`](#route-overview)
 - [`GET /api/impostors`](#route-impostors)
 - [`GET /api/history/cases` and `/api/history/registry`](#route-history)
+- [`GET /api/list/<hex>`](#route-list)
 - [`GET /api/matrix`](#route-matrix)
 - [`GET /api/status`](#route-status)
 - [Monitoring](#monitoring)
@@ -39,7 +40,7 @@ curl -s 'https://proofofstock.xyz/verify?chain=base&address=0xaaaaaaaaaaaaaaaaaa
 |---|---|
 | Base URL | `https://proofofstock.xyz`. The proxy maps the domain's `/` onto the app's `/stocks/`, so `/api/find` here is `/stocks/api/find` in the app |
 | Methods | `GET` and `HEAD`. Any other method is refused by the proxy (403) |
-| Rate limit | 60 requests per minute per client IP (IPv6: per /56) across `/verify`, `/api/*` and `/mcp` together. Over it: 429, `{ "error": "too many requests, try again in a minute" }`, `Retry-After: 60`. The proxy also caps 10 requests per second (burst 40) and 20 open connections per IP |
+| Rate limit | 60 units in any 60 seconds per client IP (IPv6: per /56) across `/verify`, `/api/*` and `/mcp` together. A request costs 1 unit; `/api/passport` costs 3. The window slides by the second, so it is the same wherever a minute begins, and a refused request costs nothing. Over it: 429, `{ "error": "too many requests, try again in a minute" }`, `Retry-After: 60`. The proxy also caps 10 requests per second (burst 40) and 20 open connections per IP |
 | Not rate limited by the app | `/badge.svg`, the page and its assets |
 | Errors | JSON `{ "error": "<words>" }`. 400 bad input, 404 unknown path (`{ "error": "not found" }`), 503 a registry not loaded yet, 500 `{ "error": "internal error" }`. Error texts are fixed public sentences; internal causes are never returned |
 | Freshness | Every answer comes from memory. The server rereads the issuer registries and the readings every 300 s; nothing on the request path calls out |
@@ -150,7 +151,7 @@ curl -s 'https://proofofstock.xyz/api/find?q=nvda'
     { "chain": "base", "issuer": "coinbase", "symbol": "NVDAc", "name": "NVIDIA", "address": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
       "isin": "US67066G1040", "match_quality": "exact", "has_reference_price": true, "minted": true },
     { "chain": "robinhood", "issuer": "robinhood", "symbol": "NVDA", "name": "NVIDIA  Robinhood Token", "address": "0xcccccccccccccccccccccccccccccccccccccccc",
-      "isin": "US67066G1040", "match_quality": "exact", "has_reference_price": true, "minted": true }
+      "isin": "US67066G1040", "match_quality": "exact", "has_reference_price": true, "minted": null }
   ],
   "more": 0,
   "missing": []
@@ -189,7 +190,7 @@ curl -s 'https://proofofstock.xyz/api/passport?chain=base&address=0xaaaaaaaaaaaa
 | `address` | yes | `0x` + 40 hex |
 | `hours` | no | window of `series`, `series_points` and `premium_at_reference_time`. Clamped to 1..24; missing, 0 or not a number means 24. Unlike the MCP tool, out-of-range values are clamped, not refused |
 
-`series_points` (the chart) is included only with `series=1`. A passport costs 3 units of the per-minute limit, so 20 passports a minute per client.
+`series_points` (the chart) is included only with `series=1`. A passport costs 3 units of the limit, so 20 passports in any 60 seconds per client.
 
 | Status | Body | Headers |
 |---|---|---|
@@ -302,6 +303,32 @@ A chain with no list yet answers `{ "error": "not generated yet" }` in its slot,
 `Cache-Control: public, max-age=300`. 400 for an unknown `chain`.
 
 ---
+
+<a id="route-list"></a>
+## `GET /api/list/<hex>`
+
+An issuer list by its hash: the list a verdict was decided against (`list_proof.list_url`), still there after the issuer
+has changed its list. `<hex>` is `registry_hash` without `sha256:`.
+
+```bash
+curl -fsS https://proofofstock.xyz/api/list/<hex> | sha256sum                 # prints <hex>
+curl -fsS https://proofofstock.xyz/api/list/<hex>/addresses | sha256sum       # prints addresses_sha256
+```
+
+| Path | Body |
+|---|---|
+| `/api/list/<hex>` | the exact bytes `registry_hash` names: JSON of the canonical list (address, symbol, name, ISIN, multiplier, multiplier_pending, supplied, paused), sorted by address |
+| `/api/list/<hex>/addresses` | `text/plain`, the addresses, lowercase, sorted, one per line |
+
+It serves the lists this server read lately and every list in the archive (`/api/history/registry`). Before an answer
+leaves, the server hashes it again; bytes that do not hash to their name are never served.
+
+| Status | Body | Headers |
+|---|---|---|
+| 200 | the list | `Cache-Control: public, max-age=31536000, immutable`, CORS |
+| 404 | `no list with this hash: neither read recently nor in the archive` | `max-age=60` |
+| 429 | over the rate limit (1 unit, like any API read) | `Retry-After: 60` |
+| 500 | `internal error`: a stored list did not hash to its name | `no-store` |
 
 <a id="route-history"></a>
 ## `GET /api/history/cases` and `GET /api/history/registry`

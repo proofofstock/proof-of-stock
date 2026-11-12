@@ -47,8 +47,9 @@ export const ACTIONS = Object.freeze({
   tab: /^(base|robinhood|all)$/,
   copy: /^(mcp-url|mcp-cc|mcp-json|address)$/,
   faq: /^q[1-9]$/, // which question was opened, by its place
-  section: /^(checks|why|agents|faq|foot)$/, // scrolled into view, once per page view
+  section: /^(checks|findings|why|agents|faq|foot)$/, // scrolled into view, once per page view
   out: /^(gecko|explorer|github|registry|other)$/, // a link to another site
+  board: /^open$/, // a row of the wall of findings opened its passport
 })
 
 export const uaClass = (ua) => !ua ? 'tool' : BOT_UA.test(ua) ? 'bot' : /mozilla\//i.test(ua) ? 'browser' : 'tool'

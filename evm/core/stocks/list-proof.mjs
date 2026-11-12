@@ -44,6 +44,18 @@ export function recipeFor (issuer, chainId, count, pages = null) {
   return { source: null, reproduce: null, reproduce_unavailable: 'no recipe for this issuer' }
 }
 
+/**
+ * The exact bytes registry_hash names (JSON of the canonical list) and the address lines addresses_sha256 names, for
+ * GET /api/list/<hex>. Returns null unless the bytes hash to the name asked: a server never serves a list under a hash
+ * it does not have.
+ */
+export function listBytes (canonicalBody, hex) {
+  const body = JSON.stringify(canonicalBody)
+  if (crypto.createHash('sha256').update(body).digest('hex') !== hex) return null
+  const addresses = canonicalBody.map((r) => String(r.address).toLowerCase()).sort().map((a) => a + '\n').join('')
+  return { body, addresses }
+}
+
 /** The stamp for one read of one list. Computed once per read, not per answer. */
 export function stampList ({ issuer, chainId, records }) {
   const { source, reproduce, reproduce_unavailable } = recipeFor(issuer, chainId, records.length, records.pages ?? null)
@@ -53,10 +65,12 @@ export function stampList ({ issuer, chainId, records }) {
 // ⚠ SAY ONLY WHAT HOLDS. This server reads the lists every 5 minutes; the archive at `ledger` is written by the price
 //   recorder's own read every 15. The same list has the same registry_hash in both, but a list this server just read may
 //   not be in the archive yet, so the note says "once", never "matches".
-export const PROOF_NOTE = 'Decided against this list as read at read_at. Run `reproduce` to compute addresses_sha256 from the issuer yourself (on macOS use shasum -a 256): equal while the issuer\'s list is unchanged. registry_hash is the canonical hash the archive at `ledger` records for each list the price recorder reads (every 15 minutes), so this list appears there with the same hash once the recorder has read it. stale: true means the latest read failed and this is the last good list.'
+export const PROOF_NOTE = 'Decided against this list as read at read_at. Run `reproduce` to compute addresses_sha256 from the issuer yourself (on macOS use shasum -a 256): equal while the issuer\'s list is unchanged. registry_hash is the canonical hash the archive at `ledger` records for each list the price recorder reads (every 15 minutes), so this list appears there with the same hash once the recorder has read it. stale: true means the latest read failed and this is the last good list. list_url serves the exact list this verdict used, by its hash, after the issuer\'s list has changed too (curl it and sha256sum: the digest is registry_hash); addresses_url serves its addresses, whose digest is addresses_sha256.'
 
 /** The proof an answer carries: the stamp, when the list was read, whether it is the last good one, and the archive. */
-export function listProof (stamp, { readAt, ledgerUrl, stale = false }) {
+export function listProof (stamp, { readAt, ledgerUrl, listBase = null, stale = false }) {
   if (!stamp) return null
-  return { ...stamp, read_at: Number.isFinite(readAt) ? new Date(readAt).toISOString() : null, stale: !!stale, ledger: ledgerUrl, note: PROOF_NOTE }
+  const hex = stamp.registry_hash.slice('sha256:'.length)
+  return { ...stamp, read_at: Number.isFinite(readAt) ? new Date(readAt).toISOString() : null, stale: !!stale, ledger: ledgerUrl,
+    list_url: listBase ? `${listBase}/${hex}` : null, addresses_url: listBase ? `${listBase}/${hex}/addresses` : null, note: PROOF_NOTE }
 }

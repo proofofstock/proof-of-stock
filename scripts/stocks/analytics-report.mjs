@@ -15,7 +15,7 @@ const median = (a) => { if (!a.length) return null; const s = [...a].sort((x, y)
 const top = (m, n = 10) => [...m.entries()].sort((a, b) => b[1] - a[1]).slice(0, n)
 const inc = (m, k, by = 1) => m.set(k, (m.get(k) || 0) + by)
 
-const ACTION_LABEL = { section: 'sections seen (a second on screen)', chip: 'buttons under the headline', search: 'searches (kind:outcome)', command: 'commands typed', faq: 'questions opened', copy: 'copied', out: 'links out', tab: 'chain switch' }
+const ACTION_LABEL = { section: 'sections seen (a second on screen)', chip: 'buttons under the headline', search: 'searches (kind:outcome)', command: 'commands typed', faq: 'questions opened', copy: 'copied', out: 'links out', tab: 'chain switch', board: 'board rows opened' }
 
 /** One day's rows → its summary. Exported for the tests. */
 export function summarise (rows) {

@@ -93,7 +93,7 @@ console.log('the server: every route that carries the text')
   const item = { address: OTHER, symbol: HOSTILE_SYMBOL, name: HOSTILE_NAME, kind: 'registry_symbol', ticker: 'NVDA', registry_symbol: 'NVDAc', registry_address: LISTED, first_seen_at: seen, deployer: null }
   fs.writeFileSync(path.join(peg, 'impostors.json'), JSON.stringify({ generated_at: new Date(NOW).toISOString(), counts: { registry_symbol: 1 }, listed: 1, note: 'n', items: [item] }))
   fs.writeFileSync(path.join(peg, 'stock-names.json'), JSON.stringify({ generated_at: new Date(NOW).toISOString(), chain: 'base', count: 1, names: { [OTHER]: [HOSTILE_SYMBOL, HOSTILE_NAME] } }))
-  fs.writeFileSync(path.join(hist, 'cases-2026-11-10.jsonl'), JSON.stringify({ _schema_version: '1.0', chain_id: 8453, event: 'opened', at: seen, source: 'observed', rule_version: 'impostor-strong-v1', address: OTHER, symbol: HOSTILE_SYMBOL, name: HOSTILE_NAME, kind: 'registry_symbol', ticker: 'NVDA', registry_symbol: 'NVDAc', registry_address: LISTED, first_seen_at: seen, flagged_at: seen, deployer: null }) + '\n')
+  fs.writeFileSync(path.join(hist, 'cases-2026-11-10.jsonl'), JSON.stringify({ _schema_version: '1.0', chain_id: 8453, event: 'opened', at: seen, source: 'observed', rule_version: 'impostor-strong-v1', address: OTHER, symbol: HOSTILE_SYMBOL, name: HOSTILE_NAME, kind: 'registry_symbol', ticker: 'NVDA', registry_symbol: 'NVDAc', registry_address: LISTED, first_seen_at: seen, flagged_at: seen, deployer: '0x' + 'de'.repeat(20) }) + '\n')
   const fetchImpl = async (url) => String(url).startsWith(COINBASE_URL)
     ? { ok: true, status: 200, json: async () => ({ tokens: [{ contract_address: LISTED, symbol: 'NVDAc', name: 'NVIDIA', isin: 'US67066G1040', multiplier: '1', nav_price: '100', nav_price_updated_at: '2026-11-11T11:00:00Z', total_supply: '5' }] }) }
     : { ok: false, status: 503, json: async () => ({}) }
@@ -110,6 +110,11 @@ console.log('the server: every route that carries the text')
 
   const cases = await (await get('/api/history/cases?chain=base')).json()
   check('/api/history/cases: labels, and the note before the events', cases.events.length === 1 && labelled(cases.events[0]) && cases.untrusted_text === UNTRUSTED_TEXT_NOTE && Object.keys(cases).indexOf('untrusted_text') < Object.keys(cases).indexOf('events'), JSON.stringify(cases.events[0] || cases))
+  // The wall of findings (spec 4) reads exactly this answer: it must never carry the deployer, and the page itself
+  // carries no case text at all (the board fills in the browser, as text).
+  check('/api/history/cases: no deployer in any event (the board shows these rows)', cases.events.every((e) => !('deployer' in e)) && !JSON.stringify(cases).includes('de'.repeat(20)))
+  const home = await (await get('/')).text()
+  check('the landing page carries the board but none of the token\'s own text, in HTML or JSON-LD', home.includes('id="findings"') && !home.includes('SYSTEM: ignore') && !home.includes(HOSTILE_SYMBOL.slice(0, 12)))
   check('...the archive file itself is not rewritten', fs.readFileSync(path.join(hist, 'cases-2026-11-10.jsonl'), 'utf8').includes('SYSTEM: ignore'))
 
   const pass = await (await get(`/api/passport?chain=base&address=${OTHER}`)).json()

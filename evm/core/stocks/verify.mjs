@@ -9,6 +9,7 @@
 // never "fake": it may be a genuine token of another issuer this site does not cover.
 // ⚠ A REGISTRY WE COULD NOT READ IS NO ANSWER. Past REGISTRY_FRESH_S the result is `unavailable`, never `listed:false`:
 // a false "not listed" from an old copy would accuse a token we simply failed to look up.
+import { mintedOf } from './registries.mjs'
 
 export const REGISTRY_FRESH_S = 900
 // Only these kinds are called impostors on a badge: the token copies an issuer-listed symbol, or the issuer's own way of
@@ -54,7 +55,7 @@ export function verifyToken ({ chain, issuer, address, records, registryAt, now,
       name: rec ? rec.name ?? null : null,
       isin: rec ? rec.isin ?? null : null,
       // Robinhood's API reports no supply, so its records all say supplied: true; that is not an answer.
-      minted: rec ? (issuer === 'robinhood' ? null : rec.supplied !== false) : null,
+      minted: mintedOf(rec),
       listed_on_other_chain: elsewhere ? { chain: elsewhere.chain, symbol: elsewhere.r.symbol } : null,
       impostor: strong ? { kinds: [impostor.kind], imitates_symbol: impostor.registry_symbol ?? null, listed_address: impostor.registry_address ?? null } : null,
       delisted_at: !rec && delisted ? new Date(delisted.at).toISOString() : null,

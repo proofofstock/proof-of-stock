@@ -191,7 +191,7 @@ export function createMcpHttp (data) {
       if (name === 'list_stock_tokens') {
         const r = data.list(args.chain)
         const tok = (k) => `${k} token${k === 1 ? '' : 's'}`
-        return text(r, `The ${ISSUER_NAME[r.issuer] || r.issuer} registry on ${CHAIN_NAME[args.chain]} lists ${tok(r.count)} (count: ${r.count}). Of them, ${r.minted} ${r.minted === 1 ? 'is' : 'are'} minted on this chain and ${r.with_reference_price} ${r.with_reference_price === 1 ? 'has' : 'have'} an issuer reference price. All ${r.count} follow as JSON. Tokens that only imitate these are a separate list, not part of this count.`)
+        return text(r, `The ${ISSUER_NAME[r.issuer] || r.issuer} registry on ${CHAIN_NAME[args.chain]} lists ${tok(r.count)} (count: ${r.count}). Of them, ${r.minted == null ? 'the issuer reports no supply, so how many are minted is not known, and' : `${r.minted} ${r.minted === 1 ? 'is' : 'are'} minted on this chain and`} ${r.with_reference_price} ${r.with_reference_price === 1 ? 'has' : 'have'} an issuer reference price. All ${r.count} follow as JSON. Tokens that only imitate these are a separate list, not part of this count.`)
       }
       const address = String(args.address || '')
       if (!/^0x[0-9a-fA-F]{40}$/.test(address)) return fail('address must be 0x followed by 40 hex characters')

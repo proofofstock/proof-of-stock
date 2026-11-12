@@ -517,6 +517,8 @@ the set of addresses, so that is what is hashed.
 | `read_at` | string | when this server read the list |
 | `stale` | boolean | `true`: the latest read failed and this is the last good list |
 | `ledger` | string (URL) | `/api/history/registry?chain=…`: every change of the list, each row naming the hash before it (`prev_hash`) |
+| `list_url` | string (URL) | [`/api/list/<hex>`](./http-api.md#route-list): the exact list this verdict used, by its `registry_hash`. Its SHA-256 is `registry_hash` |
+| `addresses_url` | string (URL) | `/api/list/<hex>/addresses`: its addresses, one per line. Their SHA-256 is `addresses_sha256` |
 | `note` | string | the same in words |
 
 To check a verdict, run `reproduce` (it needs `curl`, `jq` and `sha256sum`; on macOS use `shasum -a 256`):
@@ -527,6 +529,8 @@ curl -fsS 'https://api.coinbase.com/v1/tokenized-stocks?page_size=500' | jq -r '
 ```
 
 The digest equals `addresses_sha256` while the issuer's list is unchanged; then look for the address in the same list.
+After the list has changed, `list_url` still serves the exact list the verdict used: `curl -fsS <list_url> | sha256sum`
+prints `registry_hash`, and `curl -fsS <addresses_url> | grep <address>` shows whether the address was on it.
 A different digest means the issuer has added or removed a token since `read_at`, and the archive at `ledger` shows what
 changed. `registry_hash` moves also when a token's name, multiplier or pause changes while `addresses_sha256` does not. Robinhood's
 API reports no supply, so for Robinhood `supplied` is always `true` in that hash and says nothing.

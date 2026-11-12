@@ -92,6 +92,18 @@ console.log('the page')
   check('the root and the old unprefixed API are not served', (await get('/')).status === 404 && (await get('/api/status')).status === 404)
   check('the page uses relative URLs, so it works under its prefix', !/(src|href)="\/(?!\/)/.test(await (await get('/stocks/')).text()) && !/api\(['`]\//.test(fs.readFileSync(new URL('./stocks-web/app.js', import.meta.url), 'utf8')))
   check('the page script never writes HTML from data', !/innerHTML|outerHTML|insertAdjacentHTML|document\.write/.test(fs.readFileSync(new URL('./stocks-web/app.js', import.meta.url), 'utf8')))
+  {
+    // The terminal's status bar (owner, 12.11: it wrapped and "clear screen" fell onto its own line). The keys are one
+    // group of the same chips, the clear key still clears, and each part is whole: no wrap inside a chain or a key.
+    const bar = (html.match(/<footer class="statusbar">[\s\S]*?<\/footer>/) || [''])[0]
+    const keys = [...bar.matchAll(/class="key"[^>]*><kbd>([^<]+)<\/kbd> (\w+)<\/(span|button)>/g)].map((m) => m[1] + ' ' + m[2])
+    check('the status bar: the status, then one group of three keys, each a chip with its label', /<span id="status" class="status">/.test(bar) && JSON.stringify(keys) === JSON.stringify(['↑↓ history', 'help commands', 'clear screen']) && !/linkish/.test(bar), JSON.stringify(keys))
+    check('...the clear key is a button that clears the screen, like the red window dot', /<button type="button" class="key" data-win="clear">/.test(bar))
+    const css = fs.readFileSync(new URL('./stocks-web/style.css', import.meta.url), 'utf8')
+    check('...each chain and the key group stay whole, and the bar wraps whole parts', /\.status \.seg \{[^}]*white-space: nowrap/.test(css) && /\.statusbar \.hint \{[^}]*white-space: nowrap/.test(css) && /\.statusbar \{[^}]*flex-wrap: wrap/.test(css))
+    const js = fs.readFileSync(new URL('./stocks-web/app.js', import.meta.url), 'utf8')
+    check('...the short status keeps the full sentence for screen readers and as its title', /listed, last price read/.test(js) && /h\('span', \{ class: 'sr' \}, full\)/.test(js) && /el\.title = full/.test(js))
+  }
 }
 
 console.log('the history archive')
@@ -147,6 +159,23 @@ console.log('the history archive')
       const after = (await (await ver()).json()).list_proof
       await flaky.stop()
       check('after a failed read the proof keeps the last good digest and says stale, uncached; a good read clears it', before.stale === false && during.stale === true && during.addresses_sha256 === before.addresses_sha256 && r1.headers.get('cache-control') === 'no-store' && after.stale === false, JSON.stringify([before.stale, during?.stale, r1.headers.get('cache-control'), after.stale]))
+    }
+    {
+      // Spec 1.3: the exact list by its hash, so a forwarded verdict stays checkable after the issuer's list changes.
+      const crypto = await import('node:crypto')
+      const sha = (s) => crypto.createHash('sha256').update(s).digest('hex')
+      const local = (u) => u.replace('https://proofofstock.xyz', '/stocks')
+      const hdr = { headers: { 'x-real-ip': '198.51.100.31' } }
+      const lr = await get(local(lp.list_url), hdr), body = await lr.text()
+      const ar = await get(local(lp.addresses_url), hdr), lines = await ar.text()
+      check('list_url serves the bytes registry_hash names, immutable, as JSON', lr.status === 200 && 'sha256:' + sha(body) === lp.registry_hash && /immutable/.test(lr.headers.get('cache-control')) && /^application\/json/.test(lr.headers.get('content-type')) && JSON.parse(body)[0].address === A, String(lr.status))
+      check('...addresses_url its addresses, one per line, whose digest is addresses_sha256', ar.status === 200 && sha(lines) === lp.addresses_sha256 && lines === A + '\n')
+      const nope = await get('/stocks/api/list/' + '0'.repeat(64), hdr)
+      check('...a hash nobody has is a 404 in words, and a malformed one is not this route', nope.status === 404 && /no list with this hash/.test(await nope.text()) && (await get('/stocks/api/list/xyz', hdr)).status === 404)
+      // The fixture's archive row names a made-up hash ('ab' x 32) over a real body: the archive lookup finds it, and the
+      // server refuses to serve bytes under a name they do not hash to.
+      const tampered = await get('/stocks/api/list/' + 'ab'.repeat(32), hdr)
+      check('...an archived list whose bytes do not hash to its name is refused (500), never served', tampered.status === 500 && tampered.headers.get('cache-control') === 'no-store')
     }
     check('...the passport and MCP verify carry the same proof, MCP once per answer and not per address', vp.list_proof?.addresses_sha256 === lp.addresses_sha256 && sc?.list_proof?.addresses_sha256 === lp.addresses_sha256 && sc.results.every((r) => !('list_proof' in r)), JSON.stringify(sc?.list_proof))
   }
@@ -244,6 +273,22 @@ console.log('the public MCP endpoint')
   const lead = listed.result.content[0].text
   check('the registry list states its exact count first, and the count matches the list', /^The Coinbase registry on Base lists 1 token \(count: 1\)\. Of them, 1 is minted on this chain and 1 has an issuer reference price\./.test(lead) && listed.result.structuredContent.count === listed.result.structuredContent.tokens.length, lead)
   check('...and says impostors are not part of it', /imitate these are a separate list/.test(lead))
+  {
+    // Spec 1.2: Robinhood reports no supply, so its list says minted null per token and no count, in words too.
+    const rl = await (await rpc({ jsonrpc: '2.0', id: 12, method: 'tools/call', params: { name: 'list_stock_tokens', arguments: { chain: 'robinhood' } } })).json()
+    const sc = rl.result.structuredContent
+    // The evidence rule (evm/core/stocks/evidence-rule.mjs) over every kind of answer this server gives.
+    const { evidenceViolations } = await import('../evm/core/stocks/evidence-rule.mjs')
+    const ans = {
+      verify: await (await get(`/stocks/api/verify?chain=base&address=${A}`, { headers: { 'x-real-ip': '198.51.100.21' } })).json(),
+      passport: await (await get(`/stocks/api/passport?chain=base&address=${A}`, { headers: { 'x-real-ip': '198.51.100.21' } })).json(),
+      mcp_verify: (await (await rpc({ jsonrpc: '2.0', id: 13, method: 'tools/call', params: { name: 'verify_stock_tokens', arguments: { chain: 'base', addresses: [A] } } })).json()).result.structuredContent,
+      list: listed.result.structuredContent,
+    }
+    const bad = Object.entries(ans).flatMap(([k, a]) => evidenceViolations(k, a).map((m) => `${k}: ${m}`)).concat(evidenceViolations('list', sc).map((m) => `list robinhood: ${m}`))
+    check('evidence rule: no answer states listed or minted without the field that backs it', bad.length === 0 && ans.verify.listed === true && ans.passport.in_registry === true, bad.join('; '))
+    check('the Robinhood list says nothing is known about minting, per token, in the count and in the lead', sc.minted === null && sc.tokens.every((t) => t.minted === null) && /the issuer reports no supply, so how many are minted is not known/.test(rl.result.content[0].text), JSON.stringify([sc.minted, sc.tokens.map((t) => t.minted)]))
+  }
   const pass = await (await rpc({ jsonrpc: '2.0', id: 5, method: 'tools/call', params: { name: 'stock_passport', arguments: { chain: 'base', address: A } } })).json()
   check('the passport tool returns the same passport as the page', pass.result.structuredContent.in_registry === true && pass.result.structuredContent.links.explorer.startsWith('https://basescan.org/token/'))
   check('...opening with the verdict, the numbers and their true ages', /^ISSUER-LISTED: NVDAc on Base is in the Coinbase registry\. Issuer reference \$180 per token, 41 h old\. Deepest on-chain price \$181, \+0\.56% against the reference, read 15 min ago\./.test(pass.result.content[0].text), pass.result.content[0].text.slice(0, 220))

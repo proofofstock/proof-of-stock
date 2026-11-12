@@ -196,7 +196,7 @@
     "list_proof": {
       "description": "The issuer list this answer was decided against (evm/core/stocks/list-proof.mjs). Run reproduce to compute addresses_sha256 from the issuer yourself; registry_hash matches the archive rows at ledger. null before the first read.",
       "type": ["object", "null"],
-      "required": ["issuer", "source", "addresses", "addresses_sha256", "registry_hash", "reproduce", "reproduce_unavailable", "read_at", "stale", "ledger", "note"],
+      "required": ["issuer", "source", "addresses", "addresses_sha256", "registry_hash", "reproduce", "reproduce_unavailable", "read_at", "stale", "ledger", "list_url", "addresses_url", "note"],
       "additionalProperties": false,
       "properties": {
         "issuer": { "enum": ["coinbase", "robinhood"] },
@@ -209,6 +209,8 @@
         "stale": { "type": "boolean", "description": "true: the latest read of the list failed and this is the last good one" },
         "read_at": { "type": ["string", "null"], "format": "date-time" },
         "ledger": { "type": "string", "format": "uri" },
+        "list_url": { "type": ["string", "null"], "format": "uri", "description": "the exact list by its hash: GET it and sha256sum, the digest is registry_hash" },
+        "addresses_url": { "type": ["string", "null"], "format": "uri", "description": "its addresses, one per line: their sha256sum is addresses_sha256" },
         "note": { "type": "string" }
       }
     },

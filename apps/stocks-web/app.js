@@ -87,7 +87,24 @@
   const line = (text, cls) => h('div', { class: 'line' + (cls ? ' ' + cls : '') }, text)
   const mark = (c) => h('span', { class: 'chainmark ' + c }, CHAIN_LABEL[c] || c)
 
-  async function api (path) {
+  // Lookups (find, passport, verify) are kept for a minute, in flight too: switching chains back and forth, or clicking
+  // a tab twice, repeats the same question, and the answer cannot change faster than the data does (lists every 5 min,
+  // prices every 15). It spares the server and the visitor's rate limit (owner, 12.11). Status, the tape and the board
+  // are not kept: they are the live view.
+  const LOOKUP = /^api\/(find|passport|verify)\?/
+  const kept = new Map()
+  const KEEP_MS = 60e3, KEEP_MAX = 40
+  function api (path) {
+    if (!LOOKUP.test(path)) return fetchJson(path)
+    const k = kept.get(path)
+    if (k && Date.now() - k.at < KEEP_MS) return k.p.then((b) => structuredClone(b)) // a copy: no two renders share one object
+    const p = fetchJson(path)
+    kept.set(path, { at: Date.now(), p })
+    p.catch(() => kept.delete(path)) // a failure is never kept: the next try asks again
+    while (kept.size > KEEP_MAX) kept.delete(kept.keys().next().value)
+    return p.then((b) => structuredClone(b))
+  }
+  async function fetchJson (path) {
     let r
     try { r = await fetch(path, { headers: { accept: 'application/json' } }) } catch (_) { throw new Error('Could not reach the server. Check your connection and try again.') }
     const body = await r.json().catch(() => ({}))
@@ -633,10 +650,57 @@
     }
     status(st)
   }
+  // The wall of findings (spec 4): the newest cases of the last 7 days from /api/history/cases, both chains, our misses
+  // included. A token's own symbol is its creator's text: it goes into a table cell as text (h() never parses HTML),
+  // never into a sentence, a title or a label. No links out, no deployer: the board must not advertise a fake.
+  const BOARD_STATUS = { opened: 'open', listed: 'later listed by the issuer: we were early or wrong', gone: 'gone from our list', kind_changed: 'kind changed' }
+  async function board () {
+    const rows = $('#board-rows'), counts = $('#board-counts'), empty = $('#board-empty')
+    if (!rows) return
+    let r
+    try { r = await api('api/history/cases?limit=8') } catch (_) { counts.textContent = 'The case archive could not be read right now.'; return }
+    const per = Object.entries(r.chains || {}).filter(([, v]) => v && !v.error)
+    if (!per.length) { counts.textContent = 'The case archive could not be read right now.'; return }
+    const ev = per.flatMap(([c, v]) => (v.events || []).map((e) => ({ ...e, chain: c }))).sort((a, b) => Date.parse(b.at) - Date.parse(a.at)).slice(0, 8)
+    const open = per.map(([c, v]) => `${v.counts?.open ?? 0} on ${CHAIN_LABEL[c] || c}`).join(', ')
+    const week = per.reduce((n, [, v]) => n + (v.count || 0), 0)
+    const missed = ev.filter((e) => e.event === 'listed').length
+    counts.textContent = `Open cases: ${open}. This week: ${week} new event${week === 1 ? '' : 's'}${missed ? `, ${missed} later listed by the issuer` : ''}.`
+    empty.hidden = ev.length > 0
+    rows.closest('.board-wrap').hidden = ev.length === 0 // no empty table head over the empty-state line
+    rows.replaceChildren(...ev.map((e) => {
+      const tr = h('tr', { class: 'click', tabindex: '0' },
+        h('td', null, CHAIN_LABEL[e.chain] || e.chain),
+        h('td', null, h('code', null, e.symbol || '?')),
+        h('td', null, e.imitates_symbol || (e.kind === 'issuer_name_suffix' ? "the issuer's naming" : '?')),
+        h('td', null, age(Math.round((Date.now() - Date.parse(e.flagged_at || e.at)) / 1000))),
+        h('td', { class: e.event === 'listed' ? 'warn' : '' }, BOARD_STATUS[e.event] || e.event))
+      const open = () => { act('board', 'open'); toTerminal(); passport(e.chain, e.address, e.address) }
+      tr.addEventListener('click', open)
+      tr.addEventListener('keydown', (k) => { if (k.key === 'Enter') open() })
+      return tr
+    }))
+  }
+
+  // The terminal's status bar: one short, unbreakable part per chain ("base 338 listed · price 15m ago"), so the bar keeps
+  // to one line where it fits and a narrow screen stacks whole parts. The full sentence stays for screen readers and as
+  // the hover title.
+  const ago = (s) => (s < 90 ? s + 's' : s < 5400 ? Math.round(s / 60) + 'm' : s < 172800 ? Math.round(s / 3600) + 'h' : Math.round(s / 86400) + 'd') + ' ago'
   function status (st) {
     const el = $('#status')
+    el.removeAttribute('title')
     if (!st) { el.textContent = 'offline'; return }
-    el.replaceChildren(h('span', { class: 'live' }, '● '), Object.entries(st).map(([c, v]) => `${c}: ${v.registry_records ?? '?'} listed, last price read ${v.newest_reading_age_s == null ? (v.readings_age_s == null ? 'loading' : 'none yet') : age(v.newest_reading_age_s)}`).join(' · '))
+    const parts = Object.entries(st).map(([c, v]) => {
+      const n = v.registry_records ?? '?'
+      const none = v.readings_age_s == null ? 'loading' : 'none yet'
+      return {
+        full: `${c}: ${n} listed, last price read ${v.newest_reading_age_s == null ? none : age(v.newest_reading_age_s)}`,
+        short: h('span', { class: 'seg' }, h('span', { class: 'ch ch-' + c }, c), ` ${n} listed · ` + (v.newest_reading_age_s == null ? (v.readings_age_s == null ? 'price loading' : 'no price yet') : 'price ' + ago(v.newest_reading_age_s))),
+      }
+    })
+    const full = parts.map((p) => p.full).join(' · ')
+    el.title = full
+    el.replaceChildren(h('span', { class: 'live', 'aria-hidden': 'true' }, '●'), h('span', { class: 'segs', 'aria-hidden': 'true' }, ...parts.map((p) => p.short)), h('span', { class: 'sr' }, full))
   }
 
   // ---------- wiring ----------
@@ -703,6 +767,8 @@
     }
     tape()
     setInterval(() => { if (!document.hidden) tape() }, 60e3)
+    board()
+    setInterval(() => { if (!document.hidden) board() }, 5 * 60e3)
     if (!('ontouchstart' in window)) input.focus({ preventScroll: true })
   })
 })()

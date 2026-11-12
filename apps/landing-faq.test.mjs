@@ -56,6 +56,25 @@ console.log('the footer: the project\'s own profiles')
   check('the organisation names the same profiles as sameAs', JSON.stringify(PROFILES) === JSON.stringify(['https://x.com/proofofstock', 'https://t.me/proofofstock1']))
 }
 
+console.log('switching chains does not repeat a question')
+{
+  const js = fs.readFileSync(new URL('./stocks-web/app.js', import.meta.url), 'utf8')
+  const re = new RegExp((js.match(/const LOOKUP = \/(.+)\/\n/) || [])[1] || '$^')
+  check('lookups (find, passport, verify) are kept a minute, the live views are not', ['api/find?q=NVDA', 'api/passport?chain=base&address=0x1', 'api/verify?chain=base'].every((p) => re.test(p)) && ['api/status', 'api/overview', 'api/history/cases?limit=8', 'api/impostors?limit=10'].every((p) => !re.test(p)) && /KEEP_MS = 60e3/.test(js))
+  check('...a failure is never kept, and every caller gets its own copy', /p\.catch\(\(\) => kept\.delete\(path\)\)/.test(js) && (js.match(/structuredClone\(b\)/g) || []).length === 2)
+}
+
+console.log('the wall of findings')
+{
+  const board = (html.match(/<section class="board"[\s\S]*?<\/section>/) || [''])[0]
+  check('it sits between what it checks and why it matters, reachable as #findings', html.indexOf('class="checks"') < html.indexOf('class="board"') && html.indexOf('class="board"') < html.indexOf('class="why"') && /id="findings"/.test(board) && /aria-labelledby="board-title"/.test(board))
+  check('...says what it is and is not, and has an honest empty state', /A claim with evidence, not a verdict\./.test(board) && /No new look-alikes flagged in the last 7 days\./.test(board))
+  check('...links nowhere outside the site: it must not advertise a fake', !/href="https?:/.test(board))
+  const js = fs.readFileSync(new URL('./stocks-web/app.js', import.meta.url), 'utf8')
+  const fn = (js.match(/async function board \(\) \{[\s\S]*?\n {2}\}\n/) || [''])[0]
+  check('...fills its rows as text only, from the 7-day case window, and shows our misses', fn && !/innerHTML|insertAdjacentHTML/.test(fn) && /api\/history\/cases\?limit=8/.test(fn) && /later listed by the issuer: we were early or wrong/.test(js))
+}
+
 console.log('the prompt waits with a cursor')
 {
   const css = fs.readFileSync(new URL('./stocks-web/style.css', import.meta.url), 'utf8')

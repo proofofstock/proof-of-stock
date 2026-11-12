@@ -31,7 +31,7 @@ curl -s https://proofofstock.xyz/mcp \
 | Auth | none. The proxy strips `Authorization` and `Cookie` |
 | CORS | `Access-Control-Allow-Origin: *`, methods `POST, OPTIONS`. `OPTIONS` answers 204 |
 | Caching | `Cache-Control: no-store` on every answer |
-| Rate limit | 60 units per minute per client IP (IPv6: per /56). Every POST costs 1 unit; `stock_passport` costs 3; `verify_stock_tokens` with n addresses costs ⌈n/10⌉ |
+| Rate limit | 60 units in any 60 seconds per client IP (IPv6: per /56), shared with the HTTP API. The window slides by the second, and a refused request costs nothing. Every POST costs 1 unit; `stock_passport` costs 3; `verify_stock_tokens` with n addresses costs ⌈n/10⌉ |
 | Body | one JSON-RPC message as `Content-Type: application/json`, at most 16 KB |
 | Methods | `initialize`, `ping`, `tools/list`, `tools/call`. Notifications (no `id`) and client responses (`id` with `result` or `error`) get 202 with no body |
 
@@ -92,7 +92,7 @@ tool arguments, then the tool itself.
 | 405 | `{ "error": "POST one JSON-RPC message; this server offers no SSE stream" }`, header `Allow: POST, OPTIONS` | `GET` (other than a browser) and `DELETE`. The proxy refuses any other method (`PUT`, `PATCH`, …) with 403 before it reaches the app |
 | 413 | `error.code: -32600`, `"request too large"` | body over 16 KB |
 | 415 | `error.code: -32600`, `"Content-Type must be application/json"` | a `Content-Type` other than `application/json` (a charset is fine), or none |
-| 429 | `error.code: -32000`, `"too many requests, try again in a minute"`, header `Retry-After: 60` | over 60 units in the current minute |
+| 429 | `error.code: -32000`, `"too many requests, try again in a minute"`, header `Retry-After: 60` | over 60 units in the last 60 seconds |
 
 Argument validation is strict: an unknown argument, a wrong type, a string that fails its pattern, an out-of-range
 number or a list of the wrong length is `-32602`, never silently corrected. The proxy in front of the app also limits
@@ -238,9 +238,9 @@ curl -s https://proofofstock.xyz/mcp -H 'content-type: application/json' \
 | `chain`, `issuer` | string | the chain and its issuer id |
 | `generated_at`, `source`, `registry_age_s` | | as in [`find_stock_token`](#tool-find_stock_token) |
 | `count` | integer | records in the registry. Quote this, do not count the list |
-| `minted` | integer | records with supply on the chain. Every Robinhood record counts as minted here (its API reports no supply), although the passport and verify say `minted: null` for them |
+| `minted` | integer or null | records with supply on the chain. `null` for Robinhood, whose API reports no supply; the lead then says how many are minted is not known |
 | `with_reference_price` | integer | records whose issuer price is above 0 |
-| `tokens[]` | object[] | `symbol`, `name`, `address`, `isin`, `multiplier`, `has_reference_price`, `minted` |
+| `tokens[]` | object[] | `symbol`, `name`, `address`, `isin`, `multiplier`, `has_reference_price`, `minted` (`null` for Robinhood) |
 
 ### Errors
 
@@ -567,7 +567,7 @@ Each row:
 | `reference_kinds_differ` | boolean | `true` when the two references are of different kinds, which is always the case today |
 | `reference_note` | string | the two references in words |
 
-A venue cell: `chain`, `issuer`, `symbol`, `address`, `minted`, `multiplier`, `reference_kind`, `reference_price_usd`
+A venue cell: `chain`, `issuer`, `symbol`, `address`, `minted` (`null` for Robinhood), `multiplier`, `reference_kind`, `reference_price_usd`
 (USD per token), `reference_updated_at`, `reference_age_s` (seconds before `generated_at`), `dex_price_usd`,
 `dex_pool`, `liquidity_usd` (deepest pool), `premium` (fraction), `premium_refused`, `premium_at_reference_time`,
 `observed_at`, `reading_age_s`, `stale`. Each cell equals that token's passport.

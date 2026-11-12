@@ -66,7 +66,7 @@
 
     <footer class="statusbar">
       <span id="status" class="status">connecting</span>
-      <span class="hint">↑↓ history · <kbd>help</kbd> · <button type="button" class="linkish" data-win="clear">clear screen</button></span>
+      <span class="hint"><span class="key"><kbd>↑↓</kbd> history</span><span class="key"><kbd>help</kbd> commands</span><button type="button" class="key" data-win="clear"><kbd>clear</kbd> screen</button></span>
     </footer>
   </main>
 
@@ -89,6 +89,21 @@
       <p>Every 15 minutes we compare the deepest on-chain pool with that price and keep the history, split into market open, extended hours and closed. Under 0.5% stays grey. Green: on-chain above the issuer's price. Red: below it. Bold: more than 2%.</p>
       <div class="mini" aria-hidden="true"><span>+0.13%</span> <span class="up">+1.40%</span> <span class="down wide">-4.12%</span></div>
     </article>
+  </section>
+
+  <section class="board" id="findings" aria-labelledby="board-title">
+    <div class="board-head">
+      <h3 id="board-title">Look-alikes we flagged this week</h3>
+      <p class="board-counts" id="board-counts">Loading the case archive.</p>
+    </div>
+    <div class="board-wrap">
+      <table class="board-table">
+        <thead><tr><th scope="col">chain</th><th scope="col">token</th><th scope="col">copies</th><th scope="col">flagged</th><th scope="col">status</th></tr></thead>
+        <tbody id="board-rows"></tbody>
+      </table>
+    </div>
+    <p class="board-empty" id="board-empty" hidden>No new look-alikes flagged in the last 7 days.</p>
+    <p class="board-note">A claim with evidence, not a verdict. Not in the registry is a fact about one list. A row opens its passport in the terminal above. <a href="history">The case archive</a>.</p>
   </section>
 
   <section class="why" aria-label="Why it matters">

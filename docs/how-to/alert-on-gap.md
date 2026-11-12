@@ -111,8 +111,8 @@ console.log(alert ? `ALERT ${p.summary}` : 'no alert')
 
 ## Mind the limits
 
-- 60 requests per minute per client, shared by every route. One overview poll every 15 minutes is far below it. For
-  Option B, one passport per token per poll adds up: stay under 60 per minute, or use Option A.
+- 60 units in any 60 seconds per client, shared by every route (a passport is 3). One overview poll every 15 minutes is far below it. For
+  Option B, one passport per token per poll adds up: stay under 60 units in any 60 seconds, or use Option A.
 - A 429 or a 503 is not a quiet market. The script above logs it and waits for the next poll.
 - Readings are every 15 minutes. An alert can arrive up to about 20 minutes after the gap opened.
 

@@ -71,7 +71,9 @@ console.log('tool arguments')
 
 console.log('the server')
 {
-  const app = createStocksWeb({ roots: { base: path.join(tmp, 'b'), robinhood: path.join(tmp, 'r') }, fetchImpl: async () => ({ ok: false, status: 503, json: async () => ({}) }), now: () => Date.parse('2026-11-10T12:00:00Z'), log: () => {}, analytics: { enabled: false } })
+  // 45 s into a minute, so the checks below cross a calendar minute the way the 12.11 audit's series did.
+  let t = Date.parse('2026-11-10T12:00:45Z')
+  const app = createStocksWeb({ roots: { base: path.join(tmp, 'b'), robinhood: path.join(tmp, 'r') }, fetchImpl: async () => ({ ok: false, status: 503, json: async () => ({}) }), now: () => t, log: () => {}, analytics: { enabled: false } })
   const { port } = await app.start(0, '127.0.0.1')
   const raw = (line) => new Promise((resolve) => { const s = net.connect(port, '127.0.0.1', () => s.write(line)); let b = ''; s.on('data', (d) => { b += d }); s.on('end', () => resolve(b)); s.on('error', () => resolve(b)); setTimeout(() => { s.destroy(); resolve(b) }, 2000) })
   const r = await raw('GET // HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n')
@@ -87,6 +89,57 @@ console.log('the server')
   for (let i = 0; i < 60; i++) codes.push((await get('203.0.113.77')).status)
   check('a client that arrived past the cap still gets 429 after its 60 units', codes.slice(0, 59).every((c) => c === 200) && codes[59] === 429, codes.slice(55).join(' '))
   check('another new client past the cap is not blocked by the first one\'s quota', (await get('198.51.100.201')).status === 200)
+  // Past the cap the window slides too: a new calendar minute 30 s later frees nothing, 60 s after the units it does.
+  t += 30e3
+  check('past the cap, a new calendar minute does not reset a client\'s window', (await get('203.0.113.77')).status === 429)
+  t += 30e3
+  check('...and 60 s after its units it is let in again', (await get('203.0.113.77')).status === 200)
+  await app.stop()
+}
+
+console.log('the rate limit is a sliding window')
+{
+  // External audit, 12.11: 80 sequential requests 0.65 s apart all passed when the series crossed a minute boundary
+  // (a fixed calendar minute counts it as two). The limit is 60 units in any 60 seconds, wherever the series starts.
+  let t = 0
+  const app = createStocksWeb({ roots: { base: path.join(tmp, 'b'), robinhood: path.join(tmp, 'r') }, fetchImpl: async () => ({ ok: false, status: 503, json: async () => ({}) }), now: () => t, log: () => {}, analytics: { enabled: false } })
+  const { port } = await app.start(0, '127.0.0.1')
+  const ping = (ip) => fetch(`http://127.0.0.1:${port}/stocks/mcp`, { method: 'POST', headers: { 'content-type': 'application/json', accept: 'application/json', 'x-real-ip': ip }, body: '{"jsonrpc":"2.0","id":1,"method":"ping"}' }).then(async (r) => { await r.arrayBuffer(); return r.status })
+  const status = (ip) => fetch(`http://127.0.0.1:${port}/stocks/api/status`, { headers: { 'x-real-ip': ip } }).then(async (r) => { await r.arrayBuffer(); return r.status })
+  const counts = []
+  for (const [k, startS] of [0, 20, 30, 45, 59].entries()) {
+    t = Date.parse('2026-11-12T12:00:00Z') + startS * 1000
+    const ip = `203.0.113.${100 + k}`
+    let ok = 0
+    for (let i = 0; i < 80; i++) { if ((await ping(ip)) === 200) ok++; t += 650 }
+    counts.push(`:${startS} ${ok}`)
+  }
+  check('80 sequential pings in 52 s: exactly 60 pass, wherever in the minute the series starts', counts.every((c) => c.endsWith(' 60')), counts.join(', '))
+  // A refused request costs nothing: a client that keeps asking while refused is let in 60 s after its units.
+  t = Date.parse('2026-11-12T13:00:00Z')
+  const ip = '198.51.100.150', got = []
+  for (let i = 0; i < 60; i++) got.push(await status(ip))
+  for (let s = 0; s < 60; s++) { got.push(await status(ip)); t += 1000 }
+  const back = []
+  for (let i = 0; i < 60; i++) back.push(await status(ip))
+  check('refused requests are not counted: after 60 s of 429s the client has its full 60 again', got.slice(0, 60).every((c) => c === 200) && got.slice(60).every((c) => c === 429) && back.every((c) => c === 200) && (await status(ip)) === 429, `${got.slice(58, 62).join(' ')} | ${back.slice(-2).join(' ')}`)
+  // Units are spread over time, not one lump: 30 now and 30 at +30 s leave room only when the first 30 expire.
+  t = Date.parse('2026-11-12T14:00:00Z')
+  const ip2 = '198.51.100.151'
+  for (let i = 0; i < 30; i++) await status(ip2)
+  t += 30e3
+  for (let i = 0; i < 30; i++) await status(ip2)
+  t += 29e3
+  const before = await status(ip2)
+  t += 1e3
+  const after = await status(ip2)
+  check('the window slides by the second: full at +59 s, room again at +60 s', before === 429 && after === 200, `${before} ${after}`)
+  // A passport is 3 units of the same window.
+  t = Date.parse('2026-11-12T15:00:00Z')
+  const ip3 = '198.51.100.152'
+  for (let i = 0; i < 58; i++) await status(ip3)
+  const pass = await fetch(`http://127.0.0.1:${port}/stocks/api/passport?chain=base&address=0x${'ab'.repeat(20)}`, { headers: { 'x-real-ip': ip3 } }).then(async (r) => { await r.arrayBuffer(); return r.status })
+  check('a passport costs 3 units: with 2 left it is refused, and 2 single requests still pass', pass === 429 && (await status(ip3)) === 200 && (await status(ip3)) === 200 && (await status(ip3)) === 429, String(pass))
   await app.stop()
 }
 

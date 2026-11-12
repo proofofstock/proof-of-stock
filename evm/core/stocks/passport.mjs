@@ -15,6 +15,7 @@
 import { symbolLabel, nameLabel, UNTRUSTED_TEXT_NOTE } from './untrusted-text.mjs'
 import { usEquitySession } from './market-session.mjs'
 import { resemblance } from './impostor.mjs'
+import { mintedOf } from './registries.mjs'
 
 // A reference older than this is "held": the issuer is not updating it right now.
 export const REFERENCE_HELD_S = 3600
@@ -135,7 +136,7 @@ export function buildPassport ({ address, chainId, registry, readings = [], iden
     in_registry: true,
     resembles: null,
     issuer: {
-      name: rec.issuer, symbol: rec.symbol, token_name: rec.name ?? null, isin: rec.isin, minted: rec.issuer === 'robinhood' ? null : minted,
+      name: rec.issuer, symbol: rec.symbol, token_name: rec.name ?? null, isin: rec.isin, minted: mintedOf(rec),
       multiplier: latest ? latest.multiplier : rec.multiplier, multiplier_pending: pending ?? null,
       paused: latest ? latest.paused : rec.paused,
       rights: 'set by the issuer\'s prospectus, not by the token contract',

@@ -219,6 +219,21 @@ One window is quarantined today:
 Rows of that window that were priced against one of those assets are kept. This filter matches the pool by
 `quote_symbol`, because rows of that span store no quote address.
 
+<a id="evidence-rule"></a>
+## Evidence rule
+
+No evidence, no claim. Every positive statement an answer makes carries the field that lets you check it; where that
+field is missing, the statement is `null`, not `true`. The tests run every kind of answer through this rule
+(`evm/core/stocks/evidence-rule.mjs`), and a mutation lock proves they notice when evidence goes missing.
+
+| Claim | Evidence | Without it |
+|---|---|---|
+| `listed`, `in_registry` | [`list_proof`](../reference/passport.md#field-list_proof): the issuer list, its SHA-256 and a command to recompute it | no verdict: `/verify` answers 503 |
+| `minted: true` | the issuer's own supply field (Coinbase `total_supply`) | `minted: null`. Robinhood reports no supply, so nothing here says a Robinhood token is minted |
+
+The on-chain price (`premium`, the matrix `gap`) joins this table when each reading carries its pool read at a block.
+Until then a premium names its source and time, as described above, and is not a verdict.
+
 ## Known limitations
 
 - **Recorded, not live.** Readings are taken every 15 minutes. `latest` is the last recorded reading, and the site
@@ -243,7 +258,7 @@ Rows of that window that were priced against one of those assets are kept. This 
 - **An outside token's name is its creator's text.** It is compared after normalization (NFKC, invisible characters
   removed), so those are not a way past the comparison; look-alike letters from another alphabet still are. It is
   published as a short one-line label and never put into a sentence the service says.
-- **Rate limits.** Per client address (an IPv6 client is keyed by its /56), 60 units per minute, shared by `/api/*`,
+- **Rate limits.** Per client address (an IPv6 client is keyed by its /56), 60 units in any 60 seconds, shared by `/api/*`,
   `/verify` and `/mcp`. A passport costs 3 units, and a `verify_stock_tokens` call of n addresses ⌈n/10⌉ units. Over the limit the answer is
   429 with `Retry-After: 60`. The proxy in front also caps bursts. `/badge.svg` is not limited per client, because
   image proxies fetch it from few addresses.

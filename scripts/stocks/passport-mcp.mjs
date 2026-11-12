@@ -21,6 +21,7 @@ import { isEntryPoint } from '../lib/invoked-directly.mjs'
 import { passportFor } from './passport.mjs'
 import { CHAINS } from './stock-peg.mjs'
 import { invalid } from '../lib/mcp-args.mjs'
+import { mintedOf } from '../../evm/core/stocks/registries.mjs'
 
 export const PROTOCOL_VERSION = '2025-06-18'
 // The versions it can speak, newest first: a client asking for one of them gets it (apps/stocks-mcp-http.mjs does the same).
@@ -55,7 +56,7 @@ export const TOOLS = Object.freeze([
   },
 ])
 
-const summary = (r) => ({ symbol: r.symbol, name: r.name ?? null, address: r.address, isin: r.isin, multiplier: r.multiplier, has_reference_price: r.reference?.price_usd > 0, supplied: r.supplied })
+const summary = (r) => ({ symbol: r.symbol, name: r.name ?? null, address: r.address, isin: r.isin, multiplier: r.multiplier, has_reference_price: r.reference?.price_usd > 0, supplied: mintedOf(r) })
 
 /** One tool call → MCP content. Errors in the tool are results with isError, not protocol errors. */
 export async function callTool (name, args = {}, { roots = DEFAULT_ROOT, fetchImpl = fetch, now = () => Date.now() } = {}) {

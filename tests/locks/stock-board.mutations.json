@@ -1,0 +1,16 @@
+{
+  "_finding": "The wall of findings on the landing page (spec 4, 12.11) shows the rows of /api/history/cases. The deployer address is the collector's work and stays out of every public answer; a token's own text never reaches the page's HTML. Each mutation leaks one of them; the untrusted-text tests must notice.",
+  "target": "apps/stocks-history.mjs",
+  "runner": [
+    "node",
+    "apps/untrusted-text.test.mjs"
+  ],
+  "mutations": [
+    {
+      "name": "a public case event carries the deployer",
+      "find": "  kind: e.kind, imitates_symbol: e.registry_symbol ?? null, listed_address: e.registry_address ?? null,",
+      "replace": "  kind: e.kind, deployer: e.deployer ?? null, imitates_symbol: e.registry_symbol ?? null, listed_address: e.registry_address ?? null,",
+      "expect": "FAIL /api/history/cases: no deployer in any event"
+    }
+  ]
+}

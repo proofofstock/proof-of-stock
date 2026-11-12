@@ -11,6 +11,7 @@
 
 import { premiumAt, PUBLIC_WINDOW_H } from './passport.mjs'
 import { readingsOf } from './readings-window.mjs'
+import { mintedOf } from './registries.mjs'
 
 const tickerish = (r) => (r.issuer === 'coinbase' && typeof r.symbol === 'string' ? r.symbol.replace(/c$/, '') : r.symbol)
 
@@ -65,7 +66,7 @@ export function findAcross (byChain, query, limit = 25) {
     ...(normalized ? { query_normalized: normalized.toUpperCase() } : {}),
     reason: normalized ? `"${String(query).trim()}" is Coinbase's naming; no token here is called that, so the ticker ${normalized.toUpperCase()} was matched instead`
       : exact.length ? null : kept.length ? 'no ticker or ISIN equals the query; these match by company name or ticker prefix' : 'no issuer-listed token matches by ticker, ISIN or company name',
-    matches: kept.slice(0, limit).map(({ chain, r, quality }) => ({ chain, issuer: r.issuer, symbol: r.symbol, name: r.name ?? null, address: r.address, isin: r.isin, match_quality: quality, has_reference_price: r.reference?.price_usd > 0, minted: r.supplied !== false })),
+    matches: kept.slice(0, limit).map(({ chain, r, quality }) => ({ chain, issuer: r.issuer, symbol: r.symbol, name: r.name ?? null, address: r.address, isin: r.isin, match_quality: quality, has_reference_price: r.reference?.price_usd > 0, minted: mintedOf(r) })),
     more: Math.max(0, kept.length - limit),
   }
 }
@@ -153,7 +154,7 @@ function venueOf (chain, r, window, now, staleS) {
   const ref = l ? l.reference : r.reference
   const refAge = ref && ref.updated_at && Number.isFinite(Date.parse(ref.updated_at)) ? Math.max(0, Math.round((now - Date.parse(ref.updated_at)) / 1000)) : (ref?.age_s ?? null)
   const best = l && l.pools && l.pools.top && l.pools.top[0]
-  const minted = r.supplied !== false
+  const minted = mintedOf(r)
   const readingAge = l ? Math.round((now - Date.parse(l.observed_at)) / 1000) : null
   return {
     chain, issuer: r.issuer, symbol: r.symbol, address: r.address, minted,
@@ -162,7 +163,7 @@ function venueOf (chain, r, window, now, staleS) {
     dex_price_usd: l ? l.dex_price_usd ?? null : null, dex_pool: l ? l.dex_pool ?? null : null, liquidity_usd: best ? best.liquidity_usd ?? null : null,
     premium: l ? l.premium ?? null : null,
     // The reading's own refusal; with no reading at all, the passport's code for why there is none.
-    premium_refused: l ? (l.premium == null ? l.premium_refused ?? 'unknown' : null) : (minted ? 'no_readings' : 'not_minted'),
+    premium_refused: l ? (l.premium == null ? l.premium_refused ?? 'unknown' : null) : (minted === false ? 'not_minted' : 'no_readings'),
     // From the passport's own window (24 h), not all the site holds (72 h): with an issuer price older than a day, as on a
     // weekend, the passport says null and so must the cell.
     premium_at_reference_time: l ? premiumAt(readingsOf(entry, r.address).filter((x) => Date.parse(x.observed_at) >= now - PUBLIC_WINDOW_H * 3600e3), ref && ref.updated_at) : null,

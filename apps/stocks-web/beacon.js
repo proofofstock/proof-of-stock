@@ -58,7 +58,7 @@
   // second. Counting the moment it crossed the screen counted every section within half a second of some loads (a
   // restored scroll, a jump to #faq or the footer), which is passing by, not reading (12.11).
   if ('IntersectionObserver' in window) {
-    const SECTIONS = [['.checks', 'checks'], ['.why', 'why'], ['.agents', 'agents'], ['.faq', 'faq'], ['.foot', 'foot']]
+    const SECTIONS = [['.checks', 'checks'], ['.board', 'findings'], ['.why', 'why'], ['.agents', 'agents'], ['.faq', 'faq'], ['.foot', 'foot']]
     const DWELL_MS = 1000
     const timers = new Map(), done = new Set()
     const io = new IntersectionObserver((es) => {

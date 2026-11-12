@@ -55,5 +55,17 @@ console.log('the stamp and the proof')
   check('no stamp yet (no list read) is no proof, not an empty one', listProof(null, { readAt: 1, ledgerUrl: 'x' }) === null)
 }
 
+console.log('a list by its hash')
+{
+  const { listBytes } = await import('./list-proof.mjs')
+  const canon = canonicalRegistry([rec(a(2)), rec(a(1))])
+  const hex = registryHash(canon).slice(7)
+  const b = listBytes(canon, hex)
+  check('listBytes gives the bytes registry_hash names, and the sorted address lines', b && crypto.createHash('sha256').update(b.body).digest('hex') === hex && b.addresses === a(1) + '\n' + a(2) + '\n' && crypto.createHash('sha256').update(b.addresses).digest('hex') === addressesSha256(canon))
+  check('...and nothing under a name the bytes do not hash to', listBytes(canon, 'ab'.repeat(32)) === null)
+  const p = listProof(stampList({ issuer: 'coinbase', chainId: 8453, records: [rec(a(1))] }), { readAt: 1, ledgerUrl: 'x', listBase: 'https://proofofstock.xyz/api/list' })
+  check('the proof names list_url and addresses_url by the registry hash', p.list_url === 'https://proofofstock.xyz/api/list/' + p.registry_hash.slice(7) && p.addresses_url === p.list_url + '/addresses')
+}
+
 console.log(`\n${passed} passed, ${failed} failed`)
 if (failed) { for (const x of failures) console.log(x); process.exit(1) }

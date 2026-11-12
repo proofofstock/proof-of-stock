@@ -52,8 +52,10 @@ import { metaFor, injectMeta, withHead, headOf } from '../evm/core/stocks/page-m
 import { robotsTxt, securityTxt, sitemapXml, sitemapUrls, docUrl, homeJsonLd, docJsonLd, pageJsonLd } from './stocks-seo.mjs'
 import { createMcpHttp, SUPPORTED_VERSIONS } from './stocks-mcp-http.mjs'
 import { verifyToken, badgeSvg, badgeState } from '../evm/core/stocks/verify.mjs'
+import { mintedOf } from '../evm/core/stocks/registries.mjs'
 import { createDocsRenderer } from './stocks-docs.mjs'
-import { stampList, listProof } from '../evm/core/stocks/list-proof.mjs'
+import { stampList, listProof, listBytes } from '../evm/core/stocks/list-proof.mjs'
+import { canonicalRegistry } from '../evm/core/stocks/history.mjs'
 import { isIsoTime } from '../scripts/lib/mcp-args.mjs'
 import { statusPage } from './stocks-status.mjs'
 import { createHistoryStore, historyPage, BULK_WINDOW_DAYS, BULK_MAX, FULL_ARCHIVE } from './stocks-history.mjs'
@@ -86,7 +88,9 @@ export const SECURITY_HEADERS = Object.freeze({
 })
 const REGISTRY_TTL_MS = 5 * 60e3
 export const PAGE_CACHE_MS = 30e3 // /status and /history: one build per this long
-const RATE = { perMinute: 60 }
+const RATE = { perMinute: 60 } // units in any RATE_WINDOW_S seconds, per client key
+const RATE_WINDOW_S = 60
+const SWEEP_EVERY_S = 10
 const ADDRESS = /^0x[0-9a-fA-F]{40}$/
 const MCP_MAX_BODY = 16 * 1024
 const BUCKETS_MAX = 20000
@@ -182,7 +186,7 @@ export function createStocksWeb ({
   const windows = Object.fromEntries(Object.keys(CHAINS).map((c) => [c, createWindowCache({ root: roots[c], windowH, now })]))
   const names = new Map() // chain → Map(address → { symbol, name }), from stock-names.json
   const impostors = new Map() // chain → the parsed impostors.json, or { error }
-  const buckets = new Map() // ip → { minute, n }
+  const buckets = new Map() // client key → { sec, n, slots }: its last second seen, units in the window, units per second
   const history = createHistoryStore({ roots, now, log })
   const analytics = createAnalytics({ now, log, ...analyticsOpts })
   const docs = loadDocs()
@@ -233,6 +237,24 @@ export function createStocksWeb ({
   // request for PAGE_CACHE_MS, so a client hammering them costs a map lookup, not a render.
   const pageCache = new Map()
   const cachedPage = (key, build) => { const c = pageCache.get(key); if (c && now() - c.at < PAGE_CACHE_MS) return c.html; const html = build(); pageCache.set(key, { at: now(), html }); return html }
+  // The last lists this server read, per chain, by registry_hash: GET /api/list/<hex> serves them before the recorder's
+  // archive has them (it reads on its own 15-minute clock). Eight per chain; the archive holds the rest.
+  const recentLists = new Map(Object.keys(CHAINS).map((c) => [c, new Map()]))
+  function rememberList (chain, hex, canonical) {
+    const m = recentLists.get(chain)
+    if (m.has(hex)) return
+    m.set(hex, canonical)
+    while (m.size > 8) m.delete(m.keys().next().value)
+  }
+  /** A list by the hex of its registry_hash: this server's recent reads, then the archive. null when nobody has it. */
+  function listByHash (hex) {
+    for (const [c, m] of recentLists) if (m.has(hex)) return { chain: c, canonical: m.get(hex) }
+    for (const c of Object.keys(CHAINS)) {
+      const hit = (history.raw(c).registry || []).find((r) => r.row?.hash === 'sha256:' + hex)
+      if (hit) return { chain: c, canonical: hit.row.body }
+    }
+    return null
+  }
   async function refreshRegistry (chain) {
     const C = CHAINS[chain]
     try {
@@ -243,7 +265,9 @@ export function createStocksWeb ({
         for (const r of prev) if (!kept.has(r.address) && !gone.has(r.address)) gone.set(r.address, { at: now(), symbol: r.symbol })
         for (const a of kept) gone.delete(a)
       }
-      registries.set(chain, { records, at: now(), error: null, stamp: stampList({ issuer: C.issuer, chainId: C.chainId, records }) })
+      const stamp = stampList({ issuer: C.issuer, chainId: C.chainId, records })
+      registries.set(chain, { records, at: now(), error: null, stamp })
+      rememberList(chain, stamp.registry_hash.slice(7), canonicalRegistry(records))
     } catch (e) {
       const prev = registries.get(chain)
       registries.set(chain, { records: prev?.records || null, at: prev?.at || null, stamp: prev?.stamp || null, error: internal(`registry ${chain}`, e, 'the issuer registry could not be read') })
@@ -324,36 +348,61 @@ export function createStocksWeb ({
     return impostors.get(chain)?.asWritten?.get(address) || {}
   }
 
-  let sweptMinute = -1
-  const SPILL_SHARDS = 4096, spill = new Uint32Array(SPILL_SHARDS)
-  let spillMinute = -1
+  // The rate limit is a sliding window: at most RATE.perMinute units in any 60 seconds, counted in one-second slots.
+  // External audit, 12.11: a fixed calendar minute let a steady series straddling a minute boundary through twice (80
+  // requests in 52 s all passed). A refused request costs nothing, so a client that waits RATE_WINDOW_S is always let in
+  // again and Retry-After: 60 holds.
+  let sweptAt = -Infinity
+  const SPILL_SHARDS = 4096, spill = new Uint8Array(SPILL_SHARDS * RATE_WINDOW_S)
+  let spillSec = -Infinity
+  // Moves a client's window on to second `sec`, emptying the slots that fell out of it.
+  function slide (b, sec) {
+    if (sec <= b.sec) return
+    if (sec - b.sec >= RATE_WINDOW_S) { b.slots.fill(0); b.n = 0 } else {
+      for (let t = b.sec + 1; t <= sec; t++) { const i = t % RATE_WINDOW_S; b.n -= b.slots[i]; b.slots[i] = 0 }
+    }
+    b.sec = sec
+  }
   function limited (ipRaw, units = 1) {
     const ip = clientKey(ipRaw)
-    const minute = Math.floor(now() / 60e3)
-    const b = buckets.get(ip)
-    if (!b || b.minute !== minute) {
-      if (!b && buckets.size >= BUCKETS_MAX) {
-        // Past the cap, drop the buckets of earlier minutes, at most once a minute: walking a map full of current
-        // buckets on every new client is quadratic, and a crowd of fresh addresses would stall the process.
-        if (sweptMinute !== minute) { sweptMinute = minute; for (const [k, v] of buckets) if (v.minute !== minute) buckets.delete(k) }
-        // Still full of this minute's clients: a new one is counted in a shared counter picked by a hash of its key,
-        // never untracked (that let it make unlimited requests) and never refused outright (that would let anyone
-        // holding many addresses, an IPv6 /32 is 16M /56s, lock every new visitor out). A shard is shared by few
-        // clients unless the table is under attack, and nginx still limits each address.
-        if (buckets.size >= BUCKETS_MAX) {
-          if (spillMinute !== minute) { spillMinute = minute; spill.fill(0) }
-          let h = 2166136261
-          for (let i = 0; i < ip.length; i++) h = Math.imul(h ^ ip.charCodeAt(i), 16777619)
-          const s = (h >>> 0) % SPILL_SHARDS
-          spill[s] = Math.min(spill[s] + units, 0xffffffff)
-          return spill[s] > RATE.perMinute
-        }
+    const sec = Math.floor(now() / 1000)
+    let b = buckets.get(ip)
+    if (!b) {
+      if (buckets.size >= BUCKETS_MAX) {
+        // Past the cap, drop the clients with nothing left in their window, at most once per SWEEP_EVERY_S: walking a
+        // map full of current clients on every new one is quadratic, and a crowd of fresh addresses would stall the
+        // process.
+        if (sec - sweptAt >= SWEEP_EVERY_S) { sweptAt = sec; for (const [k, v] of buckets) if (sec - v.sec >= RATE_WINDOW_S) buckets.delete(k) }
+        // Still full of current clients: a new one is counted in a shared window picked by a hash of its key, never
+        // untracked (that let it make unlimited requests) and never refused outright (that would let anyone holding
+        // many addresses, an IPv6 /32 is 16M /56s, lock every new visitor out). A shard is shared by few clients
+        // unless the table is under attack, and nginx still limits each address.
+        if (buckets.size >= BUCKETS_MAX) return spillLimited(ip, sec, units)
       }
-      buckets.set(ip, { minute, n: units })
-      return units > RATE.perMinute
+      b = { sec, n: 0, slots: new Uint8Array(RATE_WINDOW_S) }
+      buckets.set(ip, b)
     }
+    slide(b, sec)
+    if (b.n + units > RATE.perMinute) return true
+    b.slots[sec % RATE_WINDOW_S] += units
     b.n += units
-    return b.n > RATE.perMinute
+    return false
+  }
+  // The shared windows past the cap: row t % 60 holds every shard's units of second t.
+  function spillLimited (ip, sec, units) {
+    if (sec > spillSec) {
+      const from = sec - spillSec >= RATE_WINDOW_S ? sec - RATE_WINDOW_S + 1 : spillSec + 1
+      for (let t = from; t <= sec; t++) spill.fill(0, (t % RATE_WINDOW_S) * SPILL_SHARDS, (t % RATE_WINDOW_S + 1) * SPILL_SHARDS)
+      spillSec = sec
+    }
+    let h = 2166136261
+    for (let i = 0; i < ip.length; i++) h = Math.imul(h ^ ip.charCodeAt(i), 16777619)
+    const s = (h >>> 0) % SPILL_SHARDS
+    let n = 0
+    for (let r = 0; r < RATE_WINDOW_S; r++) n += spill[r * SPILL_SHARDS + s]
+    if (n + units > RATE.perMinute) return true
+    spill[(sec % RATE_WINDOW_S) * SPILL_SHARDS + s] += units
+    return false
   }
 
   function send (res, status, body, type = 'application/json; charset=utf-8', extra = {}) {
@@ -480,7 +529,7 @@ export function createStocksWeb ({
 
   // When and from where a registry answer comes: the issuer's own list, as the server last read it.
   // The list a verdict was decided against, stamped so anyone can check it again (evm/core/stocks/list-proof.mjs).
-  const proofOf = (c, r = registries.get(c)) => listProof(r?.stamp, { readAt: r?.at, stale: Boolean(r?.error), ledgerUrl: `${publicOrigin}${publicPath}/api/history/registry?chain=${c}` })
+  const proofOf = (c, r = registries.get(c)) => listProof(r?.stamp, { readAt: r?.at, stale: Boolean(r?.error), ledgerUrl: `${publicOrigin}${publicPath}/api/history/registry?chain=${c}`, listBase: `${publicOrigin}${publicPath}/api/list` })
   const sourceOf = (c) => { const r = registries.get(c); return { generated_at: new Date(now()).toISOString(), source: `${CHAINS[c].issuer} issuer registry`, registry_age_s: r?.at ? Math.round((now() - r.at) / 1000) : null } }
   const mcp = createMcpHttp({
     chains: Object.keys(CHAINS),
@@ -490,8 +539,8 @@ export function createStocksWeb ({
     list: (c) => {
       const recs = registries.get(c)?.records
       if (!recs) throw unavailable(`the ${c} registry is not loaded yet`)
-      const tokens = recs.map((r) => ({ symbol: r.symbol, name: r.name ?? null, address: r.address, isin: r.isin, multiplier: r.multiplier, has_reference_price: r.reference?.price_usd > 0, minted: r.supplied !== false }))
-      return { chain: c, issuer: CHAINS[c].issuer, ...sourceOf(c), count: tokens.length, minted: tokens.filter((t) => t.minted).length, with_reference_price: tokens.filter((t) => t.has_reference_price).length, tokens }
+      const tokens = recs.map((r) => ({ symbol: r.symbol, name: r.name ?? null, address: r.address, isin: r.isin, multiplier: r.multiplier, has_reference_price: r.reference?.price_usd > 0, minted: mintedOf(r) }))
+      return { chain: c, issuer: CHAINS[c].issuer, ...sourceOf(c), count: tokens.length, minted: tokens.some((t) => t.minted == null) ? null : tokens.filter((t) => t.minted).length, with_reference_price: tokens.filter((t) => t.has_reference_price).length, tokens }
     },
     passport: passportOf,
     verify: verifyOf,
@@ -584,6 +633,18 @@ export function createStocksWeb ({
       const st = badgeState(r)
       const cache = st === 'unavailable' ? 'no-store' : st === 'listed' ? 'public, max-age=300' : 'public, max-age=60'
       return send(res, 200, badgeSvg(r, { address: String(a || '').toLowerCase() }), 'image/svg+xml; charset=utf-8', { 'cache-control': cache, 'access-control-allow-origin': '*' })
+    }
+    // A list by its hash (list_proof.list_url): the exact bytes registry_hash names, or its addresses. Immutable, so
+    // cached for a year; checked against its name before it leaves; 1 unit of the limit like any API read.
+    const lm = sub.match(/^\/api\/list\/([0-9a-f]{64})(\/addresses)?$/)
+    if (lm) {
+      if (limited(clientIp(req))) return send(res, 429, { error: 'too many requests, try again in a minute' }, undefined, { 'retry-after': '60', 'access-control-allow-origin': '*' })
+      const hit = listByHash(lm[1])
+      if (!hit) return send(res, 404, { error: 'no list with this hash: neither read recently nor in the archive' }, undefined, { 'access-control-allow-origin': '*', 'cache-control': 'public, max-age=60' })
+      const bytes = listBytes(hit.canonical, lm[1])
+      if (!bytes) { log(`[list] ${hit.chain} ${lm[1]}: the stored list does not hash to its name`); return send(res, 500, { error: 'internal error' }, undefined, { 'access-control-allow-origin': '*', 'cache-control': 'no-store' }) }
+      const imm = { 'access-control-allow-origin': '*', 'cache-control': 'public, max-age=31536000, immutable', 'x-robots-tag': 'noindex' }
+      return lm[2] ? send(res, 200, bytes.addresses, 'text/plain; charset=utf-8', imm) : send(res, 200, bytes.body, 'application/json; charset=utf-8', imm)
     }
     if (sub === '/verify' || sub === '/api/verify') {
       if (limited(clientIp(req))) return send(res, 429, { error: 'too many requests, try again in a minute' }, undefined, { 'retry-after': '60', 'access-control-allow-origin': '*' })
