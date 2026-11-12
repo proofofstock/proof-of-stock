@@ -1,4 +1,4 @@
-// apps/stocks-history.mjs — the passport's history as the site serves it (docs/stocks-truth-layer-tz.md §H6): the
+// apps/stocks-history.mjs: the passport's history as the site serves it (docs/stocks-truth-layer-tz.md §H6): the
 // impostor case archive and the registry snapshots that scripts/stocks/{impostor-list,stock-peg}.mjs append
 // (evm/core/stocks/history.mjs). Read-only: the site never writes a history file.
 //

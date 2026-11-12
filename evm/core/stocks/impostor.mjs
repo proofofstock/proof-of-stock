@@ -1,7 +1,7 @@
-// evm/core/stocks/impostor.mjs — does a token that is NOT in its chain's issuer registry present itself as one that is?
+// evm/core/stocks/impostor.mjs: does a token that is NOT in its chain's issuer registry present itself as one that is?
 //
 // Pure. The registry decides identity (an exact contract address); a name never does. What a name CAN do is claim an
-// identity, and a token that claims one it does not have is the case a holder most needs flagged — so this module
+// identity, and a token that claims one it does not have is the case a holder most needs flagged, so this module
 // only ever answers for tokens outside the registry, and only says what the name resembles and how strongly.
 //
 // Strength, strongest first:

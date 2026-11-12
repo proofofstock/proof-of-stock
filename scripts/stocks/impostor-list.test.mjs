@@ -1,4 +1,4 @@
-// scripts/stocks/impostor-list.test.mjs — the list holds only strong claims, never a registry token, with the official
+// scripts/stocks/impostor-list.test.mjs: the list holds only strong claims, never a registry token, with the official
 // contract beside each; weak ticker borrowing is counted, not listed; the file is written whole; GeckoTerminal pools
 // come back in DexScreener's shape and merge without duplicates.
 //

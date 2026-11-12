@@ -51,7 +51,7 @@ const stockGuard = customActionProvider({
 ## MCP
 
 The same checks are on the public MCP server at `https://proofofstock.xyz/mcp`. Its tools are `verify_stock_tokens`
-(up to 50 addresses), `recent_impostors`, `stock_passport`, `find_stock_token` and `list_stock_tokens`.
+(up to 50 addresses), `recent_impostors`, `stock_passport`, `find_stock_token`, `list_stock_tokens` and `compare_venues`.
 
 ## Demo
 

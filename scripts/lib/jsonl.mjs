@@ -1,4 +1,4 @@
-// scripts/lib/jsonl.mjs — read a JSONL day stream line by line (plain or .gz), and list a stream's day files.
+// scripts/lib/jsonl.mjs: read a JSONL day stream line by line (plain or .gz), and list a stream's day files.
 import fs from 'node:fs'
 import path from 'node:path'
 import readline from 'node:readline'

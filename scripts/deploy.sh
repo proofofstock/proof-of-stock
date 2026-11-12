@@ -1,5 +1,5 @@
 #!/bin/sh
-# scripts/deploy.sh — install an uploaded release of the Stock Token Passport on its host, gate it, switch, check.
+# scripts/deploy.sh: install an uploaded release of the Stock Token Passport on its host, gate it, switch, check.
 #
 #   sh <incoming>/scripts/deploy.sh <sha> <incoming dir> <expected running sha|none>   (called by scripts/ship.sh)
 #   sh /opt/stp/current/scripts/deploy.sh --status

@@ -1,4 +1,4 @@
-// evm/core/stocks/page-meta.test.mjs — a shared link previews what it points at, every value escaped; the chart series
+// evm/core/stocks/page-meta.test.mjs: a shared link previews what it points at, every value escaped; the chart series
 // is thinned to a bound, keeps the newest point and labels each point's market session.
 //
 // Run: node evm/core/stocks/page-meta.test.mjs

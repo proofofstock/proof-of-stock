@@ -1,4 +1,4 @@
-// evm/core/stocks/cross-chain.test.mjs — search spans both issuer chains with exact tickers first; the same share on
+// evm/core/stocks/cross-chain.test.mjs: search spans both issuer chains with exact tickers first; the same share on
 // the other chain is found by ISIN only; the board ranks priced readings by distance from the reference and counts,
 // never ranks, what could not be priced.
 //

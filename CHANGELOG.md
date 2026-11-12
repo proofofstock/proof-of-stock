@@ -12,6 +12,12 @@ The version is in `package.json`, and the site footer, the MCP `serverInfo.versi
 
 ## [Unreleased]
 
+### Security
+- **`since` must be a whole ISO time** (MCP `recent_impostors`, `/api/history/cases`). `Date.parse` accepts `2026-11-09 (any text)`, and the MCP lead, the sentence an agent is told to quote, repeated `since` as given: a caller's text could ride on a valid date into our own words. Anything after the time is now `-32602` (HTTP: 400). From a GLM audit of the MCP servers, 12.11.
+
+### Fixed
+- **The stdio MCP server holds callers to the schemas it advertises** (`hours` past 720, an unknown argument, a number as `query` ran) and answers bad input as the HTTP server does: an unknown tool or bad argument is `-32602`, an `id` of `null` is `-32600`, a client's response and every notification get no reply, and the protocol version is negotiated. Both servers share one argument check (`scripts/lib/mcp-args.mjs`).
+
 ### Changed
 - **The footer is tighter, and X, Telegram and GitHub are the last thing on the page:** three icons at the end of the bottom line, after the version; the GitHub pill leaves the link row. The docs footer ends with the same three icons.
 - **A listed passport says what listed is not:** on the site and as the last sentence of the MCP passport lead, "Listed says which contract is the issuer's, not that its price is fair."
@@ -88,7 +94,7 @@ The version is in `package.json`, and the site footer, the MCP `serverInfo.versi
 - **Our own visit counter** (`apps/stocks-analytics.mjs`, `apps/stocks-web/beacon.js`, `scripts/stocks/analytics-report.mjs`), with no cookie, no third party and no stored address ([What we count](docs/legal.md#what-we-count)). Every page counts which page was shown and for how many visible seconds, the open passport and the referring host. The server counts the pages it sent by requester class (browser, bot, tool) and MCP calls by tool. A visitor is a daily pseudonym whose key lives only in memory. It is on only where `STP_ANALYTICS_DIR` is set (the unit sets `/var/lib/stp-analytics`), so tests and the deploy gate never write to it.
 - **The history is public** (TZ §H6): the page `/history` and `GET /api/history/cases` and `/api/history/registry` (`apps/stocks-history.mjs`). Per chain: the registry snapshots, the snapshot in force on any day, and the case timeline, each event dated and marked observed or backfilled. A backfilled case says "first seen by our collector", never "flagged by us". `/verify` and `/api/passport` gain `case`; the passport says when a contract the issuer now lists was on our impostor list before. Nothing is read from disk on a request: the archive is loaded with the background refresh.
 - **Source links to GitHub, hidden until the repository is public.** They are a footer chip with the GitHub mark, a link in the docs top bar and "Source on GitHub" in the docs footer. They show only when `package.json` `stp.source_public` is true; it is false today, so no page links to a 404. `package.json` gains `repository`.
-- **History starts accumulating** (`evm/core/stocks/history.mjs`, TZ §H1–H2). Files go under `<root>/stock-peg/history/`.
+- **History starts accumulating** (`evm/core/stocks/history.mjs`, TZ §H1-H2). Files go under `<root>/stock-peg/history/`.
   - **H1, the impostor case archive:** `cases-*.jsonl` holds one row per change of a case: `opened`, `kind_changed`, `listed` (the issuer listed it) or `gone`. It is append-only; a case's state is the replay of its rows.
     - The first archive of a chain is written as `backfilled`, with `flagged_at` null and the `first_seen_at` our collector recorded.
     - A partial list (a torn day file, or truncation) closes nothing.
@@ -145,7 +151,7 @@ The version is in `package.json`, and the site footer, the MCP `serverInfo.versi
 - **The MCP `serverInfo.version`** comes from `package.json`.
 
 ### Fixed
-- **Quarantined readings:** those of 2026-11-09 17:30–19:55 UTC priced through memecoin pools (circular prices) no
+- **Quarantined readings:** those of 2026-11-09 17:30-19:55 UTC priced through memecoin pools (circular prices) no
   longer reach charts or statistics.
 
 ## [0.2.0] - 2026-11-10

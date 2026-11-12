@@ -1,4 +1,4 @@
-// apps/untrusted-text.test.mjs — a token's symbol and name are its creator's text (evm/core/stocks/untrusted-text.mjs).
+// apps/untrusted-text.test.mjs: a token's symbol and name are its creator's text (evm/core/stocks/untrusted-text.mjs).
 // For a token outside the issuer registry that text must never reach a reader as written: one visible line, cut, in the
 // data only, labelled; and never inside a sentence the service itself says (MCP text, page title). The detector compares
 // the normalized text, so an invisible character is not a way past it.

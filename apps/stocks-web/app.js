@@ -1,4 +1,4 @@
-// apps/stocks-web/app.js — Proof of Stock as a terminal. Every value goes into the page as TEXT (textContent),
+// apps/stocks-web/app.js: Proof of Stock as a terminal. Every value goes into the page as TEXT (textContent),
 // never as HTML: names of tokens outside the registry come from third parties and may contain markup.
 //
 //   run()       parses a command: help, how, now, matrix, fakes, clear, both/base/robinhood, a number from the last list;
@@ -325,8 +325,8 @@
     const items = p.notes.filter((n) => n !== 'pools_capped' && !(unminted && (n === 'not_minted' || n === 'no_reference'))).map((n) => NOTES[n] ? h('li', { class: NOTES[n][1] === 'info' ? '' : NOTES[n][1] }, NOTES[n][0]) : null).filter(Boolean)
     return items.length ? h('ul', { class: 'notes' }, items) : null
   }
-  // What an impostor imitates, in words: a listed token, or — when it copies the issuer's naming for an asset the issuer
-  // does not list at all — the naming itself.
+  // What an impostor imitates, in words: a listed token, or, when it copies the issuer's naming for an asset the issuer
+  // does not list at all, the naming itself.
   const imitates = (x) => x.registry_symbol || x.ticker || (x.kind === 'issuer_name_suffix' ? "copies Robinhood's naming" : NA)
   // Links out. An official token's links open directly. An impostor's first ask: the reader sees what they are about to
   // open, and the button that opens it says so again.
@@ -337,7 +337,7 @@
     // A token not minted yet has no pool: only its contract is worth opening.
     return h('div', { class: 'actions' }, p.issuer && p.issuer.minted === false ? null : ext(p.links.dex, 'chart & pools on GeckoTerminal'), p.links.explorer ? ext(p.links.explorer, 'contract on ' + host(p.links.explorer)) : null)
   }
-  // `strong`: the token copies a listed symbol or the issuer's naming — an impostor. Otherwise it only borrows a ticker,
+  // `strong`: the token copies a listed symbol or the issuer's naming, an impostor. Otherwise it only borrows a ticker,
   // and is called what it is: a token outside the registry. A token that resembles nothing (USDC, WETH) gets plain links.
   function impostorLinks (p, imitated, strong) {
     if (!p.links) return null

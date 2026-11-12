@@ -1,4 +1,4 @@
-// apps/stocks-analytics.mjs — our own visit counter (docs/legal.md "What we count"). No cookies, no third party, no
+// apps/stocks-analytics.mjs: our own visit counter (docs/legal.md "What we count"). No cookies, no third party, no
 // stored address. Three kinds of row, appended per UTC day to <dir>/hits-YYYY-MM-DD.jsonl:
 //   load  the server sent a page (/, a docs page, /history, /status), with the requester's class: browser, bot or tool
 //   view / hide   apps/stocks-web/beacon.js: a page was shown, or hidden after N visible seconds

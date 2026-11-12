@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/og/render.sh — re-render the checked-in link-preview image (apps/stocks-web/og.png, 1200×630) and the raster
+# scripts/og/render.sh: re-render the checked-in link-preview image (apps/stocks-web/og.png, 1200×630) and the raster
 # logo (apps/stocks-web/logo.png, 512×512) from their HTML sources here, with a headless Chromium (Chrome or Edge).
 # The site serves the PNGs as they are in the repository; nothing renders on the server.
 #

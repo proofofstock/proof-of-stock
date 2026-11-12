@@ -1,4 +1,4 @@
-// apps/stocks-mcp-http.mjs — Proof of Stock as a PUBLIC MCP server over Streamable HTTP, so anyone can connect
+// apps/stocks-mcp-http.mjs: Proof of Stock as a PUBLIC MCP server over Streamable HTTP, so anyone can connect
 // an agent to https://proofofstock.xyz/mcp without ssh. apps/stocks-web.mjs mounts it; this module only speaks
 // the protocol and calls the data functions it is handed, which answer from the site's memory.
 //
@@ -12,6 +12,7 @@
 
 import fs from 'node:fs'
 import { TOOLS } from '../scripts/stocks/passport-mcp.mjs'
+import { invalid, ISO_TIME_PATTERN, isIsoTime } from '../scripts/lib/mcp-args.mjs'
 
 export const SUPPORTED_VERSIONS = Object.freeze(['2025-06-18', '2025-03-26', '2024-11-05'])
 
@@ -41,7 +42,7 @@ export const SAFETY_TOOLS = Object.freeze([
   {
     name: 'recent_impostors',
     description: 'Tokens on a chain whose symbol or name copies an issuer-listed stock token while their contract is not in that registry, newest first (at most 50), optionally since an ISO time. Each names what it imitates and the listed address. A claim with evidence, not a verdict.',
-    inputSchema: { type: 'object', properties: { chain: { type: 'string', enum: CHAINS_ENUM }, since: { type: 'string', pattern: '^\\d{4}-\\d{2}-\\d{2}' } }, required: ['chain'], additionalProperties: false },
+    inputSchema: { type: 'object', properties: { chain: { type: 'string', enum: CHAINS_ENUM }, since: { type: 'string', maxLength: 29, pattern: ISO_TIME_PATTERN } }, required: ['chain'], additionalProperties: false },
     annotations: { title: 'Recent impostors', ...READ_ONLY },
   },
 ])
@@ -71,36 +72,7 @@ const r0issuer = (results) => ((results[0] && results[0].registries_checked && r
  * properties (string / number), enum, pattern, minLength, minimum / maximum, required, additionalProperties: false.
  * Returns null when valid, else what is wrong, in words. The spec says a server MUST validate tool inputs.
  */
-export function invalid (schema, args) {
-  if (!args || typeof args !== 'object' || Array.isArray(args)) return 'arguments must be an object'
-  const props = schema.properties || {}
-  for (const k of schema.required || []) if (args[k] === undefined) return `${k} is required`
-  for (const [k, v] of Object.entries(args)) {
-    const s = Object.hasOwn(props, k) ? props[k] : undefined
-    if (!s) { if (schema.additionalProperties === false) return `unknown argument ${k.slice(0, 40)}`; continue }
-    if (s.type === 'string') {
-      if (typeof v !== 'string') return `${k} must be a string`
-      if (s.minLength != null && v.length < s.minLength) return `${k} is too short`
-      if (s.pattern && !new RegExp(s.pattern).test(v)) return `${k} has the wrong form`
-    }
-    if (s.type === 'number' && (typeof v !== 'number' || !Number.isFinite(v))) return `${k} must be a number`
-    if (s.type === 'boolean' && typeof v !== 'boolean') return `${k} must be true or false`
-    if (s.type === 'array') {
-      if (!Array.isArray(v)) return `${k} must be a list`
-      if (s.minItems != null && v.length < s.minItems) return `${k} needs at least ${s.minItems} item${s.minItems === 1 ? '' : 's'}`
-      if (s.maxItems != null && v.length > s.maxItems) return `${k} takes at most ${s.maxItems} items`
-      const it = s.items || {}
-      for (let i = 0; i < v.length; i++) {
-        if (it.type === 'string' && typeof v[i] !== 'string') return `${k}[${i}] must be a string`
-        if (it.pattern && !new RegExp(it.pattern).test(v[i])) return `${k}[${i}] has the wrong form`
-      }
-    }
-    if (s.enum && !s.enum.includes(v)) return `${k} must be one of ${s.enum.join(', ')}`
-    if (s.minimum != null && v < s.minimum) return `${k} must be at least ${s.minimum}`
-    if (s.maximum != null && v > s.maximum) return `${k} must be at most ${s.maximum}`
-  }
-  return null
-}
+export { invalid } from '../scripts/lib/mcp-args.mjs'
 /** An age in words: seconds to days, the unit chosen so the number stays small. */
 export function ageWords (s) {
   if (s == null) return 'of unknown age'
@@ -203,7 +175,7 @@ export function createMcpHttp (data) {
         return text({ chain: args.chain, count: results.length, listed: listed.length, impostors: imp.length, results }, parts.join(' '))
       }
       if (name === 'recent_impostors') {
-        if (args.since && !Number.isFinite(Date.parse(args.since))) return fail(`since is not a valid time: ${String(args.since).slice(0, 40)}`)
+        if (args.since && !isIsoTime(args.since)) return fail('since is not a valid time')
         const r = data.recent(args.chain, args.since)
         // ⚠ The address and the ISSUER's symbol only. The impostor's own symbol is its creator's text (untrusted-text.mjs):
         //   it stays in the data, labelled, and out of the sentence an agent reads as ours.

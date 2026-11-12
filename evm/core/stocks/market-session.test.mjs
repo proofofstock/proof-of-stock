@@ -1,4 +1,4 @@
-// evm/core/stocks/market-session.test.mjs — the session an instant falls in, on the New York clock, with daylight
+// evm/core/stocks/market-session.test.mjs: the session an instant falls in, on the New York clock, with daylight
 // saving, weekends, holidays and early closes; and `unknown` past the calendar, never a guess.
 //
 // Run: node evm/core/stocks/market-session.test.mjs

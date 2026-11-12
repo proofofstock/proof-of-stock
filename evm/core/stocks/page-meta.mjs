@@ -1,8 +1,8 @@
-// evm/core/stocks/page-meta.mjs — what a page says about itself before anyone opens it: the <title>, the canonical link,
+// evm/core/stocks/page-meta.mjs: what a page says about itself before anyone opens it: the <title>, the canonical link,
 // the Open Graph / Twitter tags that X, Farcaster, Telegram and messengers read for their preview, and JSON-LD.
 //
-// Pure. The server (apps/stocks-web.mjs) calls it when it serves the page, with whatever it already holds in memory —
-// the registry record and the latest reading for a token in the link — and never fetches anything for a preview.
+// Pure. The server (apps/stocks-web.mjs) calls it when it serves the page, with whatever it already holds in memory:
+// the registry record and the latest reading for a token in the link, and never fetches anything for a preview.
 //
 // ⚠ EVERY VALUE IS ESCAPED. A link can name any address, and a token outside the registry carries a name a stranger
 // chose; it goes into an HTML attribute, so it is escaped here and nowhere else.

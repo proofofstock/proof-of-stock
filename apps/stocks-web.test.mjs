@@ -1,4 +1,4 @@
-// apps/stocks-web.test.mjs — the public passport site: serves its page with a strict CSP, answers find and passport
+// apps/stocks-web.test.mjs: the public passport site: serves its page with a strict CSP, answers find and passport
 // from memory, refuses anything but GET/HEAD, validates input, rate limits per client (trusting X-Real-IP only from the
 // loopback proxy), says 503 until a registry is loaded, and never builds a passport from readings it does not hold.
 //

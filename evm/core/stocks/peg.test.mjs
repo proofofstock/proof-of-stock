@@ -1,4 +1,4 @@
-// evm/core/stocks/peg.test.mjs — the premium is DEX price over a TOKEN-unit reference, the multiplier is never
+// evm/core/stocks/peg.test.mjs: the premium is DEX price over a TOKEN-unit reference, the multiplier is never
 // applied twice, every null premium names its reason, and an issuer list is read whole or not at all.
 //
 // Run: node evm/core/stocks/peg.test.mjs

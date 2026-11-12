@@ -1,4 +1,4 @@
-// apps/stocks-web/docs.js — the docs search box: titles and section headings of every page, filtered as you type.
+// apps/stocks-web/docs.js: the docs search box: titles and section headings of every page, filtered as you type.
 // ⌘K / Ctrl+K or "/" focuses it, arrows move, Enter opens. The pages read fully without this script.
 'use strict'
 ;(function () {

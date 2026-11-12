@@ -452,7 +452,7 @@ curl -s https://proofofstock.xyz/mcp -H 'content-type: application/json' \
 | Name | Type | Required | Constraint |
 |---|---|---|---|
 | `chain` | string | yes | `base` or `robinhood` |
-| `since` | string | no | starts `YYYY-MM-DD` (`^\d{4}-\d{2}-\d{2}`); an ISO time. Keeps items whose `first_seen_at` is at or after it |
+| `since` | string | no | an ISO date or time and nothing after it: `YYYY-MM-DD`, optionally `THH:MM[:SS[.sss]]` and `Z` or `±HH:MM`. Keeps items whose `first_seen_at` is at or after it |
 
 ### Output
 
@@ -473,8 +473,8 @@ curl -s https://proofofstock.xyz/mcp -H 'content-type: application/json' \
 
 | Kind | When |
 |---|---|
-| `isError` | `the <chain> impostor list is not generated yet`, or the file could not be read; `since is not a valid time: …` when `since` has the date form but does not parse |
-| `-32602` | missing or unknown `chain`; `since` not starting with a date; any other argument |
+| `isError` | `the <chain> impostor list is not generated yet`, or the file could not be read; `since is not a valid time` when `since` has the form but is not a real time (`2026-02-30`) |
+| `-32602` | missing or unknown `chain`; `since` not in that form, or with anything after the time; any other argument |
 
 ### Limits
 

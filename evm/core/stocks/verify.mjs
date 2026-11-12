@@ -1,4 +1,4 @@
-// evm/core/stocks/verify.mjs — the one-bit answer: is this address on the issuer's own list for this chain? And the
+// evm/core/stocks/verify.mjs: the one-bit answer: is this address on the issuer's own list for this chain? And the
 // badge that carries that answer into other people's pages (docs/stocks-truth-layer-tz.md, W1).
 //
 // Pure. It is handed the registry records the site holds, when they were read, the impostor entry for the address if

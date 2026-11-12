@@ -1,4 +1,4 @@
-// evm/core/stocks/passport.test.mjs — a registry token gets its issuer, reference with its age, latest reading and a
+// evm/core/stocks/passport.test.mjs: a registry token gets its issuer, reference with its age, latest reading and a
 // premium series split by market session; a token outside the registry gets no issuer and, if its name claims one, the
 // resemblance; every gap is a named note; nothing here is a trading signal.
 //

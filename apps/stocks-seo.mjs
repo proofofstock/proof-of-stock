@@ -1,4 +1,4 @@
-// apps/stocks-seo.mjs — what the site tells search engines, AI crawlers and agents about itself: robots.txt, the
+// apps/stocks-seo.mjs: what the site tells search engines, AI crawlers and agents about itself: robots.txt, the
 // sitemap, and the JSON-LD that names the organisation, the site, the web app and the MCP server.
 //
 // Pure: the server (apps/stocks-web.mjs) passes in what it holds (origin, docs, registry symbols, release date).

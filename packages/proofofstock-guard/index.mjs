@@ -1,4 +1,4 @@
-// @proofofstock/guard — a pre-trade check for agents that buy tokenized stocks on Base or Robinhood Chain.
+// @proofofstock/guard: a pre-trade check for agents that buy tokenized stocks on Base or Robinhood Chain.
 //
 // Before an agent swaps into a token that claims to be a stock, it asks proofofstock.xyz whether that exact contract is
 // on the issuer's own registry (Coinbase on Base, Robinhood on Robinhood Chain). The guard turns the answer into a

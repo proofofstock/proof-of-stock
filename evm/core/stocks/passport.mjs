@@ -1,4 +1,4 @@
-// evm/core/stocks/passport.mjs — what can be said, with its time and source, about one token that is or claims to be a
+// evm/core/stocks/passport.mjs: what can be said, with its time and source, about one token that is or claims to be a
 // tokenized stock: who issued it, what the issuer prices it at and how fresh that price is, where it trades and how
 // far from that price, and what the market was doing meanwhile.
 //

@@ -1,4 +1,4 @@
-// schemas/v2/validate.mjs — validate a row against one of the schemas beside it (ajv, draft-07).
+// schemas/v2/validate.mjs: validate a row against one of the schemas beside it (ajv, draft-07).
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'

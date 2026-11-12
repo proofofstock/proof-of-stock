@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// scripts/stocks/analytics-report.mjs — the visit counter's daily summary (apps/stocks-analytics.mjs), as markdown.
+// scripts/stocks/analytics-report.mjs: the visit counter's daily summary (apps/stocks-analytics.mjs), as markdown.
 //   node scripts/stocks/analytics-report.mjs [--dir /var/lib/stp-analytics] [--days 7]
 // Aggregates only: no pseudonym, address or user agent is printed.
 //
@@ -68,16 +68,16 @@ export function summarise (rows) {
 }
 
 export function report ({ dir, days = 7, today = new Date().toISOString().slice(0, 10) }) {
-  const out = [`# Visit counter — last ${days} days to ${today}`, '', 'People: pages that ran their script in a browser. Pseudonyms change daily, so a person counts once per day.', '']
+  const out = [`# Visit counter, last ${days} days to ${today}`, '', 'People: pages that ran their script in a browser. Pseudonyms change daily, so a person counts once per day.', '']
   for (let i = days - 1; i >= 0; i--) {
     const d = new Date(Date.parse(today + 'T00:00:00Z') - i * 86400e3).toISOString().slice(0, 10)
     const f = path.join(dir, `hits-${d}.jsonl`)
     if (!fs.existsSync(f)) { out.push(`## ${d}`, '', 'no file', ''); continue }
     const rows = fs.readFileSync(f, 'utf8').split('\n').filter(Boolean).flatMap((l) => { try { return [JSON.parse(l)] } catch { return [] } })
     const s = summarise(rows)
-    const list = (a, f2 = ([k, v]) => `${k} ${v}`) => a.length ? a.map(f2).join(', ') : '—'
+    const list = (a, f2 = ([k, v]) => `${k} ${v}`) => a.length ? a.map(f2).join(', ') : 'none'
     out.push(`## ${d}`, '',
-      `- **people:** ${s.people}; spent 30 s or more: ${s.engaged}; median visible time per person: ${s.median_visible_s ?? '—'} s`,
+      `- **people:** ${s.people}; spent 30 s or more: ${s.engaged}; median visible time per person: ${s.median_visible_s ?? ', '} s`,
       `- **not counted as people:** browsers that loaded a page and sent no beacon ${s.browsers_without_beacon}, bots ${s.bots}, tools ${s.tools}; page loads by class: ${list(Object.entries(s.loads))}`,
       `- **pages viewed:** ${list(s.views)}`,
       `- **time on page** (people, median s, longest s): ${list(s.time_by_page, ([p, n, m, x]) => `${p} ${n} people, ${m} s, ${x} s`)}`,

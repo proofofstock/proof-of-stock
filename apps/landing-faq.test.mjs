@@ -1,4 +1,4 @@
-// apps/landing-faq.test.mjs — the questions on the landing: what a visitor reads and what search engines read
+// apps/landing-faq.test.mjs: the questions on the landing: what a visitor reads and what search engines read
 // (FAQPage JSON-LD) are the same questions and answers, and the answers keep to what the code does.
 //
 // Run: node apps/landing-faq.test.mjs

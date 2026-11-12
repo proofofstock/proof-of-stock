@@ -1,4 +1,4 @@
-// evm/core/stocks/peg.mjs — how far a tokenized stock's DEX price sits from its issuer's reference price.
+// evm/core/stocks/peg.mjs: how far a tokenized stock's DEX price sits from its issuer's reference price.
 //
 // Pure. The recorder (scripts/stocks/stock-peg.mjs) feeds it an issuer record and the DEX pairs it read, and writes
 // what comes back. Nothing here fetches.
@@ -8,7 +8,7 @@
 //   - Robinhood: `tokenBid` / `tokenAsk` are the share's bid/ask already scaled to one token. The plain `bid` / `ask`
 //     beside them are the SHARE's prices and are not a reference for a token, so the recorder does not read them.
 // A token whose multiplier is 1.011 would otherwise show a 1.1% premium that is pure arithmetic. The multiplier is
-// still recorded on every row, so a reader can see it — it is just never applied twice.
+// still recorded on every row, so a reader can see it, it is just never applied twice.
 //
 // ⚠ A STALE REFERENCE IS RECORDED, NOT REFUSED. Feeds hold their last value while the exchange is closed, and how the
 // DEX price drifts against that held value over a weekend or a holiday is exactly what this series is for. So the
@@ -17,7 +17,7 @@
 
 export const MIN_POOL_LIQUIDITY_USD = 10_000
 // A reference quote wider than this (ask − bid over mid), or crossed, is too loose to judge an on-chain price against.
-// Measured 08–09.11: Robinhood's weekend quotes run several percent wide, so a mid against them reads as a gap that is
+// Measured 08-09.11: Robinhood's weekend quotes run several percent wide, so a mid against them reads as a gap that is
 // mostly the quote's own spread.
 export const MAX_REFERENCE_SPREAD = 0.01
 export const TOP_POOLS = 5
@@ -41,7 +41,7 @@ const low = (s) => (typeof s === 'string' ? s.toLowerCase() : null)
  * Against a memecoin it is circular: on Robinhood Chain memecoins are launched paired with stock tokens (IALI/DJT,
  * REDCAT/RCAT), their dollar price is derived from the stock token, and reading the stock token back out of them gave
  * DJT at ~$990 against an issuer price of ~$4 (09.11). `referenceAssets` is the set of lower-case addresses a pool's
- * other token must be in — the chain descriptor's stables and wrapped native, matched by address because a symbol is
+ * other token must be in, the chain descriptor's stables and wrapped native, matched by address because a symbol is
  * free to copy. Without it every pair counts, which only tests rely on.
  */
 export function tokenPriceIn (token, p, referenceAssets = null) {

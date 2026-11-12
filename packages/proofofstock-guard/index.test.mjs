@@ -1,4 +1,4 @@
-// packages/proofofstock-guard/index.test.mjs — the guard buys only an issuer-listed token of the stock asked for,
+// packages/proofofstock-guard/index.test.mjs: the guard buys only an issuer-listed token of the stock asked for,
 // refuses an impostor and names the listed contract, refuses what it cannot vouch for, and fails closed.
 // The verify answers are the calibration cases of docs/stocks-passport-agent.md, served by a fake fetch: no network.
 //

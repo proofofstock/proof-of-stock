@@ -1,5 +1,5 @@
 #!/bin/sh
-# scripts/ship.sh — ship a commit of this repository to the host. Run where the repository is checked out.
+# scripts/ship.sh: ship a commit of this repository to the host. Run where the repository is checked out.
 #
 #   scripts/ship.sh <sha> [--rollback]     STP_HOST, or git config stp.host, is the ssh alias of the host
 #   scripts/ship.sh --status

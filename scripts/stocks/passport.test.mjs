@@ -1,4 +1,4 @@
-// scripts/stocks/passport.test.mjs — the passport CLI reads only the token's own readings in the window and, for a
+// scripts/stocks/passport.test.mjs: the passport CLI reads only the token's own readings in the window and, for a
 // token outside the registry, our newest static name; the census counts resemblances and prints no token.
 //
 // Run: node scripts/stocks/passport.test.mjs

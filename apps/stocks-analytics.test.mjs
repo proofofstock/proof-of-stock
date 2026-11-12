@@ -1,4 +1,4 @@
-// apps/stocks-analytics.test.mjs — the visit counter: what a beacon may carry, what a row holds, the daily pseudonym,
+// apps/stocks-analytics.test.mjs: the visit counter: what a beacon may carry, what a row holds, the daily pseudonym,
 // the off switch, the wiring in the site, and the report.
 import fs from 'node:fs'
 import vm from 'node:vm'
@@ -193,7 +193,7 @@ console.log('the report')
   const md = report({ dir, days: 2, today: '2026-11-10' })
   check('the report has a section per day and says when a day has no file', /## 2026-11-09\n\nno file/.test(md) && /## 2026-11-10/.test(md) && /\*\*people:\*\* 2/.test(md))
   check('actions count people, once each, and never a bot', JSON.stringify(s.actions.chip) === JSON.stringify([['NVDA', 2]]) && JSON.stringify(s.actions.section) === JSON.stringify([['faq', 1]]))
-  check('the report has a line per kind of action', md.includes('**buttons under the headline** (people): NVDA 2') && md.includes('**sections seen (a second on screen)** (people): faq 1') && md.includes('**searches (kind:outcome)** (people): —'))
+  check('the report has a line per kind of action', md.includes('**buttons under the headline** (people): NVDA 2') && md.includes('**sections seen (a second on screen)** (people): faq 1') && md.includes('**searches (kind:outcome)** (people): none'))
   check('the report prints no pseudonym', !/\bp1\b|\bm1\b/.test(md))
 }
 

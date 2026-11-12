@@ -1,4 +1,4 @@
-// evm/core/stocks/verify.test.mjs — the address alone decides; an old registry is no answer; only a copied symbol or
+// evm/core/stocks/verify.test.mjs: the address alone decides; an old registry is no answer; only a copied symbol or
 // the issuer's naming is called an impostor; the badge prints the address it vouches for and nothing executable.
 //
 // Run: node evm/core/stocks/verify.test.mjs

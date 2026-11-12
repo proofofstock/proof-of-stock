@@ -1,4 +1,4 @@
-// evm/core/stocks/readings-window.mjs — the recent peg readings of every token on one chain, held in memory in compact
+// evm/core/stocks/readings-window.mjs: the recent peg readings of every token on one chain, held in memory in compact
 // form, so that a public request builds a passport from memory instead of scanning day files.
 //
 // Per token it keeps the LATEST full row (everything a passport shows about "now") and, for the window, only the

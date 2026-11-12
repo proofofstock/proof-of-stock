@@ -1,4 +1,4 @@
-// evm/core/stocks/history.test.mjs — the history is append-only and says how each fact was learned (TZ §H1, §H2).
+// evm/core/stocks/history.test.mjs: the history is append-only and says how each fact was learned (TZ §H1, §H2).
 // Run: node evm/core/stocks/history.test.mjs
 
 import fs from 'node:fs'

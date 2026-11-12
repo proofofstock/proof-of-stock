@@ -1,4 +1,4 @@
-// apps/stocks-seo.test.mjs — robots.txt keeps the API and /mcp out and names the sitemap; the sitemap lists the pages
+// apps/stocks-seo.test.mjs: robots.txt keeps the API and /mcp out and names the sitemap; the sitemap lists the pages
 // and the listed tokens, escaped and once each; the JSON-LD names only hello@proofofstock.xyz.
 //
 // Run: node apps/stocks-seo.test.mjs

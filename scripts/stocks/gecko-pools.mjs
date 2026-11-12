@@ -1,4 +1,4 @@
-// scripts/stocks/gecko-pools.mjs — a second list of a token's pools, from GeckoTerminal, for the tokens whose DexScreener
+// scripts/stocks/gecko-pools.mjs: a second list of a token's pools, from GeckoTerminal, for the tokens whose DexScreener
 // list hit its cap of 30 pairs. Used by scripts/stocks/stock-peg.mjs only.
 //
 // ⚠ A SUPPLEMENT, NEVER A SUBSTITUTE. It is asked only when DexScreener's list is full, and a failure here leaves the

@@ -1,4 +1,4 @@
-// evm/core/stocks/untrusted-text.mjs — text chosen by a stranger, made safe to compare and to show.
+// evm/core/stocks/untrusted-text.mjs: text chosen by a stranger, made safe to compare and to show.
 //
 // A token's symbol and name are whatever its creator wrote into the contract. For a token OUTSIDE the issuer registry
 // that creator is exactly the party a reader should not take instructions from, and the reader is often an LLM agent:
@@ -15,7 +15,7 @@
 //   and every answer that carries one says so (UNTRUSTED_TEXT_NOTE).
 // ⚠ Markup is NOT neutralized: "[text](url)" stays as written. A client that renders a label as markdown or HTML must
 //   escape it, as with any data.
-// ⚠ Look-alike letters are NOT folded: Cyrillic "А" stays Cyrillic, so "NVDАc" does not become "NVDAc". NFKC folds
+// ⚠ Look-alike letters are NOT folded: Cyrillic A (U+0410) stays Cyrillic, so "NVD\u0410c" does not become "NVDAc". NFKC folds
 //   only compatibility forms (full-width, superscript, ligatures).
 
 export const SYMBOL_MAX = 32

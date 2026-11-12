@@ -1,4 +1,4 @@
-// evm/core/stocks/registries.mjs — the issuers' own lists of tokenized stocks, read from their public APIs.
+// evm/core/stocks/registries.mjs: the issuers' own lists of tokenized stocks, read from their public APIs.
 //
 // Two issuers, one shape out. The chain id is the caller's (from the chain descriptor): this is generic core and names
 // no chain itself. Each issuer publishes for one chain:
@@ -10,7 +10,7 @@
 //
 // ⚠ ALL OR NOTHING. A list read halfway (a page that failed, a body that is not the shape) is thrown, never returned
 // short: a short list reads downstream as "these tokens are not stocks", which is the error this module exists to
-// prevent. A missing PRICE is different — the list is still true, and the token gets a null reference.
+// prevent. A missing PRICE is different, the list is still true, and the token gets a null reference.
 //
 // ⚠ ABSENT IS NOT ZERO. Coinbase omits default-valued fields (no `total_supply` means none minted, no `nav_price`
 // means no feed). Every number here is null when the field is absent, never 0.

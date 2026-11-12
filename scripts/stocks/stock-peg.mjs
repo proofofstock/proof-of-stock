@@ -1,4 +1,4 @@
-// scripts/stocks/stock-peg.mjs — one reading of every issuer-listed tokenized stock on one chain: the issuer's reference
+// scripts/stocks/stock-peg.mjs: one reading of every issuer-listed tokenized stock on one chain: the issuer's reference
 // price for a token, the DEX pools that trade it, and the premium of the deepest pool over the reference.
 //
 // Runs as a oneshot on a timer (deployment/systemd/stp-peg.{service,timer}), never inside a server or a

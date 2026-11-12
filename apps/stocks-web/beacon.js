@@ -1,4 +1,4 @@
-// beacon.js — our own visit counter (docs/legal.md "What we count"). It tells the server which page was shown, for how
+// beacon.js: our own visit counter (docs/legal.md "What we count"). It tells the server which page was shown, for how
 // many visible seconds, which passport was open, the referring site's host, and what was done there as a KIND of action
 // (which button, what kind of search and whether it found anything; never the text). No cookie, no storage, no identifier: the
 // server derives a pseudonym that changes every day (apps/stocks-analytics.mjs).

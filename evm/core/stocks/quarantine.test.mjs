@@ -1,4 +1,4 @@
-// evm/core/stocks/quarantine.test.mjs — readings known to be wrong leave the window; correct ones around them stay.
+// evm/core/stocks/quarantine.test.mjs: readings known to be wrong leave the window; correct ones around them stay.
 //
 // Run: node evm/core/stocks/quarantine.test.mjs
 

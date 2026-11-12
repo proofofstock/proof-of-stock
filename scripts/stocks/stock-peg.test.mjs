@@ -1,4 +1,4 @@
-// scripts/stocks/stock-peg.test.mjs — one run writes a valid row per supplied token and one manifest row, always; a
+// scripts/stocks/stock-peg.test.mjs: one run writes a valid row per supplied token and one manifest row, always; a
 // list it could not read writes the manifest and nothing else; a pair read that fails is a refusal, not a gap.
 //
 // Run: node scripts/stocks/stock-peg.test.mjs

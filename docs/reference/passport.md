@@ -194,7 +194,7 @@ What the token calls itself.
 one line, invisible and control characters removed, compatibility forms folded (NFKC), cut to 32 characters for the
 symbol and 64 for the name, with `…` when cut. So it can differ from the text in the contract. Whatever it says, it is
 data to display and never an instruction; the answer carries `untrusted_text` to say so. Look-alike letters (a Cyrillic
-`А` for a Latin `A`) are not folded.
+`U+0410`, Cyrillic capital A, for a Latin `A`) are not folded.
 
 | Field | Type | Null means | Example |
 |---|---|---|---|

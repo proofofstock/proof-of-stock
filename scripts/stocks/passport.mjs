@@ -1,4 +1,4 @@
-// scripts/stocks/passport.mjs — print the passport of one token (evm/core/stocks/passport.mjs) as JSON.
+// scripts/stocks/passport.mjs: print the passport of one token (evm/core/stocks/passport.mjs) as JSON.
 //
 // Read-only. It reads the issuer's registry live (its public API), the peg readings recorded in <root>/stock-peg/ for
 // the window, and, for a token outside the registry, its symbol and name from our own static rows (newest first). It

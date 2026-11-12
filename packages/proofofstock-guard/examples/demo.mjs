@@ -1,4 +1,4 @@
-// packages/proofofstock-guard/examples/demo.mjs — the contest demo, against the live endpoint.
+// packages/proofofstock-guard/examples/demo.mjs: the contest demo, against the live endpoint.
 //
 // An agent is asked to buy SNDKc on Base and is handed an impostor's contract. The guard refuses it and names the
 // issuer-listed contract; the agent checks that one and proceeds. Nothing is traded: the "swap" here only prints.
@@ -18,4 +18,4 @@ if (!d.allow && d.use_instead) {
   d = await guard.beforeBuy({ ...ask, tokenAddress: d.use_instead })
   console.log(`guard: ${d.allow ? 'ALLOW' : 'REFUSE'} (${d.decision}) ${d.reason}`)
 }
-console.log(d.allow ? `agent: would swap into ${d.verify.address} (${d.verify.symbol}) now — dry run, nothing traded` : 'agent: no buy')
+console.log(d.allow ? `agent: would swap into ${d.verify.address} (${d.verify.symbol}) now, dry run, nothing traded` : 'agent: no buy')

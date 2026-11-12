@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/export-public.sh — the public copy of this repository: the tree at a commit, with the internal notes replaced
+# scripts/export-public.sh: the public copy of this repository: the tree at a commit, with the internal notes replaced
 # by a one-line stub, as ONE fresh commit with no history. This repository stays private; the public one is rebuilt from
 # it on each release.
 #

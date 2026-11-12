@@ -1,10 +1,10 @@
-// evm/core/stocks/market-session.mjs — which US equity session an instant falls in, so a peg reading can be read
+// evm/core/stocks/market-session.mjs: which US equity session an instant falls in, so a peg reading can be read
 // against what the underlying market was doing: open, in extended hours, closed for the night or the weekend, or
 // closed for a holiday.
 //
 // Pure, no dependencies: the New York wall clock comes from Intl (daylight saving included).
 //
-// Sessions (NYSE, New York time): pre 04:00–09:30, regular 09:30–16:00 (13:00 on an early-close day), post until 20:00
+// Sessions (NYSE, New York time): pre 04:00-09:30, regular 09:30-16:00 (13:00 on an early-close day), post until 20:00
 // (17:00 on an early-close day), closed otherwise, all day on weekends and full holidays.
 //
 // ⚠ THE HOLIDAY TABLE IS DATA, AND IT ENDS. A date past the last year it covers answers `unknown`, never `regular`: a

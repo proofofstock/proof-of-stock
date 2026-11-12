@@ -1,4 +1,4 @@
-// scripts/stocks/impostor-census.mjs — how many tokens in our dataset present themselves as an issuer-listed stock
+// scripts/stocks/impostor-census.mjs: how many tokens in our dataset present themselves as an issuer-listed stock
 // they are not, by how strongly (evm/core/stocks/impostor.mjs). AGGREGATES ONLY: counts per kind, and the registry
 // tickers most often borrowed with their counts. No token row, address or name of a non-registry token is printed.
 //

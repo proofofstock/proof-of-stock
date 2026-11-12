@@ -1,4 +1,4 @@
-// evm/core/stocks/cross-chain.mjs — the views that look at every issuer chain at once: search across them, the same
+// evm/core/stocks/cross-chain.mjs: the views that look at every issuer chain at once: search across them, the same
 // share on another chain, and the "right now" board of where DEX prices sit against the issuers' references.
 //
 // Pure. Each function is handed, per chain, the issuer registry (evm/core/stocks/registries.mjs) and the in-memory
@@ -6,7 +6,7 @@
 //
 // ⚠ THE SAME SHARE IS MATCHED BY ISIN, NEVER BY SYMBOL. Coinbase writes NVDAc, Robinhood NVDA; a symbol match would
 // also pair unrelated tickers that happen to share letters. Two tokens with one ISIN are claims on the same security,
-// issued by different issuers under different terms — the comparison shows prices side by side, it does not say they
+// issued by different issuers under different terms, the comparison shows prices side by side, it does not say they
 // are interchangeable.
 
 import { premiumAt, PUBLIC_WINDOW_H } from './passport.mjs'
@@ -19,9 +19,9 @@ const companyOf = (r) => low(r.name).replace(/\s+robinhood token$/, '')
 
 /**
  * How a record matches a query, or null:
- *   exact   — the symbol, the bare ticker (NVDAc → NVDA) or the ISIN equals the query;
- *   name    — a word of the company name starts with the query (3+ characters), or the name equals it;
- *   prefix  — the symbol or bare ticker starts with the query.
+ *   exact  , the symbol, the bare ticker (NVDAc → NVDA) or the ISIN equals the query;
+ *   name   , a word of the company name starts with the query (3+ characters), or the name equals it;
+ *   prefix , the symbol or bare ticker starts with the query.
  * A query inside a word matches nothing: "SPY" is not Krispy Kreme and "HOOD" is not every "… Robinhood Token".
  */
 export function matchQuality (r, q) {
@@ -109,7 +109,7 @@ export function sameStockElsewhere (byChain, chain, address, now = null, maxAgeS
 
 /**
  * The board: per chain, the issuer tokens with a priced reading, furthest from their reference first. Only readings
- * that HAVE a premium are ranked — a token with no deep pool or no reference is counted, not ranked, so the board never
+ * that HAVE a premium are ranked, a token with no deep pool or no reference is counted, not ranked, so the board never
  * implies a token is "at par" when nothing could price it.
  */
 export function overview (byChain, { limit = 12, minLiquidityUsd = 0, now = null, staleS = 1800 } = {}) {

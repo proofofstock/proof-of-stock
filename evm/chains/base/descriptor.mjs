@@ -1,4 +1,4 @@
-// evm/chains/base/descriptor.mjs — what the passport needs to know about the chain: its id, the dollar stables and wrapped native a pool
+// evm/chains/base/descriptor.mjs: what the passport needs to know about the chain: its id, the dollar stables and wrapped native a pool
 // must be paired with to price a stock token (scripts/stocks/stock-peg.mjs referenceAssetsOf), and its public explorer.
 export const BASE_DESCRIPTOR = Object.freeze({
   "chainId": 8453,

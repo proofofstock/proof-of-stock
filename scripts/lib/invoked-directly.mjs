@@ -1,4 +1,4 @@
-// scripts/lib/invoked-directly.mjs — is this module the one `node` was asked to run?
+// scripts/lib/invoked-directly.mjs: is this module the one `node` was asked to run?
 //
 // 🔴 WHY THIS EXISTS. Scripts guard their command line with "am I the entry point", and most did it by
 // comparing `import.meta.url` with `process.argv[1]`: as URLs (`pathToFileURL(argv[1]).href`, or a

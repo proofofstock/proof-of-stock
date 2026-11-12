@@ -1,4 +1,4 @@
-// apps/stocks-docs.mjs — the documentation as web pages: the markdown in docs/ rendered in a docs layout (top bar with
+// apps/stocks-docs.mjs: the documentation as web pages: the markdown in docs/ rendered in a docs layout (top bar with
 // search, catalogs with icons on the left, the article with its lede, contents on the right, previous / next at the end),
 // with stable heading anchors (#field-premium).
 //

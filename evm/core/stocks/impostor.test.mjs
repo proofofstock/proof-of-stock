@@ -1,4 +1,4 @@
-// evm/core/stocks/impostor.test.mjs — the W2-static radar: resemblances() returns every kind, the three address signals
+// evm/core/stocks/impostor.test.mjs: the W2-static radar: resemblances() returns every kind, the three address signals
 // fire on what they describe and nothing else, a registry address is never flagged, the full prefix is never an
 // impostor, the self-check turns the prefix signals off, and resemblance() answers exactly as before.
 // Synthetic addresses only.

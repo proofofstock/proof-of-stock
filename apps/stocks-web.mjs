@@ -1,4 +1,4 @@
-// apps/stocks-web.mjs — the public stock-token passport site (proofofstock.xyz): one page and three read-only JSON
+// apps/stocks-web.mjs: the public stock-token passport site (proofofstock.xyz): one page and three read-only JSON
 // routes, in a process of its own (ADR-0003), behind nginx.
 //
 // Everything lives under BASE_PATH (/stocks), so the domain's root stays free for other pages:
@@ -53,6 +53,7 @@ import { robotsTxt, sitemapXml, sitemapUrls, docUrl, homeJsonLd, docJsonLd, page
 import { createMcpHttp, SUPPORTED_VERSIONS } from './stocks-mcp-http.mjs'
 import { verifyToken, badgeSvg, badgeState } from '../evm/core/stocks/verify.mjs'
 import { createDocsRenderer } from './stocks-docs.mjs'
+import { isIsoTime } from '../scripts/lib/mcp-args.mjs'
 import { statusPage } from './stocks-status.mjs'
 import { createHistoryStore, historyPage, BULK_WINDOW_DAYS, BULK_MAX, FULL_ARCHIVE } from './stocks-history.mjs'
 import { createAnalytics, parseHit } from './stocks-analytics.mjs'
@@ -616,7 +617,7 @@ export function createStocksWeb ({
         return send(res, 200, chain ? out[0] : { chains: Object.fromEntries(chains.map((c, i) => [c, out[i]])) }, undefined, { ...cors, 'cache-control': 'public, max-age=300' })
       }
       const since = url.searchParams.get('since')
-      if (since && !Number.isFinite(Date.parse(since))) return send(res, 400, { error: 'since must be an ISO time' }, undefined, cors)
+      if (since && !isIsoTime(since)) return send(res, 400, { error: 'since must be an ISO time' }, undefined, cors)
       const event = url.searchParams.get('event')
       if (event && !['opened', 'kind_changed', 'listed', 'gone'].includes(event)) return send(res, 400, { error: 'event must be one of opened, kind_changed, listed, gone' }, undefined, cors)
       const opts = { since, event, limit: Math.min(BULK_MAX, Math.max(1, Number(url.searchParams.get('limit')) || BULK_MAX)) }

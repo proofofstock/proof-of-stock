@@ -1,4 +1,4 @@
-// scripts/export-public.test.mjs — the dry run of the public export (`export-public.sh --check`) passes on this tree and
+// scripts/export-public.test.mjs: the dry run of the public export (`export-public.sh --check`) passes on this tree and
 // refuses a planted hit: a deny-listed string in a file, in a file name, an internal-looking doc with no stub, a workflow
 // on a self-hosted runner. The deny list is read from the exported commit, not the working tree. On a hit the output
 // names files and never the matched text.

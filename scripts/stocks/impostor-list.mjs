@@ -1,16 +1,16 @@
-// scripts/stocks/impostor-list.mjs — the tokens in our dataset that present themselves as an issuer-listed stock they are
+// scripts/stocks/impostor-list.mjs: the tokens in our dataset that present themselves as an issuer-listed stock they are
 // not, written as one small JSON file the public passport site can show (apps/stocks-web.mjs reads it).
 //
 // A oneshot on a timer (deployment/systemd/stp-impostors.{service,timer}), every 6 hours: it walks every static
 // day file of a chain, which takes minutes on Robinhood, so it never runs on a request path.
 //
 // ⚠ ONLY THE STRONG CLAIMS ARE LISTED (evm/core/stocks/impostor.mjs): the exact issuer symbol (`NVDAc`) and the issuer's
-// naming convention ("… Robinhood Token"). A memecoin that borrows a ticker is counted, not listed — publishing it as an
+// naming convention ("… Robinhood Token"). A memecoin that borrows a ticker is counted, not listed, publishing it as an
 // impostor would accuse it of something it may not be doing.
 // ⚠ A LISTED TOKEN IS A CLAIM WITH EVIDENCE, NOT A VERDICT. Each item carries what it imitates and the official
 // contract, so a reader can check; the file says the same in `note`.
 //
-// Output: <root>/stock-peg/impostors.json, and <root>/stock-peg/stock-names.json — the symbol and name, from our own
+// Output: <root>/stock-peg/impostors.json, and <root>/stock-peg/stock-names.json, the symbol and name, from our own
 // dataset, of every token that resembles an issuer token in any way (ticker borrowers included), so the public site can
 // name a token outside the registry without asking anyone (apps/stocks-web.mjs makes no outbound call for a name).
 // Both are written to a temporary file and renamed, so a reader never sees half of one.

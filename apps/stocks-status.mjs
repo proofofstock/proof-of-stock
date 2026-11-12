@@ -1,4 +1,4 @@
-// apps/stocks-status.mjs — the status page for people: is each part of the passport up to date, in plain words and
+// apps/stocks-status.mjs: the status page for people: is each part of the passport up to date, in plain words and
 // colours. It reads the same numbers as /api/status (which stays for code) and judges them against the cadence each
 // part is meant to keep. Pure: handed the numbers and the time, it returns HTML.
 

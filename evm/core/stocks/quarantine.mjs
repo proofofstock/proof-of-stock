@@ -1,9 +1,9 @@
-// evm/core/stocks/quarantine.mjs — recorded readings known to be wrong, kept out of every chart and statistic.
+// evm/core/stocks/quarantine.mjs: recorded readings known to be wrong, kept out of every chart and statistic.
 //
 // A reading stays on disk (the dataset is append-only and the record of what was written matters); the site's window
 // simply does not load it. Each entry names its time span, which rows it covers, and the fix that ended it.
 
-// 09.11.2026 17:37–19:42 UTC: the recorder read pools where a stock token is paired with a memecoin, whose dollar price
+// 09.11.2026 17:37-19:42 UTC: the recorder read pools where a stock token is paired with a memecoin, whose dollar price
 // is derived from the stock token itself, so the premium was circular (DJT read ~$990 against an issuer price of ~$4).
 // Fixed the same day: the recorder prices only against a dollar stable or wrapped ETH. Rows of that span whose priced pool was not
 // against one of those are wrong; rows priced against them are kept.

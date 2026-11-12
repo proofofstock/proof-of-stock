@@ -1,10 +1,10 @@
-// evm/core/stocks/history.mjs — the passport's history (docs/stocks-truth-layer-tz.md §H): an append-only archive of
+// evm/core/stocks/history.mjs: the passport's history (docs/stocks-truth-layer-tz.md §H): an append-only archive of
 // impostor cases (H1) and snapshots of each issuer's registry whenever it changes (H2).
 //
 // ⚠ APPEND-ONLY. Nothing here edits or deletes a written row. A case's state is the replay of its rows, and a later
 //   row that contradicts an earlier one is a new event, never a rewrite.
 // ⚠ HOW EACH FACT WAS LEARNED IS ON THE ROW. `observed`: this run saw it. `backfilled`: derived later from older data
-//   (the first archive of a chain, from the first_seen_at our collector recorded) — never presented as a live observation.
+//   (the first archive of a chain, from the first_seen_at our collector recorded), never presented as a live observation.
 // ⚠ DOUBT WRITES NOTHING. A case only closes as `gone` when the list that lost it was complete (no torn day file, not
 //   truncated): a token missing because a file could not be read has not left the list.
 //

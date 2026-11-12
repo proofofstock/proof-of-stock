@@ -1,5 +1,6 @@
-// scripts/stocks/passport-mcp.test.mjs — the MCP server answers initialize, lists its three tools, calls them, keeps
-// stdout to JSON-RPC lines only, and reports a failing tool as a result with isError rather than a protocol error.
+// scripts/stocks/passport-mcp.test.mjs: the MCP server answers initialize, lists its three tools, calls them, keeps
+// stdout to JSON-RPC lines only, and answers bad input as the HTTP server does (-32602 for a bad tool or argument); a tool
+// that fails while running is a result with isError.
 //
 // Run: node scripts/stocks/passport-mcp.test.mjs
 
@@ -38,6 +39,12 @@ console.log('protocol')
   const unknown = await handle({ jsonrpc: '2.0', id: 3, method: 'resources/list' }, opts)
   check('an unknown method is -32601', unknown.error && unknown.error.code === -32601)
   check('a malformed request is -32600', (await handle({ id: 4 }, opts)).error.code === -32600)
+  // The same answers as the HTTP server (audit 12.11).
+  check('an id of null is -32600', (await handle({ jsonrpc: '2.0', id: null, method: 'ping' }, opts))?.error?.code === -32600)
+  check('a client\'s response gets no reply', (await handle({ jsonrpc: '2.0', id: 9, result: {} }, opts)) === null)
+  check('a notification never runs a tool and gets no reply', (await handle({ jsonrpc: '2.0', method: 'tools/call', params: { name: 'list_stock_tokens', arguments: { chain: 'base' } } }, opts)) === null)
+  const v = async (asked) => (await handle({ jsonrpc: '2.0', id: 5, method: 'initialize', params: { protocolVersion: asked, capabilities: {}, clientInfo: { name: 't', version: '0' } } }, opts)).result.protocolVersion
+  check('the protocol version is negotiated: a supported one is echoed, another gets ours', (await v('2024-11-05')) === '2024-11-05' && (await v('1999-01-01')) === PROTOCOL_VERSION)
 }
 
 console.log('tools')
@@ -51,9 +58,16 @@ console.log('tools')
   const pass = body(await handle({ jsonrpc: '2.0', id: 8, method: 'tools/call', params: { name: 'stock_passport', arguments: { chain: 'base', address: A } } }, opts))
   check('the passport tool returns a passport', pass.in_registry === true && pass.not_trading_signal === true)
   const bad = await handle({ jsonrpc: '2.0', id: 9, method: 'tools/call', params: { name: 'stock_passport', arguments: { chain: 'solana', address: A } } }, opts)
-  check('a bad chain is a tool error, not a protocol error', bad.result.isError === true && !bad.error)
+  check('a bad chain is -32602, as on the HTTP server', bad.error?.code === -32602 && !bad.result, JSON.stringify(bad))
   const nope = await handle({ jsonrpc: '2.0', id: 10, method: 'tools/call', params: { name: 'buy_stock', arguments: { chain: 'base' } } }, opts)
-  check('there is no trading tool to call', nope.result.isError === true)
+  check('there is no trading tool to call: an unknown tool is -32602', nope.error?.code === -32602 && !nope.result)
+  // The schemas it advertises are the ones it holds callers to (audit 12.11: hours 99999 ran).
+  const call = (args, name = 'stock_passport') => handle({ jsonrpc: '2.0', id: 11, method: 'tools/call', params: { name, arguments: args } }, opts)
+  check('hours past the advertised maximum is -32602', (await call({ chain: 'base', address: A, hours: 99999 })).error?.code === -32602)
+  check('an argument the schema does not name is -32602', (await call({ chain: 'base', address: A, buy: true })).error?.code === -32602)
+  check('a query that is not a string is -32602', (await call({ chain: 'base', query: 123 }, 'find_stock_token')).error?.code === -32602)
+  check('arguments that are not an object are -32602', (await handle({ jsonrpc: '2.0', id: 12, method: 'tools/call', params: { name: 'list_stock_tokens', arguments: ['base'] } }, opts)).error?.code === -32602)
+  check('a __proto__ argument is refused, not merged', (await call(JSON.parse('{"chain":"base","__proto__":{"x":1}}'), 'list_stock_tokens')).error?.code === -32602)
 }
 
 console.log('stdio')

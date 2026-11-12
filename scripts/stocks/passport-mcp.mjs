@@ -1,4 +1,4 @@
-// scripts/stocks/passport-mcp.mjs — the stock-token passport as an MCP server on stdio, for an agent to call.
+// scripts/stocks/passport-mcp.mjs: the stock-token passport as an MCP server on stdio, for an agent to call.
 //
 // Three read-only tools, no trading, no wallet, no keys:
 //   find_stock_token   a ticker or name → the issuer-listed tokens on a chain that match it
@@ -6,7 +6,7 @@
 //   stock_passport     a token address → its passport (evm/core/stocks/passport.mjs)
 //
 // Transport: newline-delimited JSON-RPC 2.0 on stdin/stdout, as MCP's stdio transport specifies. Logs go to stderr only:
-// anything else on stdout would corrupt the stream. No SDK dependency — the three methods a tools-only server needs
+// anything else on stdout would corrupt the stream. No SDK dependency, the three methods a tools-only server needs
 // (initialize, tools/list, tools/call) are small enough to state here and test.
 //
 // Connect from a client on another machine:  ssh <host> "cd <release> && node scripts/stocks/passport-mcp.mjs"
@@ -20,8 +20,11 @@ import path from 'node:path'
 import { isEntryPoint } from '../lib/invoked-directly.mjs'
 import { passportFor } from './passport.mjs'
 import { CHAINS } from './stock-peg.mjs'
+import { invalid } from '../lib/mcp-args.mjs'
 
 export const PROTOCOL_VERSION = '2025-06-18'
+// The versions it can speak, newest first: a client asking for one of them gets it (apps/stocks-mcp-http.mjs does the same).
+export const SUPPORTED_VERSIONS = Object.freeze(['2025-06-18', '2025-03-26', '2024-11-05'])
 const SERVER_INFO = Object.freeze({ name: 'proof-of-stock-stdio', version: JSON.parse(fs.readFileSync(new URL('../../package.json', import.meta.url), 'utf8')).version })
 const DEFAULT_ROOT = Object.freeze({ base: '/var/lib/stp/base', robinhood: '/var/lib/stp/robinhood' })
 const CHAIN_ENUM = Object.keys(CHAINS)
@@ -59,8 +62,8 @@ export async function callTool (name, args = {}, { roots = DEFAULT_ROOT, fetchIm
   const C = CHAINS[args.chain]
   const text = (o) => ({ content: [{ type: 'text', text: JSON.stringify(o) }] })
   const fail = (m) => ({ content: [{ type: 'text', text: m }], isError: true })
-  if (!TOOLS.some((t) => t.name === name)) return fail(`unknown tool ${name}`)
-  if (!C) return fail(`chain must be one of ${CHAIN_ENUM.join(', ')}`)
+  // The name and the arguments are checked by handle() against the schemas, as a protocol error; this is the last guard.
+  if (!TOOLS.some((t) => t.name === name) || !C) return fail('invalid arguments')
   try {
     if (name === 'stock_passport') {
       return text(await passportFor({ chain: args.chain, address: args.address, root: path.resolve(roots[args.chain]), hours: args.hours || undefined, now: now(), fetchImpl }))
@@ -78,16 +81,30 @@ export async function callTool (name, args = {}, { roots = DEFAULT_ROOT, fetchIm
 /** One JSON-RPC message → the response object, or null for a notification. */
 export async function handle (msg, opts) {
   const reply = (result) => ({ jsonrpc: '2.0', id: msg.id, result })
-  const error = (code, message) => ({ jsonrpc: '2.0', id: msg.id ?? null, error: { code, message } })
-  if (!msg || msg.jsonrpc !== '2.0' || typeof msg.method !== 'string') return error(-32600, 'invalid request')
+  const okId = (id) => typeof id === 'string' || Number.isInteger(id)
+  const error = (code, message) => ({ jsonrpc: '2.0', id: msg && okId(msg.id) ? msg.id : null, error: { code, message } })
+  if (!msg || typeof msg !== 'object' || Array.isArray(msg) || msg.jsonrpc !== '2.0') return error(-32600, 'invalid request')
+  // A client's answer to a request of ours: we send none, so there is nothing to say back.
+  if (msg.method === undefined && okId(msg.id) && ('result' in msg || 'error' in msg)) return null
+  if (typeof msg.method !== 'string' || (msg.id !== undefined && !okId(msg.id))) return error(-32600, 'invalid request')
   const isNotification = msg.id === undefined
+  if (isNotification) return null // a notification is never answered, and never runs a tool
   switch (msg.method) {
-    case 'initialize': return reply({ protocolVersion: PROTOCOL_VERSION, capabilities: { tools: { listChanged: false } }, serverInfo: SERVER_INFO, instructions: NOTICE })
-    case 'notifications/initialized': return null
+    case 'initialize': {
+      const asked = msg.params?.protocolVersion
+      return reply({ protocolVersion: SUPPORTED_VERSIONS.includes(asked) ? asked : PROTOCOL_VERSION, capabilities: { tools: { listChanged: false } }, serverInfo: SERVER_INFO, instructions: NOTICE })
+    }
     case 'ping': return reply({})
     case 'tools/list': return reply({ tools: TOOLS })
-    case 'tools/call': return reply(await callTool(msg.params?.name, msg.params?.arguments || {}, opts))
-    default: return isNotification ? null : error(-32601, `method not found: ${msg.method}`)
+    case 'tools/call': {
+      const tool = TOOLS.find((t) => t.name === msg.params?.name)
+      if (!tool) return error(-32602, `unknown tool: ${String(msg.params?.name).slice(0, 40)}`)
+      const args = msg.params?.arguments ?? {}
+      const bad = invalid(tool.inputSchema, args)
+      if (bad) return error(-32602, bad)
+      return reply(await callTool(tool.name, args, opts))
+    }
+    default: return error(-32601, `method not found: ${String(msg.method).slice(0, 40)}`)
   }
 }
 
