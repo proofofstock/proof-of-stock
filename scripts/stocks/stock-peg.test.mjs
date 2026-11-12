@@ -518,8 +518,8 @@ console.log('the GeckoTerminal lane')
     e: { capped_at: iso(60e3), topped_at: iso(60e3), pages: 1, needs_aggregator: true },
   }
   const plan = schedule(state, ['a', 'b', 'c', 'd', 'e', 'z'], 6, T)
-  check('the plan: never or longest without a top-up first, a token needing the aggregator an hour older; a stale cap is left out', JSON.stringify(plan) === JSON.stringify(['c', 'a', 'e']), JSON.stringify(plan))
-  check('...within the budget, a token costing the pages it took last time', JSON.stringify(schedule(state, ['a', 'b', 'c'], 3, T)) === JSON.stringify(['c', 'b']) && schedule(state, ['a'], 0, T).length === 0)
+  check('the plan: never or longest without a top-up first, a token needing the aggregator an hour older; a stale cap is left out', JSON.stringify(plan) === JSON.stringify(['c', 'a']), JSON.stringify(plan))
+  check('...within the budget, a token costing the pages it took last time', JSON.stringify(schedule(state, ['a', 'b', 'c'], 3, T)) === JSON.stringify(['c']) && JSON.stringify(schedule(state, ['a', 'b', 'e'], 4, T)) === JSON.stringify(['a', 'e']) && schedule(state, ['a'], 0, T).length === 0)
   check('the pace and budgets keep under the keyless limit of about 5 calls a minute', GECKO_PACE_MS >= 12_000 && GECKO_BUDGET.robinhood * GECKO_PACE_MS <= 150e3 && GECKO_BUDGET.base * GECKO_PACE_MS <= 60e3)
   let t = 0, asked = []
   const lane = startLane({ fetchImpl: null, network: 'base', addresses: ['p', 'q', 'r'], paceMs: 0, stopAt: 2, now: () => t, read: async (_f, _n, a) => { asked.push(a); t++; if (a === 'q') throw new Error('429'); return { pairs: [], more: false, snaps: [] } } })

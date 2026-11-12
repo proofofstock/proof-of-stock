@@ -42,7 +42,7 @@ export function schedule (state, addresses, budget, nowMs) {
   const out = []
   let used = 0
   for (const a of due) {
-    const cost = Math.min(GECKO_MAX_PAGES, Math.max(1, Number(state[a].pages) || 2))
+    const cost = Math.min(GECKO_MAX_PAGES, Math.max(1, Number(state[a].pages) || GECKO_MAX_PAGES)) // unknown: assume the most, so the budget holds (12.11: assuming 2, a run asked 15 of 10)
     if (out.length && used + cost > budget) continue
     out.push(a); used += cost
     if (used >= budget) break
