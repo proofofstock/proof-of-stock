@@ -239,7 +239,11 @@ a.btn { text-decoration: none; display: inline-block; }
   .pick .addr, .pick .nm { grid-column: 2; }
   .field { flex-wrap: wrap; }
   .field .dots-fill { display: none; }
-  .field .v { margin-left: auto; }
+  /* A value may wrap on a phone: "$167.63 Coinbase NAV, updated ..." is wider than the screen, and a value that cannot
+     wrap pushed every row of the passport past the right edge (owner, 12.11). */
+  .field .v, .field .v small { white-space: normal; overflow-wrap: anywhere; }
+  .field .v { margin-left: auto; min-width: 0; max-width: 100%; }
+  .card { min-width: 0; overflow-wrap: anywhere; }
   .prompt { margin: 0 8px 8px; }
   .statusbar { padding: 6px 12px; }
   .status { align-items: flex-start; }

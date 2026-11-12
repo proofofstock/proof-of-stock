@@ -83,6 +83,7 @@ curl -s 'https://proofofstock.xyz/verify?chain=base&address=0xeeeeeeeeeeeeeeeeee
 | `chain` | yes | `base` or `robinhood` |
 | `address` | one of the two | `0x` + 40 hex |
 | `addresses` | one of the two | 1 to 50 addresses, comma-separated, each `0x` + 40 hex. Costs ⌈n/10⌉ units of the rate limit, as MCP `verify_stock_tokens` does. Larger batches are not served here |
+| `receipt` | no | `1`: with `address`, add a `receipt` to keep, never cached. See [Keep a receipt of a check](../how-to/keep-a-receipt.md) |
 
 With `addresses` the answer is `{ chain, count, listed, impostors, results[], list_proof }`: one result per address, in
 the order given, all decided against one read of the list, and one `list_proof` for the batch. `address` and

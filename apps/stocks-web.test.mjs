@@ -440,6 +440,50 @@ console.log('verify and badge')
   await app6.stop()
 }
 {
+  // The issuer's factory on chain (scripts/stocks/issuer-mirror.mjs), beside the list: a fact with its log as evidence.
+  const mroot = path.join(tmp, 'mirror-root')
+  fs.mkdirSync(path.join(mroot, 'stock-peg'), { recursive: true })
+  const writeMirror = (o) => fs.writeFileSync(path.join(mroot, 'stock-peg', 'mirror.json'), JSON.stringify({ chain: 'base', factory: '0x4ba3e29e254f25e94e61c4c9d67b37027331534d', head: 100, scanned_to: 100, updated_at: '2026-11-08T11:55:00Z', tokens: [{ address: A, block: 42, tx: '0x' + 'ab'.repeat(32), log_index: 3 }], ...o }))
+  writeMirror({})
+  const appM = createStocksWeb({ roots: { base: mroot, robinhood: rhRoot }, fetchImpl, now: () => NOW, log: () => {} })
+  const { port: pM } = await appM.start(0, '127.0.0.1')
+  const vM = async (a) => (await (await fetch(`http://127.0.0.1:${pM}/stocks/verify?chain=base&address=${a}`)).json())
+  const listedV = await vM(A), strangerV = await vM('0x' + '9'.repeat(40))
+  check('verify: a listed token the issuer\'s factory created says so, with the block and the transaction', listedV.listed === true && listedV.issuer_factory?.created === true && listedV.issuer_factory.block === 42 && listedV.issuer_factory.tx === '0x' + 'ab'.repeat(32) && /second source/.test(listedV.issuer_factory.source), JSON.stringify(listedV.issuer_factory))
+  check('...a contract the factory never created says not created, and up to which block it was checked', strangerV.issuer_factory?.created === false && strangerV.issuer_factory.checked_to_block === 100 && !('tx' in strangerV.issuer_factory))
+  const pM2 = await (await fetch(`http://127.0.0.1:${pM}/stocks/api/passport?chain=base&address=${A}`)).json()
+  check('...and the passport carries the same fact', pM2.issuer_factory?.created === true && pM2.issuer_factory.block === 42)
+  await appM.stop()
+  writeMirror({ scanned_to: 60 })
+  const appB = createStocksWeb({ roots: { base: mroot, robinhood: rhRoot }, fetchImpl, now: () => NOW, log: () => {} })
+  const { port: pB } = await appB.start(0, '127.0.0.1')
+  const behind = await (await fetch(`http://127.0.0.1:${pB}/stocks/verify?chain=base&address=${A}`)).json()
+  check('...a mirror still catching up with the chain claims nothing (null), it does not say "not created"', behind.issuer_factory === null)
+  await appB.stop()
+  writeMirror({})
+  let t = NOW
+  const appD = createStocksWeb({ roots: { base: mroot, robinhood: rhRoot }, fetchImpl, now: () => t, log: () => {} })
+  const { port: pD } = await appD.start(0, '127.0.0.1')
+  t += 901e3
+  const down = await fetch(`http://127.0.0.1:${pD}/stocks/verify?chain=base&address=${A}`)
+  const downB = await down.json()
+  check('...with the issuer list unavailable the answer is still 503 and never "listed", and the factory fact rides along, labelled', down.status === 503 && downB.listed === undefined && downB.issuer_factory?.created === true && /not the list itself/.test(downB.issuer_factory.source))
+  await appD.stop()
+}
+{
+  // receipt=1: a receipt of the check to keep, which scripts/receipt-check.mjs re-derives from the frozen list it names.
+  const { checkReceipt } = await import('../evm/core/stocks/receipt.mjs')
+  const r = await get(`/stocks/verify?chain=base&address=${A}&receipt=1`)
+  const b = await r.json()
+  const rc = b.receipt
+  check('verify with receipt=1 adds a receipt naming the verdict and the frozen list, and is never cached', r.status === 200 && rc?.verdict === 'listed' && rc.address === A && rc.list.addresses_sha256 === b.list_proof.addresses_sha256 && r.headers.get('cache-control') === 'no-store')
+  const local = (u) => String(u).replace(/^https?:\/\/[^/]+(\/stocks)?/, `http://127.0.0.1:${port}/stocks`)
+  const held = await checkReceipt(rc, { fetchImpl: (u, o) => fetch(local(u), { ...o, headers: { 'x-real-ip': '198.51.100.77' } }) })
+  check('...which checks against this server\'s frozen list: its hash, the list\'s hash, the verdict', held.ok, JSON.stringify(held.checks))
+  const plain = await (await get(`/stocks/verify?chain=base&address=${A}`)).json()
+  check('...and without receipt=1 the answer has no receipt', !('receipt' in plain))
+}
+{
   // /anchors/: the daily manifests and their OpenTimestamps proofs (scripts/stocks/anchor.mjs), public and read-only.
   const ad = path.join(tmp, 'anchors')
   fs.mkdirSync(ad, { recursive: true })

@@ -61,6 +61,7 @@ import { isIsoTime } from '../scripts/lib/mcp-args.mjs'
 import { statusPage } from './stocks-status.mjs'
 import { statsPage, lastRuns, STATS_GATE } from './stocks-stats.mjs'
 import { ANCHOR_FILE_RE } from '../scripts/stocks/anchor.mjs'
+import { makeReceipt } from '../evm/core/stocks/receipt.mjs'
 import { dailySummaries } from '../scripts/stocks/analytics-report.mjs'
 import { createHistoryStore, historyPage, BULK_WINDOW_DAYS, BULK_MAX, FULL_ARCHIVE } from './stocks-history.mjs'
 import { createAnalytics, parseHit } from './stocks-analytics.mjs'
@@ -464,7 +465,7 @@ export function createStocksWeb ({
     }
     const sources = { ...SOURCES[chain], dex: 'the pools on the chain itself, read at one block, with DexScreener token-pairs (completed from GeckoTerminal when DexScreener lists 30); where both see a pool, the price and liquidity read from the chain are used', recorded_every_s: RECORDER_CADENCE_S,
       pools_counted: { min_liquidity_usd: MIN_POOL_LIQUIDITY_USD, paired_with_addresses: [...(C.referenceAssets || [])], rule: 'a pool prices the token only against the chain\'s dollar stablecoins or wrapped ETH, matched by address; the deepest one is used' } }
-    return { status: 200, body: { ...p, chain, links, sources, list_proof: proofOf(chain, reg), same_stock_elsewhere: elsewhere, series_points: points, impostor_listing: listed ? { first_seen_at: listed.first_seen_at, same_deployer_impostors: listed.same_deployer_impostors ?? null } : null, case: caseSummary(chain, addr), readings_loaded: Boolean(w.window), registry_age_s: Math.round((now() - reg.at) / 1000) } }
+    return { status: 200, body: { ...p, chain, links, sources, issuer_factory: factoryFact(chain, addr), list_proof: proofOf(chain, reg), same_stock_elsewhere: elsewhere, series_points: points, impostor_listing: listed ? { first_seen_at: listed.first_seen_at, same_deployer_impostors: listed.same_deployer_impostors ?? null } : null, case: caseSummary(chain, addr), readings_loaded: Boolean(w.window), registry_age_s: Math.round((now() - reg.at) / 1000) } }
   }
 
   /** What the server holds, per chain, with ages: the numbers behind /api/status and /status. */
@@ -490,6 +491,29 @@ export function createStocksWeb ({
     return { ...rest, events: events.length }
   }
 
+  // The issuer's factory on chain (scripts/stocks/issuer-mirror.mjs): did the issuer's own factory create this contract?
+  // A second source beside the issuer's list, with the log as evidence. Read from <root>/stock-peg/mirror.json at most
+  // once a minute. Unknown (null) while the mirror has not caught up with the chain, or has not been built.
+  const mirrorCache = new Map()
+  function mirrorOf (chain) {
+    const hit = mirrorCache.get(chain)
+    if (hit && now() - hit.at < 60e3) return hit.m
+    let m = null
+    try { m = JSON.parse(fs.readFileSync(path.join(roots[chain], 'stock-peg', 'mirror.json'), 'utf8')) } catch (_) { m = null }
+    if (m && m.chain !== chain) m = null
+    const byAddress = m ? new Map((m.tokens || []).map((t) => [t.address, t])) : null
+    const v = m ? { ...m, byAddress } : null
+    mirrorCache.set(chain, { at: now(), m: v })
+    return v
+  }
+  function factoryFact (chain, address) {
+    const m = mirrorOf(chain)
+    if (!m || m.head == null || m.scanned_to == null || m.scanned_to < m.head) return null
+    const t = m.byAddress.get(String(address).toLowerCase()) || null
+    const base = { source: 'the issuer\'s token factory on chain, a second source beside the issuer\'s list (not the list itself)', factory: m.factory, checked_to_block: m.scanned_to, as_of: m.updated_at || null }
+    return t ? { created: true, ...base, block: t.block, tx: t.tx, log_index: t.log_index } : { created: false, ...base }
+  }
+
   /** The one-bit answer for an address (evm/core/stocks/verify.mjs), from memory only. */
   // `reg`: the registry snapshot to decide against; the caller passes the same one to proofOf, so a verdict and its
   // list_proof can never come from two different reads.
@@ -501,6 +525,8 @@ export function createStocksWeb ({
       impostor: imp?.byAddress?.get(addr) || null, delisted: delisted.get(chain).get(addr) || null,
       otherChains: Object.keys(CHAINS).filter((c) => c !== chain).map((c) => ({ chain: c, records: registries.get(c)?.records || [] })),
     })
+    // The factory fact rides along both when the list answered and when it could not: then it is the only fact, labelled.
+    if (r.status === 'ok' || r.status === 'unavailable') r.body.issuer_factory = factoryFact(chain, addr)
     if (r.status === 'ok') {
       r.body.passport = r.body.listed ? `${publicOrigin}${publicPath}/?${chain}=${encodeURIComponent(r.body.symbol)}` : `${publicOrigin}${publicPath}/?chain=${chain}&address=${r.body.address}`
       if (!r.body.listed && !r.body.impostor && imp?.truncated) r.body.impostor_list_truncated = true
@@ -699,6 +725,8 @@ export function createStocksWeb ({
       if (r.status === 'bad_address') return send(res, 400, r.body, undefined, { 'access-control-allow-origin': '*' })
       if (r.status === 'unavailable') return send(res, 503, r.body, undefined, { 'access-control-allow-origin': '*', 'cache-control': 'no-store', 'retry-after': '60' })
       const proof = proofOf(c, reg)
+      // receipt=1: a receipt of this check to keep (evm/core/stocks/receipt.mjs); scripts/receipt-check.mjs checks it later.
+      if (url.searchParams.get('receipt') === '1') return send(res, 200, { ...r.body, list_proof: proof, receipt: makeReceipt({ body: r.body, proof, appVersion, at: now() }) }, undefined, { 'access-control-allow-origin': '*', 'cache-control': 'no-store' })
       return send(res, 200, { ...r.body, list_proof: proof }, undefined, { 'access-control-allow-origin': '*', 'cache-control': proof?.stale ? 'no-store' : r.body.listed ? 'public, max-age=300' : 'public, max-age=60' })
     }
     // The owner's dashboard. Only nginx's password-protected location sets the gate header (and every other location

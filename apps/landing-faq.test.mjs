@@ -121,6 +121,15 @@ console.log('the agent wire in the hero')
   check('...only on a wide screen, still under reduced motion, with the lede kept clear of it', /\.wire \{ display: none; \}/.test(css) && /@media \(min-width: 1100px\) \{\n {2}\.hero \.lede \{ max-width: calc\(100% - 372px\); \}/.test(css) && /prefers-reduced-motion: reduce\) \{ \.wire-l \{ animation: none; opacity: 1; \} \.wire-packet \{ animation: none; \}/.test(css))
 }
 
+console.log('the passport fits a phone')
+{
+  const css = fs.readFileSync(new URL('./stocks-web/style.css', import.meta.url), 'utf8')
+  // Owner, 12.11: on a phone the passport ran past the right edge; a value like "$167.63 Coinbase NAV, updated ..."
+  // could not wrap. In the phone layout every value may wrap and no value is wider than its row.
+  const phone = (css.match(/@media \(max-width: 700px\) \{\n {2}body \{[\s\S]*?\n\}/) || [''])[0]
+  check('on a phone a passport value wraps instead of pushing the card off the screen', /\.field \.v, \.field \.v small \{ white-space: normal; overflow-wrap: anywhere; \}/.test(phone) && /\.field \.v \{ margin-left: auto; min-width: 0; max-width: 100%; \}/.test(phone))
+}
+
 console.log('a jump to a section stops below the ticker')
 {
   const css = fs.readFileSync(new URL('./stocks-web/style.css', import.meta.url), 'utf8')

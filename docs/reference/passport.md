@@ -146,6 +146,7 @@ lower-cased address is in the issuer registry the server holds for that chain (C
 | `links` | object | | never null | [`links`](#field-links) |
 | `sources` | object | | never null | [`sources`](#field-sources) |
 | `list_proof` | object or null | | before the first read of the list | [`list_proof`](#field-list_proof) |
+| `issuer_factory` | object or null | | while the chain mirror has not caught up, or is not built | [`issuer_factory`](#field-issuer_factory) |
 | `readings_loaded` | boolean | | never null. `false` until the server has loaded its readings window once; until then a listed token shows `latest: null` and `no_readings` | `true` |
 | `registry_age_s` | integer | seconds | never null | `120` |
 | `case` | object or null | | the address never had a case in the dated archive | `{ status, first_seen_at, flagged_at, source, archived_at, closed_at, events }`; `events` is a count, the events themselves are at [`/api/history/cases`](./http-api.md#route-history) |
@@ -503,6 +504,25 @@ Where every number comes from, per chain.
 | `pools_counted.min_liquidity_usd` | number | `10000` |
 | `pools_counted.paired_with_addresses` | string[] | Base: USDC `0x8335…2913`, `0xd9aa…b6ca`, `0x50c5…f0cb` and WETH `0x4200…0006` |
 | `pools_counted.rule` | string | the eligibility rule in words |
+
+<a id="field-issuer_factory"></a>
+## `issuer_factory`
+
+Did the issuer's own token factory create this contract? Each issuer deploys its stock tokens from a factory that logs
+one event per token: Coinbase's on Base, Robinhood's on Robinhood Chain. We read those events from the chain every 15
+minutes (`scripts/stocks/issuer-mirror.mjs`). This is a second source beside the issuer's list, never the list itself:
+the factory also made tokens the list leaves out (tests, delisted, not yet listed), so `created: true` does not mean
+listed. `/verify` and MCP verify carry the same object, also when the list cannot be read (then with status 503 and no
+`listed`).
+
+| Field | Type | Meaning |
+|---|---|---|
+| `created` | boolean | `true`: the factory's event names this contract. `false`: no event of the factory names it, up to `checked_to_block` |
+| `source` | string | says what this is: the factory on chain, a second source, not the list |
+| `factory` | address | the factory read |
+| `checked_to_block` | integer | the last block read; a token created after it is not seen yet |
+| `as_of` | ISO time or null | when the mirror last read the chain |
+| `block`, `tx`, `log_index` | only when `created` | the factory's event: anyone can find it on the explorer |
 
 <a id="field-list_proof"></a>
 ## `list_proof`

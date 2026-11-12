@@ -385,6 +385,17 @@
   const fold = (title, ...body) => h('details', { class: 'more' }, h('summary', null, title), h('div', { class: 'inner' }, ...body))
   const table = (head, rows) => h('table', { class: 'tbl' }, h('thead', null, h('tr', null, head.map((x) => h('th', null, x)))), h('tbody', null, rows))
 
+  // The issuer's token factory on chain (a second source, scripts/stocks/issuer-mirror.mjs): what it says, in words. Only
+  // when the mirror has caught up; never more than "created" or "not created", and never "listed".
+  const FACTORY_OF = { base: "Coinbase's", robinhood: "Robinhood's" }
+  function factoryNote (p) {
+    const f = p.issuer_factory
+    if (!f) return null
+    const who = (FACTORY_OF[p.chain] || "the issuer's") + ' token factory'
+    if (f.created) return field('made by', who, 'on chain, block ' + Number(f.block).toLocaleString('en-US'))
+    return field('made by', h('span', { class: 'warn' }, 'not ' + who), 'checked on chain to block ' + Number(f.checked_to_block).toLocaleString('en-US'))
+  }
+
   function render (p) {
     const where = mark(p.chain)
     if (!p.in_registry) {
@@ -400,6 +411,7 @@
             : "This is not the issuer's token. Its name copies the way Robinhood names its stock tokens, but Robinhood lists no such asset and the contract is not in its registry.")
           : r ? `Not the issuer's token. Its ticker matches ${r.ticker}. Many tokens reuse tickers, and this one is not the issuer's ${r.registry_symbol}.`
             : 'This contract is not in the issuer\'s registry for this chain, so it is not that issuer\'s stock token.'),
+        p.issuer_factory && p.issuer_factory.created === false ? line('A second source agrees: ' + (FACTORY_OF[p.chain] || "the issuer's") + ' token factory never created this contract (checked on chain to block ' + Number(p.issuer_factory.checked_to_block).toLocaleString('en-US') + ').', 'faint') : null,
         p.impostor_listing ? line('On our list of tokens pretending to be stocks since ' + String(p.impostor_listing.first_seen_at).slice(0, 10) + '.', 'faint') : null,
         caseLine(p.case),
         r && r.registry_address ? h('div', { class: 'actions' }, h('button', { type: 'button', class: 'btn', onclick: () => passport(p.chain, r.registry_address, 'official ' + (r.registry_symbol || r.ticker)) }, 'open the official ' + (r.registry_symbol || r.ticker), h('span', { class: 'i i-arrow', 'aria-hidden': 'true' }))) : null,
@@ -412,6 +424,7 @@
     const listedCase = p.case && p.case.status === 'listed_by_issuer' ? caseLine(p.case) : null
     const fields = h('div', { class: 'fields' },
       field('issuer', ISSUER_LABEL[i.name] || i.name),
+      factoryNote(p),
       field('issuer price', blank(usd(ref && ref.price_usd)), ref && ref.price_usd > 0 ? (REF_KIND[ref.kind] || ref.kind) + ' · ' + (ref.kind === 'token_bid_ask_mid' ? 'last moved ' : 'updated ') + age(ref.age_s) + (ref.spread != null ? ' · bid/ask ' + pct(ref.spread).replace('+', '') + ' apart' : '') : 'the issuer publishes none'),
       field('on-chain price', h('span', { class: sign(l && l.premium) }, blank(usd(l && l.dex_price_usd))), i.minted === false ? 'not minted yet' : l ? (p.notes.includes('reading_stale') ? 'read ' + age(l.age_s) : l.dex_price_usd == null ? 'no pool deep enough' : 'deepest pool') : 'not recorded yet'),
       field('on-chain vs issuer', h('span', { class: sign(l && l.premium) }, blank(pct(l && l.premium))), l && l.premium != null ? '+ means on-chain costs more' + (l.age_s != null ? ' · read ' + age(l.age_s) : '') : 'nothing to compare'),

@@ -289,6 +289,27 @@
         "same_deployer_impostors": { "type": ["integer", "null"], "minimum": 0 }
       }
     },
+    "issuer_factory": {
+      "description": "Did the issuer's own token factory create this contract? Read from the factory's events on chain (scripts/stocks/issuer-mirror.mjs): a second source beside the issuer's list, never the list itself. null while the chain mirror has not caught up or is not built.",
+      "oneOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["created", "source", "factory", "checked_to_block", "as_of"],
+          "properties": {
+            "created": { "type": "boolean" },
+            "source": { "type": "string" },
+            "factory": { "$ref": "#/definitions/address" },
+            "checked_to_block": { "type": "integer", "minimum": 0 },
+            "as_of": { "$ref": "#/definitions/iso_time_or_null" },
+            "block": { "type": "integer", "minimum": 0, "description": "only when created: the block of the factory's event" },
+            "tx": { "type": "string", "pattern": "^0x[0-9a-f]{64}$", "description": "only when created: the transaction that created the token" },
+            "log_index": { "type": "integer", "minimum": 0 }
+          }
+        }
+      ]
+    },
     "in_registry": {
       "type": "object",
       "required": ["address", "chain_id", "generated_at", "not_trading_signal", "market_now", "in_registry", "resembles", "issuer", "identity",
@@ -313,6 +334,7 @@
         "links": { "$ref": "#/definitions/links" },
         "sources": { "$ref": "#/definitions/sources" },
         "list_proof": { "$ref": "#/definitions/list_proof" },
+        "issuer_factory": { "$ref": "#/definitions/issuer_factory" },
         "same_stock_elsewhere": { "type": "array", "items": { "$ref": "#/definitions/elsewhere" } },
         "series_points": { "description": "Only with series=1 on /api/passport, or include_series in MCP.", "type": "array", "maxItems": 401, "items": { "$ref": "#/definitions/series_point" } },
         "impostor_listing": { "type": "null" },
@@ -352,6 +374,7 @@
         "links": { "$ref": "#/definitions/links" },
         "sources": { "$ref": "#/definitions/sources" },
         "list_proof": { "$ref": "#/definitions/list_proof" },
+        "issuer_factory": { "$ref": "#/definitions/issuer_factory" },
         "same_stock_elsewhere": { "type": "array", "maxItems": 0 },
         "series_points": { "type": "array", "maxItems": 0 },
         "impostor_listing": { "$ref": "#/definitions/impostor_listing" },
