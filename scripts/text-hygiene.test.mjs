@@ -32,6 +32,17 @@ for (const f of files) {
   for (let i = 0; i < lines.length; i++) if (BAD.test(lines[i])) { hits.push(`${f}:${i + 1}`); if (hits.length > 40) break }
 }
 check(`no Cyrillic and no em or en dash in ${files.length} tracked files`, hits.length === 0, hits.slice(0, 20).join(', '))
+// Nothing of a run may be committed. On 11.11 a local preview was started with the analytics directory set to a
+// Windows path whose backslashes were eaten as escapes, so the counter wrote its hits into a directory of that mangled
+// name in the repository root, and "git add -A" swept it into the public export (removed 13.11). A top-level entry is
+// deliberate and rare, so the list of them is written out here: anything else is a stray.
+const TOP_LEVEL = new Set(['.gitattributes', '.github', '.gitignore', 'apps', 'CHANGELOG.md', 'deployment', 'docs', 'evm', 'LICENSE', 'package.json', 'package-lock.json', 'packages', 'README.md', 'schemas', 'scripts', 'SECURITY.md', 'server.json', 'tests'])
+const stray = [...new Set(files.map((f) => f.split('/')[0]))].filter((t) => !TOP_LEVEL.has(t))
+check('no stray entry in the repository root', stray.length === 0, stray.join(', '))
+// A run's own output, wherever it lands: the counter's hit files and the recorder's readings and run rows.
+const RUN_OUTPUT = /(^|\/)(hits|stock-peg|stock-peg-runs)-\d{4}-\d{2}-\d{2}\.jsonl$/
+const output = files.filter((f) => RUN_OUTPUT.test(f))
+check('no file a run wrote is tracked', output.length === 0, output.join(', '))
 check('the rule itself catches what it should', BAD.test(String.fromCharCode(0x410)) && BAD.test('a ' + String.fromCharCode(0x2014) + ' b') && BAD.test('1' + String.fromCharCode(0x2013) + '2') && !BAD.test('plain - ascii: text'))
 
 console.log(`\n${passed} passed, ${failed} failed`)

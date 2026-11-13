@@ -3,5 +3,9 @@ node_modules/
 .env
 .env.*
 data/
+# What a run writes: the counter's hits and the recorder's readings, in case one is ever pointed at the checkout.
+hits-????-??-??.jsonl
+stock-peg-????-??-??.jsonl
+stock-peg-runs-????-??-??.jsonl
 .mutation-run-in-progress
 .mutation-run-in-progress.compromised
