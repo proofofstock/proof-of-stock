@@ -743,7 +743,7 @@ export function createStocksWeb ({
       let names = []
       try { names = dir ? fs.readdirSync(dir).filter((n) => ANCHOR_FILE_RE.test(n)).sort().reverse() : [] } catch (_) { names = [] }
       const days = [...new Set(names.filter((n) => n.endsWith('.json')).map((n) => n.slice(9, 19)))]
-      return send(res, 200, { note: 'Daily manifests of the SHA-256 of every data file, each anchored in Bitcoin through OpenTimestamps. To check one: download the manifest and a .ots proof, then run ots upgrade and ots verify (opentimestamps-client).', days: days.map((d) => ({ day: d, manifest: `anchors/manifest-${d}.json`, proofs: names.filter((n) => n.startsWith(`manifest-${d}.json.`)).map((n) => `anchors/${n}`) })) }, undefined, { 'access-control-allow-origin': '*', 'cache-control': 'public, max-age=300' })
+      return send(res, 200, { note: 'Daily manifests of the SHA-256 of every data file, each anchored in Bitcoin through OpenTimestamps. Each proof is completed in place once Bitcoin confirms it (by the next daily run). To check one: download the manifest and a .ots proof, then run ots verify (opentimestamps-client); ots upgrade completes a proof that is still pending.', days: days.map((d) => ({ day: d, manifest: `anchors/manifest-${d}.json`, proofs: names.filter((n) => n.startsWith(`manifest-${d}.json.`)).map((n) => `anchors/${n}`) })) }, undefined, { 'access-control-allow-origin': '*', 'cache-control': 'public, max-age=300' })
     }
     if (sub.startsWith('/anchors/')) {
       const name = sub.slice('/anchors/'.length)

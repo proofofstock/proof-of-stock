@@ -10,9 +10,14 @@
 //
 // Writes, in --out:
 //   manifest-<day>.json                       the files, their sizes and SHA-256, and the previous manifest's SHA-256
-//   manifest-<day>.json.<calendar>.ots        an OpenTimestamps proof per calendar (pending until Bitcoin confirms;
-//                                             `ots upgrade` then `ots verify` complete and check it, anyone can)
+//   manifest-<day>.json.<calendar>.ots        an OpenTimestamps proof per calendar: pending at first, then completed
+//                                             in place once Bitcoin confirms (`ots verify` checks it, anyone can)
 // A manifest, once written, is never rewritten: a rerun only adds the proofs that are missing.
+//
+// Each run also completes the proofs of the last UPGRADE_DAYS days that are still pending: it asks the calendar named
+// in the proof for the path from our commitment to a Bitcoin block header, and adds it beside the pending attestation
+// (what `ots upgrade` does). Only a path that ends in a Bitcoin attestation is written; nothing already there changes.
+// A proof still pending after STALE_DAYS fails the unit (an alert): its calendar may have lost it.
 import fs from 'node:fs'
 import path from 'node:path'
 import crypto from 'node:crypto'
@@ -90,11 +95,184 @@ export async function anchorDay ({ roots, outDir, day, fetchImpl = fetch, now = 
   return result
 }
 
+// --- Completing a proof (`ots upgrade`) ---
+// The proof after its header is a tree (python-opentimestamps, Timestamp.serialize): from a message, operations lead
+// to new messages and finally to attestations. Siblings are prefixed with 0xff, the last one is not.
+const ATT_PENDING = '83dfe30d2ef90c8e'
+const ATT_BITCOIN = '0588960d73d71901'
+const UNARY_OPS = Object.freeze({ 0x08: 'sha256', 0x02: 'sha1', 0x03: 'ripemd160' })
+const BINARY_OPS = Object.freeze({ 0xf0: 'append', 0xf1: 'prepend' })
+const MAX_DEPTH = 256
+const MAX_PROOF_BYTES = 64 * 1024
+export const UPGRADE_DAYS = 7
+export const STALE_DAYS = 3
+const PROOF_FILE_RE = /^manifest-(\d{4}-\d{2}-\d{2})\.json\.[a-z0-9-]+\.ots$/
+
+function reader (buf) {
+  let i = 0
+  const need = (n) => { if (i + n > buf.length) throw new Error('proof is truncated') }
+  const r = {
+    byte: () => { need(1); return buf[i++] },
+    bytes: (n) => { need(n); const b = buf.subarray(i, i + n); i += n; return b },
+    varuint: () => {
+      let v = 0, s = 0, b
+      do { if (s > 49) throw new Error('varuint too long'); b = r.byte(); v += (b & 0x7f) * 2 ** s; s += 7 } while (b & 0x80)
+      return v
+    },
+    varbytes: (max = 8192) => { const n = r.varuint(); if (n > max) throw new Error('field too long'); return r.bytes(n) },
+    done: () => i === buf.length
+  }
+  return r
+}
+
+function varuint (n) {
+  const out = []
+  do { let b = n % 128; n = Math.floor(n / 128); if (n) b |= 0x80; out.push(b) } while (n)
+  return Buffer.from(out)
+}
+const varbytes = (b) => Buffer.concat([varuint(b.length), b])
+
+/** Parse a timestamp tree for `msg`: { msg, items: [{ att, payload } | { op, arg, child }] }. */
+export function parseTimestamp (r, msg, depth = 0) {
+  if (depth > MAX_DEPTH) throw new Error('proof is too deep')
+  const node = { msg, items: [] }
+  const item = (tag) => {
+    if (tag === 0x00) { node.items.push({ att: r.bytes(8).toString('hex'), payload: r.varbytes() }); return }
+    let next, arg = null
+    if (UNARY_OPS[tag]) next = crypto.createHash(UNARY_OPS[tag]).update(msg).digest()
+    else if (BINARY_OPS[tag]) { arg = r.varbytes(4096); next = tag === 0xf0 ? Buffer.concat([msg, arg]) : Buffer.concat([arg, msg]) }
+    else throw new Error(`unknown operation 0x${tag.toString(16)}`)
+    node.items.push({ op: tag, arg, child: parseTimestamp(r, next, depth + 1) })
+  }
+  let tag = r.byte()
+  while (tag === 0xff) { item(r.byte()); tag = r.byte() }
+  item(tag)
+  return node
+}
+
+function writeTimestamp (node, parts) {
+  node.items.forEach((it, k) => {
+    if (k < node.items.length - 1) parts.push(Buffer.from([0xff]))
+    if (it.att) { parts.push(Buffer.from([0x00]), Buffer.from(it.att, 'hex'), varbytes(it.payload)); return }
+    parts.push(Buffer.from([it.op]))
+    if (it.arg) parts.push(varbytes(it.arg))
+    writeTimestamp(it.child, parts)
+  })
+  return parts
+}
+
+/** A detached proof: { digest, root } (SHA-256 files only, as we write them). */
+export function parseProof (bytes) {
+  if (bytes.length > MAX_PROOF_BYTES) throw new Error('proof is too large')
+  const r = reader(bytes)
+  if (!r.bytes(OTS_MAGIC.length).equals(OTS_MAGIC)) throw new Error('not an OpenTimestamps proof')
+  if (r.varuint() !== OTS_VERSION) throw new Error('unknown proof version')
+  if (r.byte() !== OP_SHA256) throw new Error('not a SHA-256 proof')
+  const digest = Buffer.from(r.bytes(32))
+  const root = parseTimestamp(r, digest)
+  if (!r.done()) throw new Error('trailing bytes after the proof')
+  return { digest, root }
+}
+
+export const serializeProof = ({ digest, root }) => Buffer.concat([OTS_MAGIC, Buffer.from([OTS_VERSION, OP_SHA256]), digest, ...writeTimestamp(root, [])])
+
+/** Every attestation of a tree: { node, item, msg, kind: 'pending'|'bitcoin'|'other', uri?, height? }. */
+export function attestations (node, out = []) {
+  for (const it of node.items) {
+    if (!it.att) { attestations(it.child, out); continue }
+    const a = { node, item: it, msg: node.msg, kind: 'other' }
+    try {
+      const p = reader(it.payload)
+      if (it.att === ATT_PENDING) Object.assign(a, { kind: 'pending', uri: p.varbytes(1000).toString('utf8') })
+      else if (it.att === ATT_BITCOIN) Object.assign(a, { kind: 'bitcoin', height: p.varuint() })
+    } catch (_) {}
+    out.push(a)
+  }
+  return out
+}
+
+/** Only the public OpenTimestamps calendars, by their bare https origin: the unit talks to nothing else. */
+export function calendarUrl (uri) {
+  let u
+  try { u = new URL(uri) } catch (_) { return null }
+  if (u.protocol !== 'https:' || u.origin !== uri || !u.hostname.endsWith('.opentimestamps.org')) return null
+  return u.origin
+}
+
+/**
+ * Complete a proof: for each pending attestation, ask its calendar for the rest of the path. Returns
+ * { state: 'complete'|'upgraded'|'pending', bytes?, height?, errors }. bytes is set only when it changed.
+ */
+export async function upgradeProof (bytes, { fetchImpl = fetch } = {}) {
+  const proof = parseProof(bytes)
+  const atts = attestations(proof.root)
+  const done = atts.find((a) => a.kind === 'bitcoin')
+  if (done) return { state: 'complete', height: done.height, errors: [] }
+  const errors = []
+  let changed = false
+  for (const a of atts.filter((x) => x.kind === 'pending')) {
+    const cal = calendarUrl(a.uri)
+    if (!cal) { errors.push('calendar not allowed: ' + String(a.uri).slice(0, 80)); continue }
+    try {
+      const r = await fetchImpl(`${cal}/timestamp/${a.msg.toString('hex')}`, { headers: { accept: 'application/vnd.opentimestamps.v1' }, signal: AbortSignal.timeout(10_000) })
+      if (r.status === 404) continue // not in a block yet
+      if (!r.ok) throw new Error(`calendar answered ${r.status}`)
+      const body = Buffer.from(await r.arrayBuffer())
+      if (!body.length || body.length > MAX_PROOF_BYTES) throw new Error('calendar answer has an unexpected size')
+      const rr = reader(body)
+      const sub = parseTimestamp(rr, a.msg)
+      if (!rr.done()) throw new Error('trailing bytes in the calendar answer')
+      if (!attestations(sub).some((x) => x.kind === 'bitcoin')) continue
+      a.node.items.push(...sub.items) // beside the pending attestation, as `ots upgrade` merges: the calendar route stays
+      changed = true
+    } catch (e) { errors.push(String(e && e.message || e).slice(0, 120)) }
+  }
+  if (!changed) return { state: 'pending', errors }
+  const out = serializeProof(proof)
+  const again = parseProof(out) // what we write must read back, with the same digest
+  const btc = attestations(again.root).find((x) => x.kind === 'bitcoin')
+  if (!again.digest.equals(proof.digest) || !btc) throw new Error('upgraded proof does not read back')
+  return { state: 'upgraded', bytes: out, height: btc.height, errors }
+}
+
+/** Complete the pending proofs of the last `days` days in `outDir`, in place (atomically). */
+export async function upgradeDir ({ outDir, fetchImpl = fetch, now = () => Date.now(), days = UPGRADE_DAYS, staleDays = STALE_DAYS, log = console.log }) {
+  const today = new Date(now()).toISOString().slice(0, 10)
+  const since = new Date(now() - days * 864e5).toISOString().slice(0, 10)
+  const staleBefore = new Date(now() - staleDays * 864e5).toISOString().slice(0, 10)
+  let names = []
+  try { names = fs.readdirSync(outDir).filter((n) => PROOF_FILE_RE.test(n)).sort() } catch (_) {}
+  const results = []
+  for (const name of names) {
+    const day = name.match(PROOF_FILE_RE)[1]
+    if (day < since || day > today) continue
+    const file = path.join(outDir, name)
+    let res
+    try {
+      res = await upgradeProof(fs.readFileSync(file), { fetchImpl })
+      if (res.bytes) {
+        const tmp = file + '.tmp-' + process.pid
+        try { fs.writeFileSync(tmp, res.bytes); fs.renameSync(tmp, file) } catch (e) { fs.rmSync(tmp, { force: true }); throw e }
+      }
+    } catch (e) { res = { state: 'failed', errors: [String(e && e.message || e).slice(0, 120)] } }
+    const { bytes, ...shown } = res
+    results.push({ file: name, ...shown, stale: res.state !== 'complete' && res.state !== 'upgraded' && day < staleBefore })
+  }
+  log('[anchor] upgrade ' + JSON.stringify(results))
+  return results
+}
+
 if (isEntryPoint(import.meta.url)) {
   const arg = (k) => (process.argv.find((a) => a.startsWith(`--${k}=`)) || '').slice(k.length + 3) || null
   const day = arg('day') || new Date(Date.now() - 864e5).toISOString().slice(0, 10)
   const roots = { base: process.env.STOCKS_ROOT_BASE || '/var/lib/stp/base', robinhood: process.env.STOCKS_ROOT_ROBINHOOD || '/var/lib/stp/robinhood' }
-  const res = await anchorDay({ roots, outDir: arg('out') || process.env.STP_ANCHOR_DIR || '/var/lib/stp-anchors', day })
+  const outDir = arg('out') || process.env.STP_ANCHOR_DIR || '/var/lib/stp-anchors'
+  const res = await anchorDay({ roots, outDir, day })
   // Every calendar failing is a failure of the unit (and an alert); one is enough to anchor the day.
   if (!res.proofs.some((p) => p.state !== 'failed')) process.exitCode = 1
+  // A day whose proofs are all still pending after STALE_DAYS is an alert too (one completed proof is enough).
+  const up = await upgradeDir({ outDir })
+  const byDay = {}
+  for (const p of up) (byDay[p.file.slice(9, 19)] ||= []).push(p)
+  if (Object.values(byDay).some((ps) => ps.every((p) => p.stale))) process.exitCode = 1
 }

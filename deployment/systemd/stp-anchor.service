@@ -1,6 +1,7 @@
 # deployment/systemd/stp-anchor.service: once a day, the manifest of the day's data files and its OpenTimestamps proofs
-# (scripts/stocks/anchor.mjs). It reads the data roots and writes only /var/lib/stp-anchors; it talks to the two public
-# OpenTimestamps calendars and nothing else. No key, no wallet, no transaction of ours.
+# (scripts/stocks/anchor.mjs), and the proofs of the last days completed once Bitcoin confirms them. It reads the data
+# roots and writes only /var/lib/stp-anchors; it talks to the public OpenTimestamps calendars (*.opentimestamps.org)
+# and nothing else. No key, no wallet, no transaction of ours.
 [Unit]
 OnFailure=stp-alert@%n.service
 Description=Stock Token Passport: daily anchor of the data files in Bitcoin (OpenTimestamps)

@@ -18,15 +18,17 @@ change showing. It does not prove that what they say is right; the methodology a
    curl -O https://proofofstock.xyz/anchors/manifest-2026-11-12.json.a-pool-opentimestamps-org.ots
    ```
 
-3. With the OpenTimestamps client (`pip install opentimestamps-client`), complete the proof and check it:
+3. With the OpenTimestamps client (`pip install opentimestamps-client`), check it:
 
    ```sh
    mv manifest-2026-11-12.json.a-pool-opentimestamps-org.ots manifest-2026-11-12.json.ots
-   ots upgrade manifest-2026-11-12.json.ots
    ots verify manifest-2026-11-12.json.ots
    ```
 
-   A proof is "pending" until its Bitcoin block is confirmed, usually a few hours after the manifest was written.
+   The proofs on the site are completed in place once Bitcoin confirms them: the next daily run asks the calendar
+   for the path to the block and adds it, so a proof older than a day already names its Bitcoin block. A proof of
+   the last day may still be "pending"; `ots upgrade manifest-2026-11-12.json.ots` completes it from the calendar.
+   `ots verify` checks the proof against a Bitcoin node of your own; `ots info` shows which block attests it.
 
 4. To check a data file against the manifest, compare its SHA-256 with the manifest's `files` entry. The data files
    themselves are available on request: hello@proofofstock.xyz.
