@@ -2,17 +2,23 @@
 // recorder say about themselves and tell the owner, in Telegram (scripts/lib/alert.mjs), when something is off, and
 // once more when it clears.
 //
-// It reads two things, both local and read-only:
+// It reads, all local and read-only:
 //   - the site's own numbers, GET http://127.0.0.1:3005/stocks/api/status (registry and reading ages, errors);
-//   - each chain's last recorder run row, <root>/stock-peg/stock-peg-runs-<day>.jsonl (errors, refusals, format changes).
-// The thresholds are THRESHOLDS below; evaluate() is pure, so the tests hold every rule.
+//   - each chain's last recorder run row, <root>/stock-peg/stock-peg-runs-<day>.jsonl (errors, refusals, format changes);
+//   - the age of the newest token-static day file in each chain's token dataset, the input the look-alike list is built
+//     from, which another project produces (tokenStreamChecks below; scripts/stocks/data-roots.mjs);
+//   - the status file the backup of /var/lib/pos writes, when POS_BACKUP_STATUS names it (backupChecks below).
+// The thresholds are THRESHOLDS and the constants beside each check; the rules are pure, so the tests hold every one.
 //
 // Usage: node scripts/stocks/health-check.mjs [--site=http://127.0.0.1:3005/stocks] (roots from STOCKS_ROOT_BASE and
-// STOCKS_ROOT_ROBINHOOD, as the site's own unit sets them)
+// STOCKS_ROOT_ROBINHOOD, the token datasets from POS_TOKEN_DATASET_BASE and POS_TOKEN_DATASET_ROBINHOOD, defaults in
+// scripts/stocks/data-roots.mjs)
 import fs from 'node:fs'
 import path from 'node:path'
 import { isEntryPoint } from '../lib/invoked-directly.mjs'
 import { alert } from '../lib/alert.mjs'
+import { dataRoot, tokenDataset } from './data-roots.mjs'
+import { readStatus } from '../ops/pos-backup.mjs'
 
 export const THRESHOLDS = Object.freeze({
   registry_age_s: 900, // the site answers 503 for the chain past this (evm/core/stocks/verify.mjs REGISTRY_FRESH_S)
@@ -119,6 +125,81 @@ export function lastRuns (root, now, n = 2) {
   return out
 }
 
+// The token streams (scripts/stocks/data-roots.mjs): the collector writes a chain's token-static day file each time it
+// sees a new token. Measured on the host on 12.11 over 30 days of observed_at: quiet stretches of up to 5.1 h on an
+// ordinary day, and one real outage of about 30 h on both chains (1 to 2 Nov). 8 h is past every ordinary quiet stretch
+// and catches an outage within a third of a day. STP_TOKEN_STREAM_MAX_AGE_H overrides it.
+export const TOKEN_STREAM_MAX_AGE_S = 8 * 3600
+const STATIC_DAY = /^token-static-(\d{4}-\d{2}-\d{2})\.jsonl(\.gz)?$/
+
+/**
+ * The newest token-static day file of a token dataset, by the day in its name (a day compressed later gets a new mtime,
+ * so the newest mtime would lie), with its mtime. Null when there is none; an unreadable directory throws.
+ */
+export function newestTokenStatic (dataset) {
+  const dir = path.join(dataset, 'static')
+  let best = null
+  for (const f of fs.readdirSync(dir)) {
+    const m = STATIC_DAY.exec(f)
+    if (!m) continue
+    // The collector compresses an old day by writing the .gz and deleting the .jsonl: a file gone since readdir is skipped.
+    let mtimeMs
+    try { mtimeMs = fs.statSync(path.join(dir, f)).mtimeMs } catch (e) { if (e && e.code === 'ENOENT') continue; throw e }
+    // No write to a day can come after that day ends: a day compressed later (a new mtime) is never fresher than its end,
+    // so a collector that stopped is not made to look alive by the compression of its last day.
+    mtimeMs = Math.min(mtimeMs, Date.parse(m[1] + 'T00:00:00Z') + 864e5)
+    if (!best || m[1] > best.day || (m[1] === best.day && mtimeMs > best.mtimeMs)) best = { day: m[1], file: f, mtimeMs }
+  }
+  return best
+}
+
+/**
+ * @param {object} p
+ * @param {object} p.newest  chain -> { mtimeMs } (newestTokenStatic), null (no day file), or { error }
+ * @returns {{ key: string, bad: boolean, text: string }[]}
+ */
+export function tokenStreamChecks ({ newest = {}, now, maxAgeS = TOKEN_STREAM_MAX_AGE_S }) {
+  const out = []
+  for (const [c, n] of Object.entries(CHAIN_NAME)) {
+    if (!(c in newest)) continue
+    const s = newest[c]
+    const what = `${n}: the token streams that feed the look-alike list`
+    if (!s || s.error) {
+      out.push({ key: `token-streams:${c}`, bad: true, text: `${what} cannot be read (${s ? String(s.error).slice(0, 100) : 'no day file'}); the list may be stale.` })
+      continue
+    }
+    const ageS = Math.round((now - s.mtimeMs) / 1000)
+    const old = ageS > maxAgeS
+    out.push({ key: `token-streams:${c}`, bad: old, text: old ? `${what} have not been updated for ${Math.floor(ageS / 3600)} h; the list may be stale.` : `${what} are updated again.` })
+  }
+  return out
+}
+
+// The backup of /var/lib/pos (deployment/BACKUP.md, scripts/ops/pos-backup.mjs) runs every 6 hours and writes its
+// status file. A day without a success is four missed runs in a row.
+export const BACKUP_MAX_AGE_S = 24 * 3600
+
+/** The backup's status file, or null when it is missing or unreadable (the backup's own reader). */
+export const readBackupStatus = readStatus
+
+/**
+ * @param {object} p
+ * @param {object|null} p.status  the backup's status file (null: none yet)
+ * @returns {{ key: string, bad: boolean, text: string }[]}
+ */
+export function backupChecks ({ status, now, maxAgeS = BACKUP_MAX_AGE_S }) {
+  const okAt = Date.parse(status?.last_success_at)
+  const lastError = status?.last_error ? String(status.last_error).slice(0, 100) : null
+  if (!Number.isFinite(okAt)) {
+    return [{ key: 'backup:pos', bad: true, text: `no successful backup of /var/lib/pos is recorded yet${lastError ? ` (last attempt: ${lastError})` : ''}. The price history and the case archive have no copy off this host (deployment/BACKUP.md).` }]
+  }
+  const ageS = Math.round((now - okAt) / 1000)
+  const old = ageS > maxAgeS
+  return [{ key: 'backup:pos', bad: old, text: old
+    ? `the last successful backup of /var/lib/pos was ${Math.floor(ageS / 3600)} h ago (it runs every 6 h)${lastError ? `; last attempt: ${lastError}` : ''}.`
+    : 'the backup of /var/lib/pos succeeds again.' }]
+}
+
 /** The last run row of a chain's recorder (today's file, else yesterday's), or null. */
 export function lastRun (root, now) {
   for (const d of [0, 1]) {
@@ -131,10 +212,23 @@ export function lastRun (root, now) {
   return null
 }
 
+/** The checks that keep POS standing on its own (deployment/CUTOVER.md): its input from another project, its backup. */
+export function standaloneChecks (now, { env = process.env } = {}) {
+  const newest = {}
+  for (const c of Object.keys(CHAIN_NAME)) {
+    try { newest[c] = newestTokenStatic(tokenDataset(c, { env })) } catch (e) { newest[c] = { error: (e && e.code) || String(e) } }
+  }
+  const maxH = Number(env.STP_TOKEN_STREAM_MAX_AGE_H)
+  const out = tokenStreamChecks({ newest, now, maxAgeS: maxH > 0 ? maxH * 3600 : TOKEN_STREAM_MAX_AGE_S })
+  // Only where the unit names the status file: before the cutover there is no backup to check, and no alert for it.
+  if (env.POS_BACKUP_STATUS) out.push(...backupChecks({ status: readBackupStatus(env.POS_BACKUP_STATUS), now }))
+  return out
+}
+
 if (isEntryPoint(import.meta.url)) {
   const arg = (k) => (process.argv.find((a) => a.startsWith(`--${k}=`)) || '').slice(k.length + 3) || null
   const site = (arg('site') || 'http://127.0.0.1:3005/stocks').replace(/\/+$/, '')
-  const roots = { base: process.env.STOCKS_ROOT_BASE || '/var/lib/stp/base', robinhood: process.env.STOCKS_ROOT_ROBINHOOD || '/var/lib/stp/robinhood' }
+  const roots = Object.fromEntries(Object.keys(CHAIN_NAME).map((c) => [c, dataRoot(c)]))
   const now = Date.now()
   let status = null, siteError = null
   try {
@@ -147,6 +241,7 @@ if (isEntryPoint(import.meta.url)) {
   const { readMirror } = await import('./issuer-mirror.mjs')
   const mirrors = Object.fromEntries(Object.entries(roots).map(([c, root]) => [c, readMirror(path.join(root, 'stock-peg'), c)]))
   const checks = evaluate({ status, siteError, runs, prevRuns, mirrors, now })
+  checks.push(...standaloneChecks(now))
   const sent = []
   for (const ch of checks) sent.push([ch.key, await alert({ key: ch.key, text: ch.text, ok: !ch.bad })])
   const bad = checks.filter((c) => c.bad).map((c) => c.key)

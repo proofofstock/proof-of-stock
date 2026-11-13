@@ -111,7 +111,7 @@ console.log('the recorder\'s private copies of third-party answers are never ser
   const pegUnit = fs.readFileSync(new URL('../deployment/systemd/stp-peg.service', import.meta.url), 'utf8')
   const vhostConf = fs.readFileSync(new URL('../deployment/nginx/proofofstock.xyz.conf', import.meta.url), 'utf8')
   check('the web unit cannot see the directory at all, and nginx does not name it', /^InaccessiblePaths=-\/var\/lib\/stp-raw$/m.test(webUnit) && !/stp-raw/.test(vhostConf))
-  check('the recorder may write there, outside the backed-up /var/lib/stp, and is not switched on by its unit', /^ReadWritePaths=.* -\/var\/lib\/stp-raw$/m.test(pegUnit) && !/^Environment=.*STP_RAW_SNAPSHOTS=1/m.test(pegUnit))
+  check('the recorder may write there, outside the backed-up /var/lib/pos, and is not switched on by its unit', /^ReadWritePaths=(.* )?-\/var\/lib\/stp-raw$/m.test(pegUnit) && !/^Environment=.*STP_RAW_SNAPSHOTS=1/m.test(pegUnit))
 }
 
 console.log('the page')

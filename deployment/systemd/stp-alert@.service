@@ -1,6 +1,7 @@
 # deployment/systemd/stp-alert@.service: a unit failed; tell the owner in Telegram (scripts/stocks/notify-failure.mjs).
-# Every stp unit names it in OnFailure=stp-alert@%n.service. The bot token and chat live in /etc/stp/alert.env (0600,
-# written by the owner, never in git); without that file the alert is written to the journal only.
+# Every stp unit names it in OnFailure=stp-alert@%n.service. The bot token and chat live in /etc/pos/alert.env, or until
+# that exists /etc/stp/alert.env (root 0600, written by the owner, never in git; read by systemd, not by pos); without
+# either the alert is written to the journal only.
 [Unit]
 Description=Proof of Stock: alert the owner that %i failed
 
@@ -8,13 +9,33 @@ Description=Proof of Stock: alert the owner that %i failed
 Type=oneshot
 WorkingDirectory=/opt/stp/current
 EnvironmentFile=-/etc/stp/alert.env
+EnvironmentFile=-/etc/pos/alert.env
 Environment=STP_ALERT_STATE=/var/lib/stp-alerts/state.json
 ExecStart=/usr/bin/node scripts/stocks/notify-failure.mjs %i
 DynamicUser=false
-User=root
+User=pos
+Group=pos
 NoNewPrivileges=true
+CapabilityBoundingSet=
 ProtectSystem=strict
+# The owner's secrets do not exist for it (systemd itself reads EnvironmentFile= before this applies).
+InaccessiblePaths=-/etc/pos -/etc/stp
 ProtectHome=read-only
 PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources @mount @reboot @swap @raw-io @module @debug @cpu-emulation @obsolete
 ReadWritePaths=/var/lib/stp-alerts
 StateDirectory=stp-alerts

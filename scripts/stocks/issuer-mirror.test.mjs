@@ -90,7 +90,7 @@ console.log('the comparison')
 
 const unit = fs.readFileSync(new URL('../../deployment/systemd/stp-mirror.service', import.meta.url), 'utf8')
 const timer = fs.readFileSync(new URL('../../deployment/systemd/stp-mirror.timer', import.meta.url), 'utf8')
-check('the unit writes only the chains\' stock-peg directories and alerts on failure; the timer runs every 15 minutes', /ReadWritePaths=\/var\/lib\/stp\/base\/stock-peg \/var\/lib\/stp\/robinhood\/stock-peg\n/.test(unit) && /OnFailure=stp-alert@%n\.service/.test(unit) && /--chain=base/.test(unit) && /--chain=robinhood/.test(unit) && /OnCalendar=\*:04\/15/.test(timer))
+check('the unit writes only the chains\' stock-peg directories and alerts on failure; the timer runs every 15 minutes', /^StateDirectory=pos\/base\/stock-peg pos\/robinhood\/stock-peg$/m.test(unit) && !/ReadWritePaths/.test(unit) && /--chain=base --root=\/var\/lib\/pos\/base /.test(unit) && /--chain=robinhood --root=\/var\/lib\/pos\/robinhood /.test(unit) && /exit \$\$rc'/.test(unit) && /OnFailure=stp-alert@%n\.service/.test(unit) && /--chain=base/.test(unit) && /--chain=robinhood/.test(unit) && /OnCalendar=\*:04\/15/.test(timer))
 
 fs.rmSync(tmp, { recursive: true, force: true })
 console.log(`\n${passed} passed, ${failed} failed`)

@@ -39,7 +39,7 @@ console.log('passport')
   const p = await passportFor({ chain: 'base', address: A, root: tmp, now: NOW, fetchImpl })
   check('a registry token gets its own readings only', p.in_registry && p.series.readings === 1 && p.latest.premium === 0.02, JSON.stringify(p.series))
   check('readings older than the window are not read', p.series.premium_all.max === 0.02)
-  const f = await passportFor({ chain: 'base', address: X, root: tmp, now: NOW, fetchImpl })
+  const f = await passportFor({ chain: 'base', address: X, root: tmp, tokenDataset: tmp, now: NOW, fetchImpl })
   check('an impostor gets the newest static name and the strong resemblance', f.in_registry === false && f.identity.name === 'NVIDIA xStock' && f.resembles.kind === 'registry_symbol')
   let threw = false
   try { await passportFor({ chain: 'base', address: 'nvda', root: tmp, now: NOW, fetchImpl }) } catch (_) { threw = true }
@@ -48,7 +48,7 @@ console.log('passport')
 
 console.log('census')
 {
-  const c = await census({ chain: 'base', root: tmp, fetchImpl })
+  const c = await census({ chain: 'base', tokenDataset: tmp, fetchImpl })
   check('counts tokens by resemblance kind', c.resembling.registry_symbol === 1 && c.resembling.ticker === 1 && c.resembling.issuer_name_suffix === 0, JSON.stringify(c.resembling))
   check('a registry token in the dataset is counted apart', c.registry_tokens_in_dataset === 1 && c.tokens_with_identity === 4)
   check('the output names tickers, never a non-registry address', !JSON.stringify(c).includes(X) && !JSON.stringify(c).includes(Y))

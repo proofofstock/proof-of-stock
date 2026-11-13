@@ -490,7 +490,7 @@ console.log('the units')
   const unit = fs.readFileSync(path.join(ROOT, 'deployment', 'systemd', 'stp-peg.service'), 'utf8')
   const timer = fs.readFileSync(path.join(ROOT, 'deployment', 'systemd', 'stp-peg.timer'), 'utf8')
   check('the service runs from the deployed release', /WorkingDirectory=\/opt\/stp\/current/.test(unit))
-  check('the service reads both chains, each into its own dataset root', /--chain=base --root=\/var\/lib\/stp\/base/.test(unit) && /--chain=robinhood --root=\/var\/lib\/stp\/robinhood/.test(unit))
+  check('the service reads both chains, each into its own data root under /var/lib/pos', /--chain=base --root=\/var\/lib\/pos\/base/.test(unit) && /--chain=robinhood --root=\/var\/lib\/pos\/robinhood/.test(unit))
   check('a Base failure does not skip the Robinhood reading', !/stock-peg\.mjs --chain=base[^;]*&&/.test(unit))
   const timeout = Number((/TimeoutStartSec=(\d+)min/.exec(unit) || [])[1]) * 60
   const end = Number((/end=\$\$\(\( \$\$\(date \+%%s\) \+ (\d+) \)\)/.exec(unit) || [])[1])

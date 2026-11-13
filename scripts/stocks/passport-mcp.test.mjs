@@ -25,7 +25,7 @@ const fetchImpl = async (url) => {
   if (String(url).startsWith(COINBASE_URL)) return { ok: true, status: 200, json: async () => ({ tokens: [{ contract_address: A, symbol: 'NVDAc', name: 'NVIDIA', isin: 'US67066G1040', multiplier: '1', nav_price: '180', nav_price_updated_at: '2026-11-06T21:00:00Z', total_supply: '5' }] }) }
   return { ok: false, status: 404, json: async () => ({}) }
 }
-const opts = { roots: { base: tmp, robinhood: tmp }, fetchImpl, now: () => Date.parse('2026-11-08T14:00:00Z') }
+const opts = { roots: { base: tmp, robinhood: tmp }, tokenDatasets: { base: tmp, robinhood: tmp }, fetchImpl, now: () => Date.parse('2026-11-08T14:00:00Z') }
 const body = (r) => JSON.parse(r.result.content[0].text)
 
 console.log('protocol')

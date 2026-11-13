@@ -1,6 +1,8 @@
 # deployment/systemd/stp-health.service: every 15 minutes, check what the site and the recorder say about themselves and
 # tell the owner in Telegram when something is off, and once more when it clears (scripts/stocks/health-check.mjs).
-# Read-only except its own state; the bot token comes from /etc/stp/alert.env (0600, the owner's, never in git).
+# Read-only except its own state. The bot token comes from /etc/pos/alert.env, or until that exists /etc/stp/alert.env
+# (root 0600, the owner's, never in git; read by systemd, not by pos). It also watches the age of the token streams the
+# look-alike list is built from, and the backup of /var/lib/pos (deployment/BACKUP.md).
 [Unit]
 Description=Proof of Stock: health check and alerts
 After=network-online.target
@@ -10,17 +12,43 @@ OnFailure=stp-alert@%n.service
 Type=oneshot
 WorkingDirectory=/opt/stp/current
 EnvironmentFile=-/etc/stp/alert.env
+EnvironmentFile=-/etc/pos/alert.env
 Environment=STP_ALERT_STATE=/var/lib/stp-alerts/state.json
-Environment=STOCKS_ROOT_BASE=/var/lib/stp/base
-Environment=STOCKS_ROOT_ROBINHOOD=/var/lib/stp/robinhood
+Environment=STOCKS_ROOT_BASE=/var/lib/pos/base
+Environment=STOCKS_ROOT_ROBINHOOD=/var/lib/pos/robinhood
+Environment=POS_TOKEN_DATASET_BASE=/var/lib/stp/base
+Environment=POS_TOKEN_DATASET_ROBINHOOD=/var/lib/stp/robinhood
+Environment=POS_BACKUP_STATUS=/var/lib/pos-backup/status.json
 ExecStart=/usr/bin/node scripts/stocks/health-check.mjs
-User=root
+# The dedicated user pos, never root. It holds one capability, to READ past file permissions, for one thing: the age of
+# the newest token-static file in the other project's directories (root 0700, the collector's user 0750), which POS must not
+# re-permission. It reads no row of them, and writes only its alert state.
+User=pos
+Group=pos
 NoNewPrivileges=true
 CapabilityBoundingSet=CAP_DAC_READ_SEARCH
+AmbientCapabilities=CAP_DAC_READ_SEARCH
 ProtectSystem=strict
+# The owner's secrets do not exist for it (systemd itself reads EnvironmentFile= before this applies); with its capability it could
+# otherwise read any root-only file, so the password files go too.
+InaccessiblePaths=-/etc/pos -/etc/stp -/etc/shadow -/etc/gshadow
 ProtectHome=read-only
 PrivateTmp=true
 PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources @mount @reboot @swap @raw-io @module @debug @cpu-emulation @obsolete
 ReadWritePaths=/var/lib/stp-alerts
 StateDirectory=stp-alerts
 TimeoutStartSec=2min

@@ -3,6 +3,38 @@
 [![CI](https://github.com/proofofstock/proof-of-stock/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/proofofstock/proof-of-stock/actions/workflows/ci.yml)
 [![Licence: MIT](https://img.shields.io/badge/licence-MIT-blue)](LICENSE)
 
+## At a glance
+
+**Is this stock token the real one?** Paste an address or a ticker; we check it against the issuer's own list on Base
+(Coinbase) and Robinhood Chain (Robinhood).
+
+<table>
+  <tr>
+    <td width="50%"><a href="https://proofofstock.xyz/?base=NVDAc"><img src="docs/assets/readme/passport-nvda.png" width="400" alt="Passport of NVDAc on Base: issuer-listed, issuer price and on-chain price"></a><br><b>A token passport.</b> NVDAc on Base, on Coinbase's list.</td>
+    <td width="50%"><a href="https://proofofstock.xyz/?chain=base&amp;address=0x35b76a8fbfbac68c449a4a4a8d1bcda0d486f703"><img src="docs/assets/readme/impostor-sndkc.png" width="400" alt="A contract named SNDKc that is not on the issuer's list"></a><br><b>An impostor.</b> Calls itself SNDKc; not on the issuer's list.</td>
+  </tr>
+  <tr>
+    <td><a href="https://proofofstock.xyz/history"><img src="docs/assets/readme/look-alikes.png" width="400" alt="Table of look-alike tokens flagged this week"></a><br><b>Look-alikes flagged.</b> The weekly list; the archive is at <a href="https://proofofstock.xyz/history">/history</a>.</td>
+    <td><a href="https://proofofstock.xyz/#mcp"><img src="docs/assets/readme/connect-an-agent.png" width="400" alt="Connect card with the MCP server URL and setup for Claude Code, ChatGPT and mcp.json"></a><br><b>Ask it from your agent.</b> A public MCP server, no key.</td>
+  </tr>
+  <tr>
+    <td><a href="https://proofofstock.xyz/status"><img src="docs/assets/readme/status.png" width="400" alt="Status page: registries, price readings and impostor lists for both chains"></a><br><b>Status.</b> How fresh each registry, price and list is.</td>
+    <td>
+      <b>Links</b><br>
+      <a href="https://proofofstock.xyz">Site</a> ·
+      <a href="https://proofofstock.xyz/?base=NVDAc">Passport</a> ·
+      <a href="https://proofofstock.xyz/verify?chain=base&amp;address=0x35b76a8fbfbac68c449a4a4a8d1bcda0d486f703">/verify</a> ·
+      <a href="https://proofofstock.xyz/history">/history</a> ·
+      <a href="https://proofofstock.xyz/status">/status</a> ·
+      <a href="https://proofofstock.xyz/anchors">/anchors</a> ·
+      <a href="https://proofofstock.xyz/docs/">Docs</a><br><br>
+      <b>MCP</b> <code>https://proofofstock.xyz/mcp</code><br>
+      <b>MCP registry</b> <a href="https://registry.modelcontextprotocol.io/v0/servers?search=xyz.proofofstock"><code>xyz.proofofstock/proof-of-stock</code></a><br><br>
+      <b>Contact</b> <a href="mailto:hello@proofofstock.xyz">hello@proofofstock.xyz</a>
+    </td>
+  </tr>
+</table>
+
 Proof of Stock tells you whether a tokenized-stock contract is the issuer's own. It looks the exact address up in the
 issuer's registry: Coinbase's for Base, Robinhood's for Robinhood Chain. A name or a symbol proves nothing, so tokens
 that copy a listed symbol are flagged and pointed at the listed contract.

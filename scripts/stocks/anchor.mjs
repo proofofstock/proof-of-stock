@@ -22,6 +22,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import crypto from 'node:crypto'
 import { isEntryPoint } from '../lib/invoked-directly.mjs'
+import { dataRoot } from './data-roots.mjs'
 
 // The OpenTimestamps detached-proof header (python-opentimestamps, DetachedTimestampFile.HEADER_MAGIC), version 1.
 export const OTS_MAGIC = Buffer.from('004f70656e54696d657374616d7073000050726f6f6600bf89e2e884e89294', 'hex')
@@ -265,7 +266,7 @@ export async function upgradeDir ({ outDir, fetchImpl = fetch, now = () => Date.
 if (isEntryPoint(import.meta.url)) {
   const arg = (k) => (process.argv.find((a) => a.startsWith(`--${k}=`)) || '').slice(k.length + 3) || null
   const day = arg('day') || new Date(Date.now() - 864e5).toISOString().slice(0, 10)
-  const roots = { base: process.env.STOCKS_ROOT_BASE || '/var/lib/stp/base', robinhood: process.env.STOCKS_ROOT_ROBINHOOD || '/var/lib/stp/robinhood' }
+  const roots = { base: dataRoot('base'), robinhood: dataRoot('robinhood') }
   const outDir = arg('out') || process.env.STP_ANCHOR_DIR || '/var/lib/stp-anchors'
   const res = await anchorDay({ roots, outDir, day })
   // Every calendar failing is a failure of the unit (and an alert); one is enough to anchor the day.

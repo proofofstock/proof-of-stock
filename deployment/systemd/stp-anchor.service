@@ -8,22 +8,26 @@ Description=Stock Token Passport: daily anchor of the data files in Bitcoin (Ope
 
 [Service]
 Type=oneshot
-User=root
-Group=root
+# The dedicated user pos (deployment/CUTOVER.md), never root. It reads only our own data root.
+User=pos
+Group=pos
 WorkingDirectory=/opt/stp/current
-Environment=STOCKS_ROOT_BASE=/var/lib/stp/base
-Environment=STOCKS_ROOT_ROBINHOOD=/var/lib/stp/robinhood
+Environment=STOCKS_ROOT_BASE=/var/lib/pos/base
+Environment=STOCKS_ROOT_ROBINHOOD=/var/lib/pos/robinhood
 Environment=STP_ANCHOR_DIR=/var/lib/stp-anchors
 ExecStart=/usr/bin/node scripts/stocks/anchor.mjs
 Nice=10
 TimeoutStartSec=5min
 NoNewPrivileges=true
-# Root only to read the dataset roots (as stp-impostors); its one capability is to READ past file permissions.
-CapabilityBoundingSet=CAP_DAC_READ_SEARCH
+# It reads /var/lib/pos (0755, ours) and writes only /var/lib/stp-anchors, which StateDirectory gives to pos (systemd
+# re-owns the root-owned files of earlier runs on the first start). No capability at all.
+CapabilityBoundingSet=
 AmbientCapabilities=
 StateDirectory=stp-anchors
 ProtectSystem=strict
 ReadWritePaths=/var/lib/stp-anchors
+# The owner's secrets do not exist for it (systemd itself reads EnvironmentFile= before this applies).
+InaccessiblePaths=-/etc/pos -/etc/stp
 ProtectHome=read-only
 PrivateTmp=true
 PrivateDevices=true

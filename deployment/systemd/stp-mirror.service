@@ -8,18 +8,25 @@ Description=Stock Token Passport: issuer lists mirrored from the chain, Base and
 
 [Service]
 Type=oneshot
-User=root
-Group=root
+# The dedicated user pos (deployment/CUTOVER.md), never root. It reads nothing of the token dataset.
+User=pos
+Group=pos
 WorkingDirectory=/opt/stp/current
-ExecStart=/bin/sh -c 'rc=0; /usr/bin/node scripts/stocks/issuer-mirror.mjs --chain=base --root=/var/lib/stp/base --budget-s=240 || rc=1; /usr/bin/node scripts/stocks/issuer-mirror.mjs --chain=robinhood --root=/var/lib/stp/robinhood --budget-s=120 || rc=1; exit $rc'
+# "$$rc" is systemd's escape for the shell's "$rc": a bare $rc would be replaced by systemd with an empty value, and the
+# unit would never fail.
+ExecStart=/bin/sh -c 'rc=0; /usr/bin/node scripts/stocks/issuer-mirror.mjs --chain=base --root=/var/lib/pos/base --budget-s=240 || rc=1; /usr/bin/node scripts/stocks/issuer-mirror.mjs --chain=robinhood --root=/var/lib/pos/robinhood --budget-s=120 || rc=1; exit $$rc'
 Nice=10
 TimeoutStartSec=8min
 NoNewPrivileges=true
-# Root only to reach the data roots (as stp-peg); its one capability is to READ past file permissions.
-CapabilityBoundingSet=CAP_DAC_READ_SEARCH
+# It writes only each chain's stock-peg/ under /var/lib/pos, which StateDirectory creates and gives to pos; the rest of
+# the file system is read-only. No capability at all.
+CapabilityBoundingSet=
 AmbientCapabilities=
 ProtectSystem=strict
-ReadWritePaths=/var/lib/stp/base/stock-peg /var/lib/stp/robinhood/stock-peg
+StateDirectory=pos/base/stock-peg pos/robinhood/stock-peg
+StateDirectoryMode=0755
+# The owner's secrets do not exist for it (systemd itself reads EnvironmentFile= before this applies).
+InaccessiblePaths=-/etc/pos -/etc/stp
 ProtectHome=read-only
 PrivateTmp=true
 PrivateDevices=true

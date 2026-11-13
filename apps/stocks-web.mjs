@@ -182,7 +182,7 @@ export function clientKey (ip) {
 }
 
 export function createStocksWeb ({
-  roots = { base: process.env.STOCKS_ROOT_BASE || '/var/lib/stp/base', robinhood: process.env.STOCKS_ROOT_ROBINHOOD || '/var/lib/stp/robinhood' },
+  roots = { base: process.env.STOCKS_ROOT_BASE || '/var/lib/pos/base', robinhood: process.env.STOCKS_ROOT_ROBINHOOD || '/var/lib/pos/robinhood' },
   fetchImpl = fetch, now = () => Date.now(), windowH = DEFAULT_WINDOW_H, log = (m) => console.log(m),
   publicOrigin = process.env.STOCKS_PUBLIC_ORIGIN || 'https://proofofstock.xyz',
   publicPath = process.env.STOCKS_PUBLIC_PATH ?? '',

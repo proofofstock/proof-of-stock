@@ -1,0 +1,12 @@
+[Unit]
+Description=Proof of Stock: back up /var/lib/pos every 6 hours
+
+[Timer]
+# :47 sits between the recorder's runs (:07, :22, :37, :52) and away from the impostor list (:23).
+OnCalendar=*-*-* 00/6:47:00
+RandomizedDelaySec=2min
+Persistent=true
+Unit=pos-backup.service
+
+[Install]
+WantedBy=timers.target

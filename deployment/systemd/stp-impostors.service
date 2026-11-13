@@ -1,15 +1,20 @@
 # deployment/systemd/stp-impostors.service: the impostor list and the names file (scripts/stocks/impostor-list.mjs),
-# built from the collector's token-static streams under the dataset roots. Minutes on Robinhood, so low priority.
+# built from the token streams of another project (the token dataset, read only; scripts/stocks/data-roots.mjs) into our
+# own /var/lib/pos. Minutes on Robinhood, so low priority.
 [Unit]
 OnFailure=stp-alert@%n.service
 Description=Stock Token Passport: impostor list, Base and Robinhood
 
 [Service]
 Type=oneshot
-User=root
-Group=root
+# The dedicated user pos (deployment/CUTOVER.md), never root.
+User=pos
+Group=pos
 WorkingDirectory=/opt/stp/current
-ExecStart=/bin/sh -c 'rc=0; /usr/bin/node --max-old-space-size=2048 scripts/stocks/impostor-list.mjs --chain=base --root=/var/lib/stp/base || rc=1; /usr/bin/node --max-old-space-size=2048 scripts/stocks/impostor-list.mjs --chain=robinhood --root=/var/lib/stp/robinhood || rc=1; exit $rc'
+# Never on an empty archive: history/ is append-only, and a run on an uncopied one would start a second chain beside the
+# real one (deployment/CUTOVER.md step 3). A failure here alerts through OnFailure. "$c" is a literal "$c" for the shell.
+ExecStartPre=/bin/sh -c 'for c in base robinhood; do ls /var/lib/pos/$$c/stock-peg/history/*.jsonl >/dev/null 2>&1 || { echo "ALARM /var/lib/pos/$$c/stock-peg/history has no archive: copy it first (deployment/CUTOVER.md)"; exit 1; }; done'
+ExecStart=/bin/sh -c 'rc=0; /usr/bin/node --max-old-space-size=2048 scripts/stocks/impostor-list.mjs --chain=base --root=/var/lib/pos/base --token-dataset=/var/lib/stp/base || rc=1; /usr/bin/node --max-old-space-size=2048 scripts/stocks/impostor-list.mjs --chain=robinhood --root=/var/lib/pos/robinhood --token-dataset=/var/lib/stp/robinhood || rc=1; exit $$rc'
 Nice=19
 IOSchedulingClass=idle
 MemoryAccounting=true
@@ -17,14 +22,19 @@ MemoryMax=2560M
 CPUQuota=50%
 TimeoutStartSec=40min
 NoNewPrivileges=true
-# Root only to read the dataset (one root directory belongs to the collector's own user): its one capability is to READ
-# past file permissions. It writes only under each chain's stock-peg/ (readings, history, the impostor and names files);
-# the rest of the file system, the dataset included, is read-only. Checked on the host on 11.11 with systemd-run and
-# these properties: stock-peg/ and history/ writable, the dataset root, /opt/stp and /etc not, static/ readable.
+# One of the two units that read the token dataset (the other is stp-health). Its directories belong to the other
+# project (root 0700 under /root for Base, the collector's user 0750 for Robinhood), which POS must not re-own or re-permission, so pos
+# holds one capability, only here: to READ past file permissions. It cannot write past them: the token dataset, like the
+# rest of the file system, is read-only (ProtectSystem=strict), and it writes only each chain's stock-peg/ under
+# /var/lib/pos (the impostor and names files, the case archive).
 CapabilityBoundingSet=CAP_DAC_READ_SEARCH
-AmbientCapabilities=
+AmbientCapabilities=CAP_DAC_READ_SEARCH
 ProtectSystem=strict
-ReadWritePaths=/var/lib/stp/base/stock-peg /var/lib/stp/robinhood/stock-peg
+StateDirectory=pos/base/stock-peg pos/robinhood/stock-peg
+StateDirectoryMode=0755
+# The owner's secrets do not exist for it (systemd itself reads EnvironmentFile= before this applies); with its capability it could
+# otherwise read any root-only file, so the password files go too.
+InaccessiblePaths=-/etc/pos -/etc/stp -/etc/shadow -/etc/gshadow
 ProtectHome=read-only
 PrivateTmp=true
 PrivateDevices=true

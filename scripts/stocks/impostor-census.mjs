@@ -2,21 +2,23 @@
 // they are not, by how strongly (evm/core/stocks/impostor.mjs). AGGREGATES ONLY: counts per kind, and the registry
 // tickers most often borrowed with their counts. No token row, address or name of a non-registry token is printed.
 //
-// Usage: node scripts/stocks/impostor-census.mjs --chain=base|robinhood [--root=<dataset root>]
+// Usage: node scripts/stocks/impostor-census.mjs --chain=base|robinhood [--token-dataset=<dir>]
+//   It reads only the token dataset (default /var/lib/stp/<chain>, scripts/stocks/data-roots.mjs) and writes nothing.
 
 import path from 'node:path'
 import { isEntryPoint } from '../lib/invoked-directly.mjs'
 import { eachJsonl, dayFiles } from '../lib/jsonl.mjs'
 import { resemblance, RESEMBLANCE_KINDS } from '../../evm/core/stocks/impostor.mjs'
 import { CHAINS } from './stock-peg.mjs'
+import { tokenDataset as tokenDatasetOf } from './data-roots.mjs'
 
-export async function census ({ chain, root, fetchImpl = fetch }) {
+export async function census ({ chain, tokenDataset, fetchImpl = fetch }) {
   const C = CHAINS[chain]
   if (!C) throw new Error(`unknown chain ${chain}`)
   const registry = await C.read(fetchImpl, { chainId: C.chainId })
   const ident = new Map()
   let tornFiles = 0
-  for (const f of dayFiles(root, 'static', 'token-static-')) {
+  for (const f of dayFiles(tokenDataset, 'static', 'token-static-')) {
     try {
       await eachJsonl(f, (o) => {
         const a = String(o.token_address || '').toLowerCase()
@@ -46,6 +48,6 @@ export async function census ({ chain, root, fetchImpl = fetch }) {
 if (isEntryPoint(import.meta.url)) {
   const arg = (k) => (process.argv.find((a) => a.startsWith(`--${k}=`)) || '').slice(k.length + 3) || null
   const chain = arg('chain')
-  const DEFAULT_ROOT = { base: '/var/lib/stp/base', robinhood: '/var/lib/stp/robinhood' }
-  console.log(JSON.stringify(await census({ chain, root: path.resolve(arg('root') || DEFAULT_ROOT[chain] || '.') })))
+  if (arg('root')) { console.error('[impostor-census] --root is now --token-dataset (scripts/stocks/data-roots.mjs)'); process.exit(2) }
+  console.log(JSON.stringify(await census({ chain, tokenDataset: path.resolve(tokenDatasetOf(chain, { arg: arg('token-dataset') }) || '.') })))
 }

@@ -8,7 +8,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { buildImpostorList, writeAtomically, INTERNAL_FILE, MAX_INTERNAL_CANDIDATES } from './impostor-list.mjs'
+import { buildImpostorList, writeAtomically, historyNotMigrated, INTERNAL_FILE, MAX_INTERNAL_CANDIDATES } from './impostor-list.mjs'
 import { geckoToPairs, mergePairs } from './gecko-pools.mjs'
 import { COINBASE_URL } from '../../evm/core/stocks/registries.mjs'
 
@@ -38,7 +38,7 @@ write('static/token-static-2026-11-02.jsonl', [{ token_address: X, symbol: 'NVDA
 
 console.log('the impostor list')
 {
-  const l = await buildImpostorList({ chain: 'base', root: tmp, fetchImpl, now: () => Date.parse('2026-11-08T12:00:00Z') })
+  const l = await buildImpostorList({ chain: 'base', tokenDataset: tmp, fetchImpl, now: () => Date.parse('2026-11-08T12:00:00Z') })
   check('only the strong claim is listed', l.items.length === 1 && l.items[0].address === X && l.items[0].kind === 'registry_symbol')
   check('it names the official contract it imitates', l.items[0].registry_address === A && l.items[0].registry_symbol === 'NVDAc')
   check('the registry token itself is never listed', !l.items.some((i) => i.address === A))
@@ -57,7 +57,7 @@ console.log('a deployer the backfill found later')
   const w = (rel, rows) => { const f = path.join(root, rel); fs.mkdirSync(path.dirname(f), { recursive: true }); fs.writeFileSync(f, rows.map((r) => JSON.stringify(r)).join('\n') + '\n') }
   w('static/token-static-2026-11-01.jsonl', [{ token_address: X, symbol: 'NVDAc', name: 'NVIDIA', observed_at: '2026-11-01T10:00:00Z' }])
   w('deployers/token-deployer-2026-11-03.jsonl', [{ token_address: X, deployer: null, status: 'miss' }, { token_address: X, deployer: '0x' + 'D2'.repeat(20), status: 'found' }])
-  const l = await buildImpostorList({ chain: 'base', root, fetchImpl, now: () => Date.parse('2026-11-08T12:00:00Z') })
+  const l = await buildImpostorList({ chain: 'base', tokenDataset: root, fetchImpl, now: () => Date.parse('2026-11-08T12:00:00Z') })
   check('a deployer missing from token-static is taken from the backfill sidecar', l.items[0].deployer === '0x' + 'd2'.repeat(20), String(l.items[0].deployer))
 }
 
@@ -83,7 +83,7 @@ console.log('the internal radar signals (W2-static)')
     { token_address: PLAIN, symbol: 'nvda', name: 'nvda', observed_at: '2026-11-01T10:00:00Z' },
     { token_address: CB, symbol: 'NVDAc', name: 'NVIDIA', observed_at: '2026-11-01T10:00:00Z' },
   ])
-  const l = await buildImpostorList({ chain: 'base', root, fetchImpl: fx, now: () => Date.parse('2026-11-08T12:00:00Z') })
+  const l = await buildImpostorList({ chain: 'base', tokenDataset: root, fetchImpl: fx, now: () => Date.parse('2026-11-08T12:00:00Z') })
   // names, registry_addresses (for the case archive, TZ §H1) and internal are split off by the entry point before
   // impostors.json is written, so the published file keeps exactly the legacy keys.
   const LEGACY_KEYS = 'generated_at,chain,chain_id,issuer,note,registry_records,tokens_scanned,torn_files,counts,listed,more,truncated,items,names,registry_addresses,internal'
@@ -101,7 +101,7 @@ console.log('the internal radar signals (W2-static)')
   check('the registry token is never a candidate', !cand[CB] && !I.item_signals[CB])
   check('signal counts aggregate every token', I.signal_counts.address_lookalike === 2 && I.signal_counts.vanity_prefix_partial === 2 && I.signal_counts.unlisted_full_prefix === 1, JSON.stringify(I.signal_counts))
   check('the internal file is named internal and capped', /internal/.test(INTERNAL_FILE) && I.truncated === false && MAX_INTERNAL_CANDIDATES > 0)
-  const off = await buildImpostorList({ chain: 'base', root: tmp, fetchImpl, now: () => Date.parse('2026-11-08T12:00:00Z') })
+  const off = await buildImpostorList({ chain: 'base', tokenDataset: tmp, fetchImpl, now: () => Date.parse('2026-11-08T12:00:00Z') })
   check('a registry address off the prefix turns the prefix signals off, visibly', off.internal.prefix_check.active === false && off.internal.prefix_check.reason === 'registry_address_without_full_prefix')
 }
 
@@ -137,6 +137,30 @@ console.log('the units')
   const timer = fs.readFileSync(path.join(ROOT, 'deployment', 'systemd', 'stp-impostors.timer'), 'utf8')
   check('the service runs from the deployed release, both chains, one failure not skipping the other', /WorkingDirectory=\/opt\/stp\/current/.test(unit) && /--chain=base/.test(unit) && /--chain=robinhood/.test(unit) && !/impostor-list\.mjs --chain=base[^;]*&&/.test(unit))
   check('the timer fires the service every 6 hours', /Unit=stp-impostors\.service/.test(timer) && /00\/6/.test(timer))
+}
+
+console.log('our data root and the token dataset (deployment/CUTOVER.md)')
+{
+  const ds = path.join(tmp, 'token-dataset'), ours = path.join(tmp, 'pos')
+  const put = (f, text) => { fs.mkdirSync(path.dirname(f), { recursive: true }); fs.writeFileSync(f, text) }
+  check('nothing to migrate when the token dataset holds no case archive', historyNotMigrated(ours, ds) === false)
+  put(path.join(ds, 'stock-peg', 'history', 'cases-2026-11-10.jsonl'), '{}\n')
+  check('a case archive left behind at the old place, none at ours: the history is refused', historyNotMigrated(ours, ds) === true)
+  fs.mkdirSync(path.join(ours, 'stock-peg', 'history'), { recursive: true })
+  check('...an empty history directory at ours is still not a migrated one', historyNotMigrated(ours, ds) === true)
+  put(path.join(ours, 'stock-peg', 'history', 'cases-2026-11-10.jsonl'), '{}\n')
+  check('...and once it is copied, the history is written again', historyNotMigrated(ours, ds) === false)
+  check('the old single root (both the same) is never refused', historyNotMigrated(ds, ds + path.sep) === false)
+  const odd = path.join(tmp, 'unreadable')
+  put(path.join(odd, 'stock-peg', 'history'), 'not a directory')
+  check('an old history that cannot be read counts as one that may exist: refused', historyNotMigrated(path.join(tmp, 'fresh'), odd) === true)
+  put(path.join(ds, 'static', 'token-static-2026-11-01.jsonl'), JSON.stringify({ token_address: X, symbol: 'NVDAc', name: 'NVIDIA', observed_at: '2026-11-01T10:00:00Z' }) + '\n')
+  const before = fs.readdirSync(ds, { recursive: true }).sort().join()
+  const l = await buildImpostorList({ chain: 'base', tokenDataset: ds, fetchImpl, now: () => Date.parse('2026-11-08T12:00:00Z') })
+  check('the list is built from the token dataset and writes nothing into it', l.items.some((i) => i.address === X) && fs.readdirSync(ds, { recursive: true }).sort().join() === before)
+  let threw = false
+  try { await buildImpostorList({ chain: 'base', fetchImpl }) } catch (e) { threw = /tokenDataset is required/.test(e.message) }
+  check('without a token dataset it refuses instead of reading the working directory', threw)
 }
 
 fs.rmSync(tmp, { recursive: true, force: true })

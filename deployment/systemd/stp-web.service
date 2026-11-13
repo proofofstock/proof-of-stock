@@ -1,7 +1,8 @@
 # deployment/systemd/stp-web.service: the public Stock Token Passport site and MCP server (apps/stocks-web.mjs) on
 # 127.0.0.1:3005, behind nginx (deployment/nginx/proofofstock.xyz.conf). It runs the release /opt/stp/current points at
-# (scripts/deploy.sh). It reads the recorded readings and the impostor files under the two dataset roots. It writes
-# one thing: its own visit counter, under /var/lib/stp-analytics (apps/stocks-analytics.mjs).
+# (scripts/deploy.sh). It reads the recorded readings and the impostor files under /var/lib/pos, never the token dataset
+# of the other project. It writes one thing: its own visit counter, under /var/lib/stp-analytics
+# (apps/stocks-analytics.mjs).
 [Unit]
 OnFailure=stp-alert@%n.service
 Description=Stock Token Passport: public site and MCP server (read-only)
@@ -10,13 +11,14 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-User=root
-Group=root
+# The dedicated user pos (deployment/CUTOVER.md), never root.
+User=pos
+Group=pos
 WorkingDirectory=/opt/stp/current
 Environment=STOCKS_WEB_HOST=127.0.0.1
 Environment=STOCKS_WEB_PORT=3005
-Environment=STOCKS_ROOT_BASE=/var/lib/stp/base
-Environment=STOCKS_ROOT_ROBINHOOD=/var/lib/stp/robinhood
+Environment=STOCKS_ROOT_BASE=/var/lib/pos/base
+Environment=STOCKS_ROOT_ROBINHOOD=/var/lib/pos/robinhood
 Environment=STP_ANALYTICS_DIR=/var/lib/stp-analytics
 Environment=STP_ANCHOR_DIR=/var/lib/stp-anchors
 StateDirectory=stp-analytics
@@ -29,20 +31,19 @@ MemoryAccounting=true
 MemoryMax=384M
 CPUQuota=50%
 NoNewPrivileges=true
-# Root only to read the dataset. Its one capability is to READ past file permissions (one dataset directory belongs to
-# the collector's own user); it cannot write past them, bind a privileged port, change owners or load anything into
-# the kernel. The file system is read-only except its own counter directory.
-# Not a dedicated user: that needs group read on the dataset, and one dataset directory is the collector's own, which
-# this site must not re-own or re-permission.
-CapabilityBoundingSet=CAP_DAC_READ_SEARCH
+# No capability: everything it reads under /var/lib/pos is world-readable, and it binds an unprivileged port. The file
+# system is read-only except its own counter directory.
+CapabilityBoundingSet=
 AmbientCapabilities=
-# It sees only its own processes in /proc, and what it writes (the counter files) is readable by root alone.
+# It sees only its own user's processes in /proc, and what it writes (the counter files) is readable by pos alone.
 ProtectProc=invisible
 UMask=0077
 ProtectSystem=strict
 ReadWritePaths=/var/lib/stp-analytics
 # The recorder's private copies of third-party answers are not the site's to read: the path does not exist for it.
 InaccessiblePaths=-/var/lib/stp-raw
+# The owner's secrets do not exist for it (systemd itself reads EnvironmentFile= before this applies).
+InaccessiblePaths=-/etc/pos -/etc/stp
 ProtectHome=read-only
 PrivateTmp=true
 PrivateDevices=true

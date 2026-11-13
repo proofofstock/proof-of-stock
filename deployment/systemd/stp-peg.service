@@ -7,14 +7,18 @@ After=network-online.target
 
 [Service]
 Type=oneshot
-User=root
-Group=root
+# The dedicated user pos (deployment/CUTOVER.md), never root. It reads nothing of the token dataset.
+User=pos
+Group=pos
 WorkingDirectory=/opt/stp/current
+# Never on an empty archive: history/ is append-only, and a run on an uncopied one would start a second chain beside the
+# real one (deployment/CUTOVER.md step 3). A failure here alerts through OnFailure. "$c" is a literal "$c" for the shell.
+ExecStartPre=/bin/sh -c 'for c in base robinhood; do ls /var/lib/pos/$$c/stock-peg/history/*.jsonl >/dev/null 2>&1 || { echo "ALARM /var/lib/pos/$$c/stock-peg/history has no archive: copy it first (deployment/CUTOVER.md)"; exit 1; }; done'
 # Each chain gets a deadline (unix seconds) short of TimeoutStartSec, so a slow run stops itself and still writes its run
 # row instead of being killed (scripts/stocks/stock-peg.mjs header). Robinhood runs second and is the long one, so Base
 # must finish by 4 min and Robinhood by 9; the last minute is for a request in flight at the deadline. "$$" is systemd's
 # escape for a literal "$" passed to the shell, "%%" for a literal "%".
-ExecStart=/bin/sh -c 'rc=0; end=$$(( $$(date +%%s) + 540 )); /usr/bin/node scripts/stocks/stock-peg.mjs --chain=base --root=/var/lib/stp/base --deadline=$$(( end - 300 )) || rc=1; /usr/bin/node scripts/stocks/stock-peg.mjs --chain=robinhood --root=/var/lib/stp/robinhood --deadline=$$end || rc=1; exit $$rc'
+ExecStart=/bin/sh -c 'rc=0; end=$$(( $$(date +%%s) + 540 )); /usr/bin/node scripts/stocks/stock-peg.mjs --chain=base --root=/var/lib/pos/base --deadline=$$(( end - 300 )) || rc=1; /usr/bin/node scripts/stocks/stock-peg.mjs --chain=robinhood --root=/var/lib/pos/robinhood --deadline=$$end || rc=1; exit $$rc'
 Nice=15
 IOSchedulingClass=idle
 MemoryAccounting=true
@@ -22,17 +26,20 @@ MemoryMax=256M
 CPUQuota=25%
 TimeoutStartSec=10min
 NoNewPrivileges=true
-# Root only to read the dataset (one root directory belongs to the collector's own user): its one capability is to READ
-# past file permissions. It writes only under each chain's stock-peg/ (readings, history, the impostor and names files);
-# the rest of the file system, the dataset included, is read-only. Checked on the host on 11.11 with systemd-run and
-# these properties: stock-peg/ and history/ writable, the dataset root, /opt/stp and /etc not, static/ readable.
-CapabilityBoundingSet=CAP_DAC_READ_SEARCH
+# It writes only each chain's stock-peg/ under /var/lib/pos (readings, run rows, pool book, registry history), which
+# StateDirectory creates and gives to pos; the rest of the file system is read-only. No capability at all.
+CapabilityBoundingSet=
 AmbientCapabilities=
 ProtectSystem=strict
+StateDirectory=pos/base/stock-peg pos/robinhood/stock-peg
+StateDirectoryMode=0755
 # /var/lib/stp-raw: short-lived private copies of the aggregators' answers (scripts/stocks/raw-store.mjs), outside
-# /var/lib/stp so the dataset's backups do not copy them. Written only with STP_RAW_SNAPSHOTS=1, which this unit does not
-# set: off until the aggregators' terms on private retention have been read. "-": no error while the directory is absent.
-ReadWritePaths=/var/lib/stp/base/stock-peg /var/lib/stp/robinhood/stock-peg -/var/lib/stp-raw
+# /var/lib/pos so the backup does not copy them. Written only with STP_RAW_SNAPSHOTS=1, which this unit does not set: off
+# until the aggregators' terms on private retention have been read (it would then also need to belong to pos). "-": no
+# error while the directory is absent.
+ReadWritePaths=-/var/lib/stp-raw
+# The owner's secrets do not exist for it (systemd itself reads EnvironmentFile= before this applies).
+InaccessiblePaths=-/etc/pos -/etc/stp
 ProtectHome=read-only
 PrivateTmp=true
 PrivateDevices=true

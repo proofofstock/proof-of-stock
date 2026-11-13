@@ -1,0 +1,60 @@
+# deployment/systemd/pos-backup.service: back up POS's own data, /var/lib/pos, with restic, to its own Backblaze B2
+# bucket over the S3 API (scripts/ops/pos-backup.mjs; setup in deployment/BACKUP.md). It writes a status file that
+# stp-health reads: no success for 24 h is an alert.
+# The repository, its password and the storage key come ONLY from /etc/pos/backup.env (root, 0600), which the owner
+# writes on the host; the unit is skipped until that file exists. Nothing secret is in git or in this file.
+[Unit]
+Description=Proof of Stock: back up /var/lib/pos (restic)
+OnFailure=stp-alert@%n.service
+After=network-online.target
+Wants=network-online.target
+ConditionPathExists=/etc/pos/backup.env
+
+[Service]
+Type=oneshot
+# Its own user: the site runs as pos and must not be able to read this process's environment (the storage key).
+User=pos-backup
+Group=pos-backup
+WorkingDirectory=/opt/stp/current
+EnvironmentFile=/etc/pos/backup.env
+Environment=POS_BACKUP_SOURCE=/var/lib/pos
+Environment=POS_BACKUP_STATUS=/var/lib/pos-backup/status.json
+Environment=RESTIC_CACHE_DIR=/var/cache/pos-backup
+Environment=HOME=/var/lib/pos-backup
+# The status file is world-readable on purpose: it holds times and an exit code, and stp-health (user pos) reads it.
+StateDirectory=pos-backup
+StateDirectoryMode=0755
+CacheDirectory=pos-backup
+CacheDirectoryMode=0700
+ExecStart=/usr/bin/node scripts/ops/pos-backup.mjs
+Nice=19
+IOSchedulingClass=idle
+MemoryAccounting=true
+MemoryMax=1G
+CPUQuota=25%
+TimeoutStartSec=2h
+NoNewPrivileges=true
+# It reads /var/lib/pos (files 0644, directories 0755): no capability needed, and none held.
+CapabilityBoundingSet=
+AmbientCapabilities=
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources @mount @reboot @swap @raw-io @module @debug @cpu-emulation @obsolete
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=pos-backup

@@ -167,7 +167,7 @@ console.log('connecting from Claude and ChatGPT')
   const gptSteps = (card.match(/<pre id="mcp-gpt">([\s\S]*?)<\/pre>/) || [])[1] || ''
   const gptUrl = (gptSteps.match(/<span id="mcp-gpt-url">([^<]*)<\/span>/) || [])[1]
   check('the connect card: URL, Claude Code, ChatGPT, then mcp.json', heads.length === 4 && heads[0] === 'MCP server URL' && heads[1] === 'Claude Code' && heads[2] === 'ChatGPT (web)' && heads[3] === 'mcp.json')
-  check('...the ChatGPT block gives the same plans and steps as the line above and the tutorial', /^Plans: Pro, Business, Enterprise\/Edu\n1\. Plugins → \+ → Add custom MCP server\n2\. Server URL: /.test(gptSteps) && /\n3\. Authentication: No authentication\n4\. Create as a plugin, then install it\n5\. In a chat, type @ and pick it$/.test(gptSteps))
+  check('...the ChatGPT block is one line, like Claude Code: the same path as the line above and the tutorial', !gptSteps.includes('\n') && /^Plugins → \+ → Add custom MCP server → .+ → No authentication → Create as a plugin$/.test(gptSteps))
   check('...its URL is the one the other blocks use, and its copy button copies just that URL', gptUrl === urlBlock && /<button type="button" class="btn" data-copy="mcp-gpt-url">copy URL<\/button>/.test(card) && (gptSteps.match(/<span/g) || []).length === 1)
   const howTo = ['../README.md', '../docs/README.md', '../docs/stocks-passport-agent.md', '../docs/tutorials/connect-an-agent.md'].map((f) => fs.readFileSync(new URL(f, import.meta.url), 'utf8'))
   const tut = howTo[3]

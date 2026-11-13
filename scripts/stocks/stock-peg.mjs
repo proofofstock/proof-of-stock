@@ -335,6 +335,6 @@ if (isEntryPoint(import.meta.url)) {
   const arg = (k) => (process.argv.find((a) => a.startsWith(`--${k}=`)) || '').slice(k.length + 3) || null
   const dl = arg('deadline')
   if (dl != null && !(Number(dl) > 0)) throw new Error(`--deadline must be unix seconds, got ${dl}`)
-  const run = await runStockPeg({ chain: arg('chain'), root: arg('root') || 'data', paceMs: Number(arg('pace-ms') ?? 250), deadline: dl != null ? Number(dl) * 1000 : null })
+  const run = await runStockPeg({ chain: arg('chain'), root: arg('root') || (await import('./data-roots.mjs')).dataRoot(arg('chain')) || 'data', paceMs: Number(arg('pace-ms') ?? 250), deadline: dl != null ? Number(dl) * 1000 : null })
   process.exitCode = runExitCode(run)
 }

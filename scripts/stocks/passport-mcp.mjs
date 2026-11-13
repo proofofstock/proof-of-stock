@@ -20,6 +20,7 @@ import path from 'node:path'
 import { isEntryPoint } from '../lib/invoked-directly.mjs'
 import { passportFor } from './passport.mjs'
 import { CHAINS } from './stock-peg.mjs'
+import { dataRoot, tokenDataset } from './data-roots.mjs'
 import { invalid } from '../lib/mcp-args.mjs'
 import { mintedOf } from '../../evm/core/stocks/registries.mjs'
 
@@ -27,7 +28,9 @@ export const PROTOCOL_VERSION = '2025-06-18'
 // The versions it can speak, newest first: a client asking for one of them gets it (apps/stocks-mcp-http.mjs does the same).
 export const SUPPORTED_VERSIONS = Object.freeze(['2025-06-18', '2025-03-26', '2024-11-05'])
 const SERVER_INFO = Object.freeze({ name: 'proof-of-stock-stdio', version: JSON.parse(fs.readFileSync(new URL('../../package.json', import.meta.url), 'utf8')).version })
-const DEFAULT_ROOT = Object.freeze({ base: '/var/lib/stp/base', robinhood: '/var/lib/stp/robinhood' })
+// Our data roots and the token datasets (read only, for a stranger's symbol and name): scripts/stocks/data-roots.mjs.
+const DEFAULT_ROOT = Object.freeze(Object.fromEntries(Object.keys(CHAINS).map((c) => [c, dataRoot(c)])))
+const DEFAULT_TOKEN_DATASET = Object.freeze(Object.fromEntries(Object.keys(CHAINS).map((c) => [c, tokenDataset(c)])))
 const CHAIN_ENUM = Object.keys(CHAINS)
 // One canonical disclaimer (docs/legal.md, served at /docs/legal.md); the tools point at it instead of repeating it.
 const NOTICE = 'Facts with their time and source, not advice: https://proofofstock.xyz/docs/legal.md'
@@ -59,7 +62,7 @@ export const TOOLS = Object.freeze([
 const summary = (r) => ({ symbol: r.symbol, name: r.name ?? null, address: r.address, isin: r.isin, multiplier: r.multiplier, has_reference_price: r.reference?.price_usd > 0, supplied: mintedOf(r) })
 
 /** One tool call → MCP content. Errors in the tool are results with isError, not protocol errors. */
-export async function callTool (name, args = {}, { roots = DEFAULT_ROOT, fetchImpl = fetch, now = () => Date.now() } = {}) {
+export async function callTool (name, args = {}, { roots = DEFAULT_ROOT, tokenDatasets = DEFAULT_TOKEN_DATASET, fetchImpl = fetch, now = () => Date.now() } = {}) {
   const C = CHAINS[args.chain]
   const text = (o) => ({ content: [{ type: 'text', text: JSON.stringify(o) }] })
   const fail = (m) => ({ content: [{ type: 'text', text: m }], isError: true })
@@ -67,7 +70,7 @@ export async function callTool (name, args = {}, { roots = DEFAULT_ROOT, fetchIm
   if (!TOOLS.some((t) => t.name === name) || !C) return fail('invalid arguments')
   try {
     if (name === 'stock_passport') {
-      return text(await passportFor({ chain: args.chain, address: args.address, root: path.resolve(roots[args.chain]), hours: args.hours || undefined, now: now(), fetchImpl }))
+      return text(await passportFor({ chain: args.chain, address: args.address, root: path.resolve(roots[args.chain]), tokenDataset: tokenDatasets[args.chain] ? path.resolve(tokenDatasets[args.chain]) : null, hours: args.hours || undefined, now: now(), fetchImpl }))
     }
     const reg = await C.read(fetchImpl, { chainId: C.chainId })
     if (name === 'list_stock_tokens') return text({ chain: args.chain, issuer: C.issuer, count: reg.length, tokens: reg.map(summary), notice: NOTICE })

@@ -10,11 +10,14 @@
 // ⚠ A LISTED TOKEN IS A CLAIM WITH EVIDENCE, NOT A VERDICT. Each item carries what it imitates and the official
 // contract, so a reader can check; the file says the same in `note`.
 //
-// Output: <root>/stock-peg/impostors.json, and <root>/stock-peg/stock-names.json, the symbol and name, from our own
+// Output: <root>/stock-peg/impostors.json, and <root>/stock-peg/stock-names.json, the symbol and name, from the token
 // dataset, of every token that resembles an issuer token in any way (ticker borrowers included), so the public site can
 // name a token outside the registry without asking anyone (apps/stocks-web.mjs makes no outbound call for a name).
 // Both are written to a temporary file and renamed, so a reader never sees half of one.
-// Usage: node scripts/stocks/impostor-list.mjs --chain=base|robinhood [--root=<dataset root>]
+// Usage: node scripts/stocks/impostor-list.mjs --chain=base|robinhood [--root=<our data root>] [--token-dataset=<dir>]
+//   --token-dataset is only READ: its static/token-static-* and deployers/token-deployer-* day files, and only the fields
+//   in scripts/stocks/data-roots.mjs TOKEN_DATASET_FIELDS. --root receives <root>/stock-peg/. Defaults and env:
+//   scripts/stocks/data-roots.mjs (our root /var/lib/pos/<chain>, the token dataset /var/lib/stp/<chain>).
 
 import fs from 'node:fs'
 import path from 'node:path'
@@ -25,6 +28,7 @@ import { CHAINS } from './stock-peg.mjs'
 import { recordCases, pendingCaseAddresses } from '../../evm/core/stocks/history.mjs'
 import { readTextEvidence } from './text-evidence.mjs'
 import { validateV2 } from '../../schemas/v2/validate.mjs'
+import { dataRoot, tokenDataset as tokenDatasetOf } from './data-roots.mjs'
 
 export const STRONG_KINDS = Object.freeze(['registry_symbol', 'issuer_name_suffix', 'registry_name'])
 // A safety cap on the file, not a display limit: the site's verify lookup is built from every item (the API pages them).
@@ -34,14 +38,15 @@ export const MAX_NAMES = 100_000
 export const INTERNAL_FILE = 'impostor-signals.internal.json'
 export const MAX_INTERNAL_CANDIDATES = 5_000
 
-export async function buildImpostorList ({ chain, root, fetchImpl = fetch, now = () => Date.now() }) {
+export async function buildImpostorList ({ chain, tokenDataset, fetchImpl = fetch, now = () => Date.now() }) {
   const C = CHAINS[chain]
   if (!C) throw new Error(`unknown chain ${chain}`)
+  if (!tokenDataset) throw new Error('tokenDataset is required: the directory of the token streams this list is built from')
   const registry = await C.read(fetchImpl, { chainId: C.chainId })
   const regSet = new Set(registry.map((r) => r.address))
   const tok = new Map() // address → { symbol, name, first, deployer }
   let tornFiles = 0
-  for (const f of dayFiles(root, 'static', 'token-static-')) {
+  for (const f of dayFiles(tokenDataset, 'static', 'token-static-')) {
     try {
       // A damaged line in the middle may be a token this list now misses: the file counts as torn, so no case closes.
       const bad = await eachJsonl(f, (o) => {
@@ -60,7 +65,7 @@ export async function buildImpostorList ({ chain, root, fetchImpl = fetch, now =
   }
   // Most tokens reach token-static before their deployer is known; the deployer backfill writes it later to its own
   // sidecar (docs/deployer-backfill-tz.md, deployers/token-deployer-*.jsonl). Only found rows fill a gap; a miss stays null.
-  for (const f of dayFiles(root, 'deployers', 'token-deployer-')) {
+  for (const f of dayFiles(tokenDataset, 'deployers', 'token-deployer-')) {
     try {
       await eachJsonl(f, (o) => {
         const t = tok.get(String(o.token_address || '').toLowerCase())
@@ -121,6 +126,20 @@ export function namesFile (list) {
   return { generated_at: list.generated_at, chain: list.chain, chain_id: list.chain_id, count: Object.keys(list.names).length, names: list.names }
 }
 
+/**
+ * True when the token dataset still holds (or may hold: unreadable) a case archive (stock-peg/history/, our pre-12.11 location) and our own root
+ * has none: the archive was not copied over (deployment/CUTOVER.md). Writing then would start a second, backfilled
+ * history beside the real one, which an append-only archive cannot undo, so the entry point refuses.
+ */
+export function historyNotMigrated (root, dataset) {
+  if (path.resolve(root) === path.resolve(dataset)) return false
+  // 'yes', 'no', or 'unknown' when the directory exists but cannot be read: then the answer is not known, so it refuses.
+  const has = (dir) => {
+    try { return fs.readdirSync(path.join(dir, 'stock-peg', 'history')).some((f) => f.endsWith('.jsonl')) ? 'yes' : 'no' } catch (e) { return e && e.code === 'ENOENT' ? 'no' : 'unknown' }
+  }
+  return has(dataset) !== 'no' && has(root) !== 'yes'
+}
+
 export function writeAtomically (file, obj) {
   fs.mkdirSync(path.dirname(file), { recursive: true })
   const tmp = `${file}.tmp-${process.pid}`
@@ -131,10 +150,10 @@ export function writeAtomically (file, obj) {
 if (isEntryPoint(import.meta.url)) {
   const arg = (k) => (process.argv.find((a) => a.startsWith(`--${k}=`)) || '').slice(k.length + 3) || null
   const chain = arg('chain')
-  const DEFAULT_ROOT = { base: '/var/lib/stp/base', robinhood: '/var/lib/stp/robinhood' }
-  const root = path.resolve(arg('root') || DEFAULT_ROOT[chain] || '.')
+  const root = path.resolve(dataRoot(chain, { arg: arg('root') }) || '.')
+  const dataset = path.resolve(tokenDatasetOf(chain, { arg: arg('token-dataset') }) || '.')
   const at = Date.now()
-  const { names, internal, registry_addresses: registryAddresses, ...list } = await buildImpostorList({ chain, root, now: () => at })
+  const { names, internal, registry_addresses: registryAddresses, ...list } = await buildImpostorList({ chain, tokenDataset: dataset, now: () => at })
   writeAtomically(path.join(root, 'stock-peg', 'impostors.json'), list)
   writeAtomically(path.join(root, 'stock-peg', 'stock-names.json'), namesFile({ ...list, names }))
   writeAtomically(path.join(root, 'stock-peg', INTERNAL_FILE), internal)
@@ -145,6 +164,7 @@ if (isEntryPoint(import.meta.url)) {
   // H1: the case archive (docs/stocks-truth-layer-tz.md §H). After the public files, so a failure here never withholds
   // the list; but it fails the unit, because a gap in an append-only history cannot be filled later.
   try {
+    if (historyNotMigrated(root, dataset)) throw new Error(`${dataset}/stock-peg/history has a case archive and ${root}/stock-peg/history has none: copy it first (deployment/CUTOVER.md); nothing written to the history`)
     // Spec G: what the chain itself returns for symbol() and name() of each newly flagged contract, at one block.
     const pending = pendingCaseAddresses({ root, list, registry: registryAddresses, chainId: CHAINS[chain].chainId, at })
     const textEvidence = pending.length ? await readTextEvidence({ chain, chainId: CHAINS[chain].chainId, addresses: pending, collector: new Map(list.items.map((it) => [it.address, { symbol: it.symbol, name: it.name }])) }) : new Map()
