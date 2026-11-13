@@ -77,7 +77,6 @@
 
     <footer class="statusbar">
       <span id="status" class="status">connecting</span>
-      <!--exam-->
       <span class="hint"><button type="button" class="key" data-hist title="The last command again (or press the up arrow)"><kbd>↑↓</kbd> history</button><button type="button" class="key" data-run="help"><kbd>help</kbd> commands</button><button type="button" class="key" data-win="clear"><kbd>clear</kbd> screen</button></span>
     </footer>
   </main>
@@ -154,10 +153,7 @@
       <div class="code-head"><span>mcp.json</span><button type="button" class="btn" data-copy="mcp-json">copy</button></div>
       <pre id="mcp-json">{
   "mcpServers": {
-    "proofofstock": {
-      "type": "http",
-      "url": "__MCP_URL__"
-    }
+    "proofofstock": { "type": "http", "url": "__MCP_URL__" }
   }
 }</pre>
     </div>
@@ -213,6 +209,7 @@
         <a class="foot-link" href="history">History</a>
         <a class="foot-link" href="llms.txt">llms.txt</a>
         <a class="foot-link" href="status" id="foot-status"><span class="foot-dot" aria-hidden="true"></span>Status</a>
+        <!--exam-->
       </nav>
     </div>
     <p class="foot-note">Data with its time and source. Not investment advice or a trading signal; holder rights are set by the issuer's prospectus. Registries: Coinbase (Base), Robinhood (Robinhood Chain). Pools: public DEX data, named in each answer and in the <a href="docs/explanation/methodology.md">methodology</a>.</p>

@@ -28,8 +28,12 @@ const ISSUERS = Object.freeze({
   robinhood: { url: 'https://api.robinhood.com/rhj/assets', addresses: (b) => (Array.isArray(b?.assets) ? b.assets.map((a) => (Array.isArray(a.deployments) ? a.deployments : []).find((d) => String(d.chainId) === '4663')?.contractAddress).filter((x) => x != null) : null) },
 })
 
+// It names itself in every request to our own site, so the visit counter can leave it out: the runners' addresses
+// change, the name does not (apps/stocks-analytics.mjs IGNORE_UA).
+export const CANARY_UA = 'proofofstock-canary'
+
 const getJson = async (fetchImpl, url, init = {}) => {
-  const r = await fetchImpl(url, { signal: AbortSignal.timeout(20_000), headers: { accept: 'application/json', 'user-agent': 'proofofstock-canary' }, ...init })
+  const r = await fetchImpl(url, { signal: AbortSignal.timeout(20_000), headers: { accept: 'application/json', 'user-agent': CANARY_UA }, ...init })
   const body = await r.json().catch(() => null)
   return { status: r.status, body }
 }
@@ -47,7 +51,7 @@ export async function runCanary ({ site = 'https://proofofstock.xyz', fetchImpl 
   const S = site.replace(/\/+$/, '')
 
   await run('page', async () => {
-    const r = await fetchImpl(S + '/', { signal: AbortSignal.timeout(20_000) })
+    const r = await fetchImpl(S + '/', { signal: AbortSignal.timeout(20_000), headers: { 'user-agent': CANARY_UA } })
     const t = await r.text()
     return { ok: r.status === 200 && t.includes('Proof of Stock'), detail: `HTTP ${r.status}` }
   })
@@ -76,7 +80,7 @@ export async function runCanary ({ site = 'https://proofofstock.xyz', fetchImpl 
     return { ok: r.status === 200 && /^[0-9a-f]{64}$/.test(r.body?.list_proof?.addresses_sha256 || ''), detail: `HTTP ${r.status}` }
   })
   await run('the MCP server lists its tools', async () => {
-    const r = await getJson(fetchImpl, S + '/mcp', { method: 'POST', headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream', 'user-agent': 'proofofstock-canary' }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list' }) })
+    const r = await getJson(fetchImpl, S + '/mcp', { method: 'POST', headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream', 'user-agent': CANARY_UA }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list' }) })
     const n = r.body?.result?.tools?.length
     return { ok: r.status === 200 && n === KNOWN.tools, detail: `HTTP ${r.status}, ${n} tools` }
   })

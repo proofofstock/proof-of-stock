@@ -88,6 +88,9 @@ const STATIC = Object.freeze({
 })
 /** The one line the MCP registry reads at /.well-known/mcp-registry-auth: an Ed25519 public key, base64 of 32 bytes. */
 export const MCP_REGISTRY_AUTH_RE = /^v=MCPv1; k=ed25519; p=[A-Za-z0-9+/]{43}=$/
+/** The claim Glama reads at /mcp/.well-known/glama.json to prove this endpoint is ours (deployment/glama-claim). */
+export const GLAMA_CLAIM_RE = /^glama_claim_[A-Za-z0-9_-]{16,96}$/
+export const GLAMA_CLAIM_PATH = '/mcp/.well-known/glama.json'
 
 export const SECURITY_HEADERS = Object.freeze({
   'content-security-policy': "default-src 'none'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
@@ -189,6 +192,10 @@ export function createStocksWeb ({
   analytics: analyticsOpts = {}, // apps/stocks-analytics.mjs options; { enabled: false } turns the counter off
   exam: examOpts = {}, // apps/stocks-exam.mjs options; { url: null } turns the exam summary off
   source, // the source link: undefined = package.json decides (stp.source_public), null = none, a URL = that URL
+  // The claim Glama reads to see that the connector at /mcp is ours. It belongs to the host, never to this
+  // repository: the repository is exported publicly, and an ownership claim has no business being published.
+  // Set on the host in /etc/pos/web.env (deployment/PUBLISHING.md); without it the path is a plain 404.
+  glamaClaim = process.env.STP_GLAMA_CLAIM || null,
 } = {}) {
   const registries = new Map() // chain → { records, at, error }
   // Addresses that were listed and have left the registry, since this process started: chain → Map(address → { at, symbol }).
@@ -242,6 +249,8 @@ export function createStocksWeb ({
   // The official MCP registry proves we own proofofstock.xyz by this file: the public half of the key the publish
   // workflow signs with (.github/workflows/mcp-registry.yml). Only a well-formed line is served; otherwise 404.
   const registryAuth = (() => { try { const t = fs.readFileSync(new URL('../deployment/mcp-registry-auth', import.meta.url), 'utf8').trim(); return MCP_REGISTRY_AUTH_RE.test(t) ? t + '\n' : null } catch (_) { return null } })()
+  // Only a well-formed claim is served, so a truncated or mistyped one answers 404 rather than a wrong claim.
+  const claim = GLAMA_CLAIM_RE.test(String(glamaClaim || '').trim()) ? String(glamaClaim).trim() : null
   docsPages = createDocsRenderer({ docs, version: appVersion, released, sourceUrl, base: publicPath, assets: { css: `style.css?v=${version('/style.css')}`, docsCss: `docs.css?v=${version('/docs.css')}`, docsJs: `docs.js?v=${version('/docs.js')}`, beacon: `beacon.js?v=${version('/beacon.js')}` } })
 
   // ⚠ A RAW ERROR NEVER REACHES A RESPONSE. A file system or fetch error can carry an internal path or a piece of a file;
@@ -631,6 +640,13 @@ export function createStocksWeb ({
   async function route (req, res) {
     let url
     try { url = new URL(req.url, 'http://local') } catch (_) { return send(res, 404, { error: 'not found' }) }
+    // Before the MCP handler, as Glama asks: a plain public GET, no authentication and no redirect.
+    if (url.pathname === BASE_PATH + GLAMA_CLAIM_PATH) {
+      if (req.method !== 'GET' && req.method !== 'HEAD') return send(res, 405, { error: 'method not allowed' }, undefined, { allow: 'GET, HEAD' })
+      return claim
+        ? send(res, 200, { $schema: 'https://glama.ai/mcp/schemas/connector.json', claim }, undefined, { 'cache-control': 'public, max-age=60' })
+        : send(res, 404, { error: 'not found' })
+    }
     if (url.pathname === BASE_PATH + '/mcp') return routeMcp(req, res)
     if (req.method !== 'GET' && req.method !== 'HEAD') return send(res, 405, { error: 'method not allowed' }, undefined, { allow: 'GET, HEAD' })
     // A release that cannot read any issuer registry answers every lookup with 503: it must fail the deploy gate, not pass.

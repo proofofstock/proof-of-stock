@@ -15,10 +15,11 @@ export const EXAM_EVERY_MS = 30 * 60e3
 export const EXAM_MAX_AGE_MS = 36 * 3600e3
 export const EXAM_MAX_BYTES = 256 * 1024
 /**
- * The status bar chip (apps/stocks-web/index.html <!--exam-->): hidden until app.js has a fresh result to fill in. The
+ * The chip beside Status in the footer (apps/stocks-web/index.html <!--exam-->): hidden until app.js has a fresh result
+ * to fill in. It sits with the other proof links, not in the terminal status bar: the exam is not terminal state. The
  * server puts it in only while the source is public (package.json stp.source_public), like the footer's GitHub link.
  */
-export const EXAM_CHIP_HTML = `<a id="exam-chip" class="exam" href="${EXAM_REPORTS_URL}" target="_blank" rel="noopener noreferrer" hidden><span class="exam-k">exam</span><span class="exam-d"></span><span class="exam-bar" aria-hidden="true"><i></i></span><span class="exam-s"></span></a>`
+export const EXAM_CHIP_HTML = `<a id="exam-chip" class="foot-link exam" href="${EXAM_REPORTS_URL}" target="_blank" rel="noopener noreferrer" hidden><span class="foot-dot" aria-hidden="true"></span><span class="exam-k">Exam</span><span class="exam-s"></span></a>`
 const DAY = /^\d{4}-\d{2}-\d{2}$/
 const SHA = /^[0-9a-f]{64}$/
 const ISO = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,3})?Z$/

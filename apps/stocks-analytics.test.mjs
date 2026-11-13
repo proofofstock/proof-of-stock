@@ -4,7 +4,8 @@ import fs from 'node:fs'
 import vm from 'node:vm'
 import os from 'node:os'
 import path from 'node:path'
-import { createAnalytics, parseHit, uaClass, DAY_CAP_BYTES, KEEP_DAYS, LOADS_PER_VISITOR_DAY, BEACONS_PER_VISITOR_DAY } from './stocks-analytics.mjs'
+import { createAnalytics, parseHit, uaClass, ipBytes, parseIgnore, parseIgnoreEntry, ignoredAddress, selfEntries, DAY_CAP_BYTES, KEEP_DAYS, LOADS_PER_VISITOR_DAY, BEACONS_PER_VISITOR_DAY } from './stocks-analytics.mjs'
+import { CANARY_UA } from '../scripts/canary.mjs'
 import { createStocksWeb } from './stocks-web.mjs'
 import { summarise, report } from '../scripts/stocks/analytics-report.mjs'
 
@@ -130,13 +131,73 @@ console.log('the off switch')
   if (saved != null) process.env.STP_ANALYTICS_DIR = saved
 }
 
+console.log('what we never count')
+{
+  // Every address here is a documentation range (RFC 5737, RFC 3849). The owner's own address is configuration on the
+  // host (deployment/STATS.md), never a line in this repository.
+  check('an address parses to its bytes; a mapped one to its four IPv4 bytes', ipBytes('198.51.100.7').join() === '198,51,100,7' && ipBytes('::ffff:198.51.100.7').join() === '198,51,100,7' && ipBytes('2001:db8::1').length === 16 && ipBytes('fe80::1%eth0').length === 16 && ipBytes('[2001:db8::1]').length === 16)
+  check('text that is not an address is refused, never thrown', [null, {}, '', ' ', '1.2.3', '198.51.100.400', '::ffff:1.2.3.4.5', '1:2:3', 'g::1', '1::2::3', 'localhost'].every((x) => ipBytes(x) === null))
+  check('an entry is an address or a range; a bad width is refused', parseIgnoreEntry('203.0.113.0/24').bits === 24 && parseIgnoreEntry('198.51.100.7').bits === 32 && parseIgnoreEntry('::ffff:203.0.113.0/120').bits === 24 && ['203.0.113.0/33', '203.0.113.0/x', '2001:db8::/129', '/24', ''].every((x) => parseIgnoreEntry(x) === null))
+  const list = parseIgnore('# ours\n198.51.100.7 , 203.0.113.0/24\n\nnope nope\n2001:db8::/32 # at home\n')
+  check('comments, blank lines, commas and spaces are read; bad words are counted, not kept', list.entries.length === 3 && list.bad === 2)
+  check('an address that merely starts with the same digits is a different address', ignoredAddress(list.entries, '198.51.100.7') && !ignoredAddress(list.entries, '198.51.100.70') && !ignoredAddress(list.entries, '98.51.100.7'))
+  check('a range matches by bits, not by text', ignoredAddress(parseIgnore('198.51.100.0/26').entries, '198.51.100.63') && !ignoredAddress(parseIgnore('198.51.100.0/26').entries, '198.51.100.64'))
+  check('an IPv4 entry never matches an IPv6 address, or the other way round', !ignoredAddress(parseIgnore('0.0.0.0/0').entries, '2001:db8::1') && !ignoredAddress(parseIgnore('::/0').entries, '198.51.100.7'))
+  check('the reason the list is unreadable is a code, or a message, cut short, and never more', selfEntries(() => { throw new Error('y'.repeat(200)) }).unreadable.length === 80 && selfEntries(() => { throw 'plain' }).unreadable === 'plain')
+  check('our own interfaces are read, and a host that cannot list them says why', selfEntries(() => ({ eth0: [{ address: '192.0.2.10' }, { address: 'fe80::1%eth0' }] })).entries.length === 2 && selfEntries(() => null).entries.length === 0 && selfEntries(() => { const e = new Error('no'); e.code = 'ERR_SYSTEM_ERROR'; throw e }).unreadable === 'ERR_SYSTEM_ERROR')
+}
+{
+  const t = Date.parse('2026-11-10T10:00:00Z')
+  const h = { 'user-agent': CHROME }
+  const none = () => ({})
+  const dir = path.join(tmp, 'ignore')
+  const msgs = []
+  const an = createAnalytics({ dir, now: () => t, log: (m) => msgs.push(m), interfaces: none, ignore: '198.51.100.7  # my laptop\n203.0.113.0/24, 2001:db8:abcd::/48\n\nnot-an-address\n' })
+  const rows = () => (fs.existsSync(dir) ? rowsOf(dir).length : 0)
+  const counted = (ip, ua) => { const before = rows(); an.load(ip, { 'user-agent': ua || CHROME }, '/'); return rows() > before }
+  check('a configured address is not counted', !counted('198.51.100.7'))
+  check('an address that merely starts with the same digits is still counted', counted('198.51.100.70') && counted('198.51.100.71'))
+  check('an address inside a configured range is not counted; one just outside it is', !counted('203.0.113.1') && !counted('203.0.113.254') && counted('203.0.114.1'))
+  check('loopback is not counted, in any of its forms', !counted('127.0.0.1') && !counted('127.0.0.53') && !counted('::1') && !counted('::ffff:127.0.0.1'))
+  check('an IPv6 range is not counted; another IPv6 address is', !counted('2001:db8:abcd:1::5') && counted('2001:db8:ef00::5'))
+  check('our own canary leaves no row, whatever address it calls from', !counted('192.0.2.9', CANARY_UA) && !counted('203.0.114.9', CANARY_UA))
+  check('a malformed entry is skipped, said once and never quoted', msgs.length === 1 && /3 configured/.test(msgs[0]) && /1 entry/.test(msgs[0]) && !/not-an-address|198\.51\.100|203\.0\.113/.test(msgs[0]), msgs.join(' | '))
+  const kinds = () => rowsOf(dir).map((r) => r.kind).join()
+  const before = kinds()
+  an.hit('198.51.100.7', h, parseHit(sp('k=view&p=/'), CH))
+  an.hit('203.0.113.1', h, parseHit(sp('k=act&p=/&x=chip&v=NVDA'), CH))
+  an.mcp('2001:db8:abcd::2', h, JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'ping' }), [])
+  check('an ignored beacon, action and MCP call write nothing either', kinds() === before && !kinds().includes('view'), kinds())
+  const quiet = []
+  const dir2 = path.join(tmp, 'ignore-off')
+  const plain = createAnalytics({ dir: dir2, now: () => t, log: (m) => quiet.push(m), interfaces: none, ignore: '' })
+  plain.load('198.51.100.7', h, '/')
+  plain.load('203.0.113.1', h, '/')
+  check('an empty setting ignores nothing beyond ourselves, and says nothing', rowsOf(dir2).length === 2 && quiet.length === 0 && plain.ignored('127.0.0.1') === true, quiet.join())
+  const dir3 = path.join(tmp, 'ignore-self')
+  const self = createAnalytics({ dir: dir3, now: () => t, log: () => {}, interfaces: () => ({ eth0: [{ address: '192.0.2.10' }, { address: '2001:db8:1::10' }], lo: [{ address: '127.0.0.1' }] }) })
+  for (const ip of ['192.0.2.10', '2001:db8:1::10', '192.0.2.11']) self.load(ip, h, '/')
+  check('the server\'s own addresses are not counted, with nothing configured', rowsOf(dir3).length === 1)
+  // A host that cannot read its own addresses counts its own visits, which is exactly what happened on the live host
+  // on 13.11: the sandbox had no AF_NETLINK, getifaddrs threw, and nothing said so. Both halves are pinned here.
+  const loud = []
+  const blind = createAnalytics({ dir: path.join(tmp, 'ignore-blind'), now: () => t, log: (m) => loud.push(m), interfaces: () => { const e = new Error('no netlink'); e.code = 'ERR_SYSTEM_ERROR'; throw e } })
+  blind.load('192.0.2.10', h, '/')
+  check('a host whose own addresses cannot be read says so, and still ignores loopback', loud.length === 1 && /cannot read this host's own addresses/.test(loud[0]) && /AF_NETLINK/.test(loud[0]) && blind.ignored('127.0.0.1') === true && blind.ignored('192.0.2.10') === false, loud.join())
+  const unit = fs.readFileSync(new URL('../deployment/systemd/stp-web.service', import.meta.url), 'utf8')
+  check('the unit reads the list from a host file that may be absent, and holds no address itself', /^EnvironmentFile=-\/etc\/pos\/analytics\.env$/m.test(unit) && !/^Environment=STP_ANALYTICS_IGNORE/m.test(unit))
+  check('the unit lets the counter read the interface list it needs, and says what for', /^RestrictAddressFamilies=(?=.*\bAF_NETLINK\b)(?=.*\bAF_INET\b)(?=.*\bAF_INET6\b)(?=.*\bAF_UNIX\b)[A-Z_6 ]+$/m.test(unit) && /getifaddrs\(\) needs a netlink socket/.test(unit))
+}
+
 console.log('in the site')
 {
   const dir = path.join(tmp, 'site')
   const roots = { base: path.join(tmp, 'rb'), robinhood: path.join(tmp, 'rr') }
-  const app = createStocksWeb({ roots, fetchImpl: async () => ({ ok: false, status: 503, json: async () => ({}) }), now: () => Date.parse('2026-11-10T12:00:00Z'), log: () => {}, analytics: { dir } })
+  // nginx is what talks to the app on the real host: the peer is loopback, which the counter ignores, and the visitor's
+  // own address arrives in X-Real-IP, which the app trusts only from loopback. The tests ask the same way.
+  const app = createStocksWeb({ roots, fetchImpl: async () => ({ ok: false, status: 503, json: async () => ({}) }), now: () => Date.parse('2026-11-10T12:00:00Z'), log: () => {}, analytics: { dir, ignore: '203.0.113.9', interfaces: () => ({}) } })
   const { port } = await app.start(0, '127.0.0.1')
-  const get = (p, h = {}) => fetch(`http://127.0.0.1:${port}${p}`, { headers: { 'user-agent': CHROME, ...h } })
+  const get = (p, h = {}) => fetch(`http://127.0.0.1:${port}${p}`, { headers: { 'user-agent': CHROME, 'x-real-ip': '198.51.100.7', ...h } })
   const html = await (await get('/stocks/')).text()
   check('the terminal loads the counter by content hash', /<script src="beacon\.js\?v=[0-9a-f]{12}" defer><\/script>/.test(html))
   check('the counter script is served', (await get('/stocks/beacon.js')).status === 200)
@@ -147,11 +208,15 @@ console.log('in the site')
   check('a beacon is answered 204, not cached', r.status === 204 && r.headers.get('cache-control') === 'no-store')
   check('a bad beacon is answered 204 too, and not written', (await get('/stocks/api/hit?k=nope')).status === 204)
   check('a beacon naming a docs page that does not exist is not written', (await get('/stocks/api/hit?k=view&p=/docs/nope/nope.md')).status === 204)
-  const mcpPost = (body) => fetch(`http://127.0.0.1:${port}/stocks/mcp`, { method: 'POST', headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream' }, body })
+  const mcpPost = (body, ip = '198.51.100.7') => fetch(`http://127.0.0.1:${port}/stocks/mcp`, { method: 'POST', headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream', 'x-real-ip': ip }, body })
   await mcpPost(JSON.stringify(Array.from({ length: 50 }, (_, i) => ({ jsonrpc: '2.0', id: i, method: 'm' }))))
   await mcpPost(JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'ping' }))
+  // A page, a beacon and an MCP call from the address this host ignores, and a page from our own canary.
+  const beforeQuiet = rowsOf(dir).length
+  const quiet = [await get('/stocks/', { 'x-real-ip': '203.0.113.9' }), await get('/stocks/api/hit?k=view&p=/', { 'x-real-ip': '203.0.113.9' }), await mcpPost(JSON.stringify({ jsonrpc: '2.0', id: 2, method: 'ping' }), '203.0.113.9'), await get('/stocks/', { 'user-agent': CANARY_UA })]
   await app.stop()
   const rows = rowsOf(dir)
+  check('an ignored visitor is served like anyone else and counted nowhere', quiet.map((r) => r.status).join() === '200,204,200,200' && rows.length === beforeQuiet, `${beforeQuiet} -> ${rows.length}`)
   check('a rejected MCP batch writes no row; an accepted request writes one', rows.filter((x) => x.kind === 'mcp').length === 1 && rows.find((x) => x.kind === 'mcp').method === 'ping')
   check('only real pages were counted from beacons', rows.filter((x) => x.kind === 'view').every((x) => x.page === '/'))
   check('the site wrote loads and the one good beacon', rows.filter((x) => x.kind === 'view').length === 1 && rows.filter((x) => x.kind === 'load').length >= 3)

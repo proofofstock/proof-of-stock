@@ -13,8 +13,13 @@
 // Off unless a directory is given (STP_ANALYTICS_DIR, set in deployment/systemd/stp-web.service), so a test run or the
 // deploy gate never writes into the real counter.
 // Writing is best-effort: a directory that cannot be written disables the counter and logs once; the site is unaffected.
+//
+// Some requesters leave no row at all (deployment/STATS.md "Not counting ourselves"): our own checks, the server itself,
+// and the addresses the host is configured to skip. That decision is taken before anything is computed or written, so
+// an ignored visit is in no number the dashboard shows.
 
 import fs from 'node:fs'
+import os from 'node:os'
 import path from 'node:path'
 import crypto from 'node:crypto'
 
@@ -54,6 +59,150 @@ export const ACTIONS = Object.freeze({
 
 export const uaClass = (ua) => !ua ? 'tool' : BOT_UA.test(ua) ? 'bot' : /mozilla\//i.test(ua) ? 'browser' : 'tool'
 
+// ---- what we never count -------------------------------------------------------------------------------------------
+// The server's own traffic, with nothing to configure: loopback (nginx talks to the app over it, so a request that
+// reaches the app from loopback without X-Real-IP came from the host itself) and every address the host's own
+// interfaces hold. Anything else is configuration, never code: STP_ANALYTICS_IGNORE, read on the host from
+// /etc/pos/analytics.env (deployment/STATS.md). The owner's own address is personal data and this repository is
+// exported publicly, so it must not be in it.
+export const DEFAULT_IGNORE = Object.freeze(['127.0.0.0/8', '::1/128'])
+// Our own checks, which do not come from a fixed address: the CI canary (scripts/canary.mjs) names itself in every
+// request. The health check talks to 127.0.0.1, so loopback covers it.
+export const IGNORE_UA = /proofofstock-canary/i
+
+/** Four dotted decimal numbers as bytes; null when the text is not that. */
+function ipv4Bytes (s) {
+  const parts = s.split('.')
+  if (parts.length !== 4) return null
+  const out = new Uint8Array(4)
+  for (let i = 0; i < 4; i++) {
+    if (!/^\d{1,3}$/.test(parts[i])) return null
+    const n = Number(parts[i])
+    if (n > 255) return null
+    out[i] = n
+  }
+  return out
+}
+
+/**
+ * An address as bytes: 4 for IPv4, 16 for IPv6. Brackets and a zone (`%eth0`) are dropped; an IPv4-mapped address
+ * (`::ffff:1.2.3.4`) comes back as its four IPv4 bytes, so one IPv4 entry covers both forms of the same address.
+ * null when the text is not an address, which is how a malformed entry is refused instead of crashing.
+ */
+export function ipBytes (text) {
+  let s = String(text ?? '').trim()
+  if (s.startsWith('[')) { const end = s.indexOf(']'); if (end < 0) return null; s = s.slice(1, end) }
+  const zone = s.indexOf('%')
+  if (zone >= 0) s = s.slice(0, zone)
+  if (!s) return null
+  if (!s.includes(':')) return ipv4Bytes(s)
+  const halves = s.split('::')
+  if (halves.length > 2) return null
+  const groups = halves.map((h) => (h ? h.split(':') : []))
+  // An IPv6 address may end in four dotted decimals, which stand for its last two groups.
+  const last = groups[groups.length - 1]
+  let tail4 = null
+  if (last.length && last[last.length - 1].includes('.')) {
+    tail4 = ipv4Bytes(last.pop())
+    if (!tail4) return null
+  }
+  if (groups.flat().some((g) => !/^[0-9a-fA-F]{1,4}$/.test(g))) return null
+  const bytesOf = (gs) => gs.flatMap((g) => { const n = parseInt(g, 16); return [n >> 8, n & 0xff] })
+  const head = bytesOf(groups[0])
+  const rest = [...bytesOf(halves.length === 2 ? groups[1] : []), ...(tail4 || [])]
+  const out = new Uint8Array(16)
+  if (halves.length === 1) {
+    // No "::": every group must be written out.
+    if (head.length + rest.length !== 16) return null
+    out.set([...head, ...rest])
+  } else {
+    // "::" stands for at least one group of zeroes, so the written groups cannot fill all sixteen bytes.
+    if (head.length + rest.length > 14) return null
+    out.set(head, 0)
+    out.set(rest, 16 - rest.length)
+  }
+  // ::ffff:a.b.c.d is that IPv4 address.
+  if (out.slice(0, 10).every((b) => b === 0) && out[10] === 0xff && out[11] === 0xff) return out.slice(12)
+  return out
+}
+
+/** One entry of the list: a plain address, or a CIDR range as `address/bits`. null when it is neither. */
+export function parseIgnoreEntry (text) {
+  const s = String(text ?? '').trim()
+  if (!s) return null
+  const slash = s.indexOf('/')
+  const addr = slash < 0 ? s : s.slice(0, slash)
+  const bytes = ipBytes(addr)
+  if (!bytes) return null
+  if (slash < 0) return { bytes, bits: bytes.length * 8 }
+  const width = s.slice(slash + 1)
+  if (!/^\d{1,3}$/.test(width)) return null
+  let bits = Number(width)
+  if (addr.includes(':') && bytes.length === 4) {
+    // An IPv4-mapped range is written over 128 bits: ::ffff:1.2.3.0/120 is the IPv4 /24.
+    if (bits < 96 || bits > 128) return null
+    bits -= 96
+  } else if (bits > bytes.length * 8) return null
+  return { bytes, bits }
+}
+
+/** Do these two addresses of the same length agree on their first `bits` bits? */
+function samePrefix (a, b, bits) {
+  const whole = bits >> 3
+  for (let i = 0; i < whole; i++) if (a[i] !== b[i]) return false
+  const spare = bits & 7
+  if (!spare) return true
+  const mask = (0xff << (8 - spare)) & 0xff
+  return (a[whole] & mask) === (b[whole] & mask)
+}
+
+/**
+ * Reads the configured list: addresses and CIDR ranges, one per line or several on a line separated by commas,
+ * semicolons or spaces, with `#` comments and blank lines. Returns the entries it understood and how many words it
+ * did not (never the words themselves: a mistyped entry is still somebody's address, and a log is not the place).
+ */
+export function parseIgnore (text) {
+  const entries = []
+  let bad = 0
+  for (const line of String(text ?? '').split(/[\r\n]+/)) {
+    const cut = line.replace(/#.*$/, '').trim()
+    if (!cut) continue
+    for (const word of cut.split(/[\s,;]+/).filter(Boolean)) {
+      const entry = parseIgnoreEntry(word)
+      if (entry) entries.push(entry); else bad++
+    }
+  }
+  return { entries, bad }
+}
+
+/**
+ * The addresses this host itself holds, as entries, and why there are none when there are none.
+ *
+ * Reading them needs a netlink socket (getifaddrs), which a sandboxed unit does not have unless its
+ * RestrictAddressFamilies= names AF_NETLINK: stp-web.service does, for this. Observed 13.11 on the live host, where it
+ * did not yet: the call threw, this returned nothing, and the server's own visits were counted while the code looked
+ * right. So the reason is returned and said out loud rather than swallowed.
+ */
+export function selfEntries (interfaces = os.networkInterfaces) {
+  const out = []
+  let list = null
+  try { list = interfaces() } catch (e) { return { entries: out, unreadable: String(e && (e.code || e.message) || e).slice(0, 80) } }
+  for (const addresses of Object.values(list || {})) {
+    for (const a of addresses || []) {
+      const entry = parseIgnoreEntry(a && a.address)
+      if (entry) out.push(entry)
+    }
+  }
+  return { entries: out, unreadable: null }
+}
+
+/** Is this address covered by one of the entries? An address we cannot parse is not ignored. */
+export function ignoredAddress (entries, ip) {
+  const bytes = ipBytes(ip)
+  if (!bytes) return false
+  return entries.some((e) => e.bytes.length === bytes.length && samePrefix(e.bytes, bytes, e.bits))
+}
+
 /** Parses and checks a beacon query; null when it is not one we take. */
 export function parseHit (sp, chains, isPage = () => true) {
   const event = sp.get('k')
@@ -78,8 +227,23 @@ export function parseHit (sp, chains, isPage = () => true) {
   }
 }
 
-export function createAnalytics ({ dir = process.env.STP_ANALYTICS_DIR || null, now = () => Date.now(), log = (m) => console.log(m), enabled = true } = {}) {
+export function createAnalytics ({ dir = process.env.STP_ANALYTICS_DIR || null, now = () => Date.now(), log = (m) => console.log(m), enabled = true, ignore = process.env.STP_ANALYTICS_IGNORE || '', interfaces = os.networkInterfaces } = {}) {
   let off = !enabled || !dir
+  // Decided once, at startup: our own traffic, plus whatever the host was told to skip. An empty or missing setting
+  // ignores nothing beyond ourselves, which is what the counter did before this existed.
+  const configured = parseIgnore(ignore)
+  const self = selfEntries(interfaces)
+  const ignoreList = [...DEFAULT_IGNORE.map(parseIgnoreEntry), ...self.entries, ...configured.entries]
+  // Never silent: a host whose own addresses cannot be read still counts its own visits, and only this line says so.
+  if (self.unreadable) log(`[analytics] cannot read this host's own addresses (${self.unreadable}); only loopback and the configured list are ignored. The unit needs AF_NETLINK in RestrictAddressFamilies=`)
+  if (configured.entries.length || configured.bad) {
+    const n = configured.entries.length, bad = configured.bad
+    // The count only: a mistyped entry is still somebody's address, and the journal is not the place for it.
+    log(`[analytics] not counting ${n} configured ${n === 1 ? 'address or range' : 'addresses or ranges'}` +
+      (bad ? `; ${bad} ${bad === 1 ? 'entry was not an address and was' : 'entries were not addresses and were'} skipped` : ''))
+  }
+  /** A requester that leaves no row at all: us, or an address the host skips. Asked before anything is computed. */
+  const ignored = (ip, ua) => IGNORE_UA.test(String(ua || '')) || ignoredAddress(ignoreList, ip)
   let salt = null, saltDay = null
   const seen = new Map() // today's visitor -> [loads, beacons]; cleared with the salt
   let seenFull = false
@@ -133,15 +297,16 @@ export function createAnalytics ({ dir = process.env.STP_ANALYTICS_DIR || null, 
   }
   return {
     /** The server sent a page. */
-    load (ip, headers, page) { if (off) return; const b = base(ip, headers); if (underCap(b.visitor, 0)) write({ kind: 'load', ...b, page }) },
+    load (ip, headers, page) { if (off || ignored(ip, headers['user-agent'])) return; const b = base(ip, headers); if (underCap(b.visitor, 0)) write({ kind: 'load', ...b, page }) },
     /** A beacon from the page; hit is parseHit()'s result. */
-    hit (ip, headers, hit) { if (off) return; const b = base(ip, headers); if (underCap(b.visitor, 1)) write({ kind: hit.event, ...b, ...hit }) },
+    hit (ip, headers, hit) { if (off || ignored(ip, headers['user-agent'])) return; const b = base(ip, headers); if (underCap(b.visitor, 1)) write({ kind: hit.event, ...b, ...hit }) },
     /**
      * An MCP request the server accepted: one row, after the answer. Only names the server itself defines are stored
      * (the method, the tool); anything else is "other". The client's own name is kept only as a short plain word.
      * Never the arguments.
      */
     mcp (ip, headers, raw, toolNames = []) {
+      if (off || ignored(ip, headers['user-agent'])) return
       let x = null
       try { x = JSON.parse(raw) } catch { return }
       if (!x || Array.isArray(x) || typeof x.method !== 'string') return
@@ -152,5 +317,7 @@ export function createAnalytics ({ dir = process.env.STP_ANALYTICS_DIR || null, 
       write({ kind: 'mcp', ...base(ip, headers), method, tool, client })
     },
     get disabled () { return off },
+    /** Whether this requester leaves no row. Exported for the tests and for a check on the host. */
+    ignored,
   }
 }

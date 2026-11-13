@@ -39,6 +39,12 @@ check(`no Cyrillic and no em or en dash in ${files.length} tracked files`, hits.
 const TOP_LEVEL = new Set(['.gitattributes', '.github', '.gitignore', 'apps', 'CHANGELOG.md', 'deployment', 'docs', 'evm', 'LICENSE', 'package.json', 'package-lock.json', 'packages', 'README.md', 'schemas', 'scripts', 'SECURITY.md', 'server.json', 'tests'])
 const stray = [...new Set(files.map((f) => f.split('/')[0]))].filter((t) => !TOP_LEVEL.has(t))
 check('no stray entry in the repository root', stray.length === 0, stray.join(', '))
+// A claim or a token that proves something is ours belongs on the host, never here: this repository is exported to a
+// public one, and a published ownership claim is a claim anyone can read. The owner asked for this on 13.11 after a
+// Glama claim was committed by mistake. Matched by value, so a rename or a new directory does not get around it.
+const OWNERSHIP_CLAIM = /glama_claim_[A-Za-z0-9_-]{16,}|_glama-claim\./
+const claims = files.filter((f) => !BINARY.test(f) && !/text-hygiene\.test\.mjs$/.test(f)).filter((f) => { try { return OWNERSHIP_CLAIM.test(fs.readFileSync(f, 'utf8')) } catch (_) { return false } })
+check('no ownership claim of ours is committed; those live on the host', claims.length === 0, claims.join(', '))
 // A run's own output, wherever it lands: the counter's hit files and the recorder's readings and run rows.
 const RUN_OUTPUT = /(^|\/)(hits|stock-peg|stock-peg-runs)-\d{4}-\d{2}-\d{2}\.jsonl$/
 const output = files.filter((f) => RUN_OUTPUT.test(f))

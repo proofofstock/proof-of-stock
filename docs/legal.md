@@ -62,8 +62,9 @@ Fonts, so your browser asks Google for them. For each visit we keep:
 - the country Cloudflare reports, and whether the requester looks like a browser, a bot or a tool;
 - for the MCP server, the method and the tool name, never the arguments.
 
-A visitor is a pseudonym: a hash of the address and the browser string with a random key that is held only in memory and
-replaced every day. Nobody, us included, can turn it back into an address, and the same person is a new visitor the
+Some requests are not counted at all, and leave no row: our own, the server's own, and the addresses the host is set to
+skip. A visitor is a pseudonym: a hash of the address and the browser string with a random key that is held only in
+memory and replaced every day. Nobody, us included, can turn it back into an address, and the same person is a new visitor the
 next day. The counts are for us; nothing is sold or shared. A day's file is deleted after 180 days.
 
 ## Contact

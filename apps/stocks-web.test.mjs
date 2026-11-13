@@ -10,7 +10,7 @@ import os from 'node:os'
 import path from 'node:path'
 import zlib from 'node:zlib'
 import { fileURLToPath } from 'node:url'
-import { createStocksWeb, SECURITY_HEADERS, PAGE_CACHE_MS, MCP_REGISTRY_AUTH_RE } from './stocks-web.mjs'
+import { createStocksWeb, SECURITY_HEADERS, PAGE_CACHE_MS, MCP_REGISTRY_AUTH_RE, GLAMA_CLAIM_RE, GLAMA_CLAIM_PATH } from './stocks-web.mjs'
 import { statsPage } from './stocks-stats.mjs'
 import { COINBASE_URL, ROBINHOOD_ASSETS_URL, ROBINHOOD_PRICES_URL } from '../evm/core/stocks/registries.mjs'
 import { loadWindow, readingsOf } from '../evm/core/stocks/readings-window.mjs'
@@ -320,6 +320,30 @@ console.log('the public MCP endpoint')
     const t = await r.text()
     check('/.well-known/mcp-registry-auth serves the committed public key as one line, or 404 without one', line && MCP_REGISTRY_AUTH_RE.test(line) ? r.status === 200 && t === line + '\n' && /^text\/plain/.test(r.headers.get('content-type')) : r.status === 404, r.status + ' ' + t.slice(0, 80))
     check('...and the format admits nothing but an Ed25519 public key line', MCP_REGISTRY_AUTH_RE.test('v=MCPv1; k=ed25519; p=' + 'A'.repeat(43) + '=') && !MCP_REGISTRY_AUTH_RE.test('v=MCPv1; k=ed25519; p=' + 'A'.repeat(43) + '=\n<script>') && !MCP_REGISTRY_AUTH_RE.test('-----BEGIN PRIVATE KEY-----'))
+  }
+  {
+    // Glama's proof that the MCP endpoint is ours: a public GET beside /mcp, answered before the MCP handler.
+    // This app was built without a claim, which is the state of any checkout: the claim lives on the host only.
+    const none = await get('/stocks' + GLAMA_CLAIM_PATH)
+    check('with no claim set the path is a plain 404, never a wrong claim', none.status === 404, String(none.status))
+    const CLAIM = 'glama_claim_' + 'Aa0_-'.repeat(6) + 'zz'
+    const withClaim = createStocksWeb({ roots: { base: baseRoot, robinhood: rhRoot }, fetchImpl, now: () => NOW, log: () => {}, glamaClaim: ' ' + CLAIM + '\n', analytics: { enabled: false } })
+    const { port: pc } = await withClaim.start(0, '127.0.0.1')
+    const at = (p, o) => fetch(`http://127.0.0.1:${pc}${p}`, o)
+    const r = await at('/stocks' + GLAMA_CLAIM_PATH)
+    const j = await r.json()
+    check('a claim from the host is served as JSON, trimmed, with the schema Glama asks for', r.status === 200 && j.claim === CLAIM && j.$schema === 'https://glama.ai/mcp/schemas/connector.json' && /^application\/json/.test(r.headers.get('content-type')), r.status + ' ' + JSON.stringify(j).slice(0, 70))
+    check('...with no redirect and nothing asked of the caller', !r.redirected && !r.headers.get('www-authenticate') && !r.headers.get('location'))
+    const posted = await at('/stocks' + GLAMA_CLAIM_PATH, { method: 'POST', body: '{}' })
+    check('...and it is a read path: POST is refused there, and never reaches the MCP handler', posted.status === 405, String(posted.status))
+    const bad = createStocksWeb({ roots: { base: baseRoot, robinhood: rhRoot }, fetchImpl, now: () => NOW, log: () => {}, glamaClaim: 'glama_claim_short', analytics: { enabled: false } })
+    const { port: pb } = await bad.start(0, '127.0.0.1')
+    const r2 = await fetch(`http://127.0.0.1:${pb}/stocks${GLAMA_CLAIM_PATH}`)
+    check('a malformed claim is refused at the door: 404, not a half-claim', r2.status === 404, String(r2.status))
+    await withClaim.stop(); await bad.stop()
+    check('the claim format admits a Glama claim and nothing else', GLAMA_CLAIM_RE.test(CLAIM) && !GLAMA_CLAIM_RE.test('glama_claim_short') && !GLAMA_CLAIM_RE.test('') && !GLAMA_CLAIM_RE.test(CLAIM + '\n<script>'))
+    const unit = fs.readFileSync(new URL('../deployment/systemd/stp-web.service', import.meta.url), 'utf8')
+    check('the unit takes the claim from the host, from a file that may be absent', /^EnvironmentFile=-\/etc\/pos\/web\.env$/m.test(unit) && !/STP_GLAMA_CLAIM=/.test(unit))
   }
   const init = await (await rpc({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-03-26', capabilities: {}, clientInfo: { name: 't', version: '0' } } })).json()
   check('initialize answers the version the client asked for, when supported', init.result.protocolVersion === '2025-03-26' && init.result.capabilities.tools && /not advice: https:\/\/proofofstock.xyz\/docs\/legal\.md/.test(init.result.instructions))
@@ -828,13 +852,13 @@ console.log('source link')
   check('while the repository is private, no page links to it (no GitHub 404 for a visitor)', !hidden.home.includes('github.com') && !hidden.doc.includes('github.com') && !hidden.home.includes('<!--source-->'))
   const shown = await pages({ source: GH })
   check('once it is public, the footer and the docs link to the source', shown.home.includes(`href="${GH}"`) && shown.doc.includes(`href="${GH}"`))
-  check('...and the status bar has the exam chip, hidden until the page has a fresh result', /<footer class="statusbar">[\s\S]*<a id="exam-chip" class="exam" href="https:\/\/github\.com\/proofofstock\/proof-of-stock\/tree\/exam" target="_blank" rel="noopener noreferrer" hidden>/.test(shown.home) && !hidden.home.includes('exam-chip') && !shown.home.includes('<!--exam-->'))
+  check('...and the exam chip sits with the proof links right after Status, hidden until the page has a fresh result', /id="foot-status"[\s\S]{0,90}<a id="exam-chip" class="foot-link exam" href="https:\/\/github\.com\/proofofstock\/proof-of-stock\/tree\/exam" target="_blank" rel="noopener noreferrer" hidden>/.test(shown.home) && !hidden.home.includes('exam-chip') && !shown.home.includes('<!--exam-->'))
   {
     // The bottom of every page: X, Telegram, GitHub, in that order and nothing after them (owner, 12.11).
     const icons = (html, cls) => [...html.matchAll(new RegExp(`<a class="${cls}" href="([^"]+)"`, 'g'))].map((m) => m[1])
     const order = JSON.stringify(['https://x.com/proofofstock', 'https://t.me/proofofstock1', GH])
     const foot = (shown.home.match(/<footer class="foot">[\s\S]*?<\/footer>/) || [''])[0]
-    check('the site: X, Telegram and GitHub are the last thing in the footer, not in the link row', JSON.stringify(icons(foot, 'foot-ic')) === order && /<\/span>\s*<\/span>\s*<\/div>\s*<\/footer>/.test(foot) && !/foot-link[^>]*github/.test(foot) && foot.lastIndexOf('foot-ic') > foot.indexOf('foot-bottom'))
+    check('the site: X, Telegram and GitHub are the last thing in the footer, not in the link row', JSON.stringify(icons(foot, 'foot-ic')) === order && /<\/span>\s*<\/span>\s*<\/div>\s*<\/footer>/.test(foot) && !/<a(?![^>]*exam-chip)[^>]*foot-link[^>]*github/.test(foot) && foot.lastIndexOf('foot-ic') > foot.indexOf('foot-bottom'))
     const dfoot = (shown.doc.match(/<footer class="dx-foot">[\s\S]*?<\/footer>/) || [''])[0]
     check('the docs: the same three icons at the bottom, each named for a screen reader', JSON.stringify(icons(dfoot, 'dx-ic')) === order && (dfoot.match(/aria-label="Proof of Stock[^"]*"><span class="i i-(x|tg|gh)" aria-hidden="true">/g) || []).length === 3)
     check('...and while private, the docs show X and Telegram only', JSON.stringify(icons((hidden.doc.match(/<footer class="dx-foot">[\s\S]*?<\/footer>/) || [''])[0], 'dx-ic')) === JSON.stringify(['https://x.com/proofofstock', 'https://t.me/proofofstock1']))
@@ -878,6 +902,7 @@ console.log('deployment')
   }
   check('security.txt is served though dot-paths are refused: an exact location, before the rule', vhost.indexOf('location = /.well-known/security.txt') > 0 && vhost.indexOf('location = /.well-known/security.txt') < vhost.indexOf('location ~ /\\. { return 404; }') && /proxy_pass http:\/\/127\.0\.0\.1:3005\/stocks\/\.well-known\/security\.txt;/.test(vhost))
   check('...and so is the MCP registry proof, the same way: GET only, before the rule', vhost.indexOf('location = /.well-known/mcp-registry-auth') > 0 && vhost.indexOf('location = /.well-known/mcp-registry-auth') < vhost.indexOf('location ~ /\\. { return 404; }') && /proxy_pass http:\/\/127\.0\.0\.1:3005\/stocks\/\.well-known\/mcp-registry-auth;/.test(vhost))
+  check('...and so is the Glama claim beside /mcp, GET only, before the rule and before /mcp itself', vhost.indexOf('location = /mcp/.well-known/glama.json') > 0 && vhost.indexOf('location = /mcp/.well-known/glama.json') < vhost.indexOf('location ~ /\\. { return 404; }') && /location = \/mcp\/\.well-known\/glama\.json \{\n\s+limit_except GET HEAD \{ deny all; \}/.test(vhost) && /proxy_pass http:\/\/127\.0\.0\.1:3005\/stocks\/mcp\/\.well-known\/glama\.json;/.test(vhost) && !/auth_basic[^\n]*\n[^}]*glama\.json/.test(vhost))
   {
     const sj = JSON.parse(fs.readFileSync(new URL('../server.json', import.meta.url), 'utf8'))
     // The registry refuses a description over 100 characters; the name proves the domain the remote is on.

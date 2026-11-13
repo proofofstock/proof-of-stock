@@ -1,0 +1,46 @@
+{
+  "_finding": "The owner asked for his own address and the server's own traffic to be left out of the statistics. A request we ignore must leave no row at all, and only the address it really is: a neighbouring address, or one that merely begins with the same digits, must still be counted, and a mistyped entry must never widen the list.",
+  "target": "apps/stocks-analytics.mjs",
+  "runner": [
+    "node",
+    "apps/stocks-analytics.test.mjs"
+  ],
+  "mutations": [
+    {
+      "name": "a page load is counted whoever asks",
+      "find": "load (ip, headers, page) { if (off || ignored(ip, headers['user-agent'])) return;",
+      "replace": "load (ip, headers, page) { if (off) return;",
+      "expect": "FAIL a configured address is not counted"
+    },
+    {
+      "name": "a beacon is counted whoever sends it",
+      "find": "hit (ip, headers, hit) { if (off || ignored(ip, headers['user-agent'])) return;",
+      "replace": "hit (ip, headers, hit) { if (off) return;",
+      "expect": "FAIL an ignored beacon, action and MCP call write nothing either"
+    },
+    {
+      "name": "a range matches on whole bytes only, so a /26 covers the whole /24",
+      "find": "  if (!spare) return true\n  const mask = (0xff << (8 - spare)) & 0xff\n  return (a[whole] & mask) === (b[whole] & mask)",
+      "replace": "  return true",
+      "expect": "FAIL a range matches by bits, not by text"
+    },
+    {
+      "name": "an entry of one family is matched against an address of the other",
+      "find": "entries.some((e) => e.bytes.length === bytes.length && samePrefix(e.bytes, bytes, e.bits))",
+      "replace": "entries.some((e) => samePrefix(e.bytes, bytes, e.bits))",
+      "expect": "FAIL an IPv4 entry never matches an IPv6 address, or the other way round"
+    },
+    {
+      "name": "a host that cannot read its own addresses says nothing, as on 13.11",
+      "find": "  if (self.unreadable) log(",
+      "replace": "  if (false) log(",
+      "expect": "FAIL a host whose own addresses cannot be read says so, and still ignores loopback"
+    },
+    {
+      "name": "a malformed entry becomes a range that covers everything",
+      "find": "  const bytes = ipBytes(addr)\n  if (!bytes) return null",
+      "replace": "  const bytes = ipBytes(addr) || new Uint8Array(4)",
+      "expect": "FAIL comments, blank lines, commas and spaces are read; bad words are counted, not kept"
+    }
+  ]
+}

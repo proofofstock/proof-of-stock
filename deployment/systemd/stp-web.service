@@ -21,6 +21,14 @@ Environment=STOCKS_ROOT_BASE=/var/lib/pos/base
 Environment=STOCKS_ROOT_ROBINHOOD=/var/lib/pos/robinhood
 Environment=STP_ANALYTICS_DIR=/var/lib/stp-analytics
 Environment=STP_ANCHOR_DIR=/var/lib/stp-anchors
+# The addresses the counter does not count, written on the host and never in git (deployment/STATS.md "Not counting
+# ourselves"): STP_ANALYTICS_IGNORE=<address or range>,... The server's own traffic needs no setting, so the file may
+# be absent, which is what the leading "-" allows. systemd reads it before InaccessiblePaths=/etc/pos applies below.
+EnvironmentFile=-/etc/pos/analytics.env
+# Site values that belong to the host and never to this repository, which is exported publicly: today only
+# STP_GLAMA_CLAIM, the claim proving the MCP connector at /mcp is ours (deployment/PUBLISHING.md). The leading dash
+# means an absent file is normal. systemd reads it before InaccessiblePaths=-/etc/pos applies, as with the others.
+EnvironmentFile=-/etc/pos/web.env
 StateDirectory=stp-analytics
 StateDirectoryMode=0700
 ExecStart=/usr/bin/node apps/stocks-web.mjs
@@ -57,7 +65,11 @@ RestrictNamespaces=true
 RestrictRealtime=true
 RestrictSUIDSGID=true
 LockPersonality=true
-RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+# AF_NETLINK is here for one read: at startup the counter asks which addresses this host itself holds, so its own
+# visits are not counted (apps/stocks-analytics.mjs selfEntries), and getifaddrs() needs a netlink socket. Reading
+# only: the unit holds no capability, so it can change nothing through it, and without this line the call throws and
+# the server's own visits are counted (observed on the host, 13.11).
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK
 SystemCallArchitectures=native
 SystemCallFilter=@system-service
 SystemCallFilter=~@privileged @resources @mount @reboot @swap @raw-io @module @debug @cpu-emulation @obsolete

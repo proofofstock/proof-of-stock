@@ -581,11 +581,9 @@
     try { e = await api('api/exam') } catch (_) { /* hidden below */ }
     if (!fresh(e)) { el.hidden = true; return }
     const ok = e.failures_total === 0 && e.passed === e.total
-    el.querySelector('.exam-d').textContent = shortDay(e.day)
     el.querySelector('.exam-s').textContent = e.passed + '/' + e.total
-    el.querySelector('.exam-bar i').style.width = (e.total ? Math.round((e.passed / e.total) * 100) : 0) + '%'
     el.classList.toggle('miss', !ok)
-    const said = `Daily public exam, ${e.day}: ${e.total} tokens with answers known from the issuers, ${e.failures_total} failure${e.failures_total === 1 ? '' : 's'}${e.metrics.refused ? `, ${e.metrics.refused} refused` : ''}. Opens the reports on GitHub.`
+    const said = `Daily public exam, ${shortDay(e.day)} (${e.day}): ${e.total} tokens with answers known from the issuers, ${e.failures_total} failure${e.failures_total === 1 ? '' : 's'}${e.metrics.refused ? `, ${e.metrics.refused} refused` : ''}. Opens the reports on GitHub.`
     el.title = said
     el.setAttribute('aria-label', said)
     el.hidden = false

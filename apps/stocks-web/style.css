@@ -212,14 +212,11 @@ a.btn { text-decoration: none; display: inline-block; }
 .hint button.key:focus-visible { outline: 2px solid var(--accent-hi); outline-offset: 2px; border-radius: 4px; }
 /* The public exam, graded like a test paper: "exam 12 Nov [bar] 592/592". Quiet like the rest of the bar; the bar is the
    share answered right, green when full, amber when not. Hidden until a report from the last 36 h is read. */
-.statusbar .exam { display: inline-flex; align-items: center; gap: 7px; color: var(--faint); text-decoration: none; white-space: nowrap; border-radius: 4px; }
-.statusbar .exam[hidden] { display: none; }
-.exam .exam-k { color: var(--dim); }
-.exam .exam-bar { position: relative; width: 26px; height: 3px; border-radius: 2px; background: var(--line); overflow: hidden; }
-.exam .exam-bar i { position: absolute; inset: 0 auto 0 0; width: 0; background: var(--ok); border-radius: 2px; transition: width .6s ease-out; }
-.exam.miss .exam-bar i { background: var(--warn); }
-.exam .exam-s { color: var(--dim); font-variant-numeric: tabular-nums; }
-.exam:hover .exam-k, .exam:hover .exam-s { color: var(--accent-hi); }
+/* The exam sits with the proof links beside Status, not in the terminal's status bar: it is not terminal state. */
+.foot-link.exam[hidden] { display: none; }
+.exam .exam-s { font-variant-numeric: tabular-nums; }
+.exam .exam-k + .exam-s { margin-left: 6px; }
+.exam.miss .foot-dot { background: var(--warn); box-shadow: 0 0 0 3px color-mix(in srgb, var(--warn) 22%, transparent); }
 .exam:focus-visible { outline: 2px solid var(--accent-hi); outline-offset: 2px; }
 .field .v.warn { color: var(--warn); }
 .field .exam-t { font-size: 11.5px; white-space: nowrap; min-width: 24ch; }
@@ -362,9 +359,9 @@ html:has(.tape) { scroll-padding-top: 52px; } /* the landing only: docs headings
 .agents .connect { list-style: none; margin: 0; padding: 0; font: 14px/1.6 var(--sans); display: grid; gap: 4px; }
 .agents .connect b { color: var(--dim); font-weight: 600; }
 .code { background: var(--glass); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
-.code-head { display: flex; justify-content: space-between; align-items: center; padding: 6px 10px; border-bottom: 1px solid var(--line); color: var(--faint); font-size: 12px; }
+.code-head { display: flex; justify-content: space-between; align-items: center; padding: 5px 10px; border-bottom: 1px solid var(--line); color: var(--faint); font-size: 12px; }
 .code .code-head:not(:first-child) { border-top: 1px solid var(--line); }
-.code pre { margin: 0; padding: 12px 14px; font: 12.5px/1.6 var(--mono); color: var(--text); overflow-x: auto; }
+.code pre { margin: 0; padding: 10px 14px; font: 12.5px/1.6 var(--mono); color: var(--text); overflow-x: auto; }
 /* The footer: brand and navigation on one row, the note, then rights, legal and the release. Links are quiet chips in
    the page's own style, not underlined text. */
 /* The wall of findings: the cases of the week, in the site's table style. */

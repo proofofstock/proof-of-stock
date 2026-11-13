@@ -36,6 +36,35 @@ Several catalogs (PulseMCP, GitHub's MCP list and others) read from the official
 
 smithery.ai → Add server → "URL / remote" → `https://proofofstock.xyz/mcp`. It needs no key and no configuration.
 
+## 4. Glama: claiming the connector
+
+Glama lists the server by itself, taken from the official registry, so there is nothing to submit. To manage that
+listing (its description, its thumbnail, its health checks and its analytics) the connector has to be claimed, and
+the method that needs nothing of DNS or GitHub is a file we serve: `GET /mcp/.well-known/glama.json`.
+
+**The claim belongs to the host, never to this repository.** The repository is exported to a public one, and an
+ownership claim has no business being published. The site reads it from the environment, so it lives in one file on
+the host, like the alert token and the statistics ignore list. Without it the path answers 404 and nothing breaks.
+
+On the host, as root. The claim comes from the Claim ownership dialog on the connector's page:
+
+```sh
+umask 077
+install -d -m 0755 /etc/pos
+read -rp 'Glama claim (glama_claim_...): ' C
+printf 'STP_GLAMA_CLAIM=%s\n' "$C" > /etc/pos/web.env
+unset C
+chown root:root /etc/pos/web.env; chmod 0600 /etc/pos/web.env
+sed 's/=.*/=.../' /etc/pos/web.env; stat -c '%U:%G %a %n' /etc/pos/web.env
+systemctl restart stp-web
+curl -fsS https://proofofstock.xyz/mcp/.well-known/glama.json; echo
+```
+
+The unit reads `/etc/pos/web.env` through `EnvironmentFile=-`, so an absent file is the normal state. The vhost needs
+the matching location (`deployment/nginx/proofofstock.xyz.conf`), which is the third and last dot-path it serves;
+without it nginx answers 404 before the app is reached. `ship.sh` installs neither units nor nginx config, so both
+have to be copied by hand after a release that changes them.
+
 ## Opening the source
 
 This repository stays private. The public one, `proofofstock/proof-of-stock`, is a copy built by
