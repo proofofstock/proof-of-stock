@@ -829,9 +829,10 @@
       })
     }
     for (const copy of document.querySelectorAll('[data-copy]')) {
+      const label = copy.textContent
       copy.addEventListener('click', async () => {
         try { await navigator.clipboard.writeText($('#' + copy.dataset.copy).textContent); copy.textContent = 'copied' } catch (_) { copy.textContent = 'select & copy' }
-        setTimeout(() => { copy.textContent = 'copy' }, 1600)
+        setTimeout(() => { copy.textContent = label }, 1600)
       })
     }
     tape()

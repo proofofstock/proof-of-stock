@@ -162,11 +162,20 @@ console.log('connecting from Claude and ChatGPT')
   const ccUrl = (agents.match(/<pre id="mcp-cc">claude mcp add --transport http proofofstock (\S+)<\/pre>/) || [])[1]
   const jsonUrl = (agents.match(/"url": "([^"]+)"/) || [])[1]
   check('...the URL it says to paste is the one block that the command and the JSON also name', urlBlock === '__MCP_URL__' && ccUrl === urlBlock && jsonUrl === urlBlock && /data-copy="mcp-url"/.test(agents))
+  const card = (agents.match(/<div class="code">([\s\S]*?)<\/div>\s*<\/section>/) || [])[1] || ''
+  const heads = [...card.matchAll(/<div class="code-head"><span>([^<]*)<\/span>/g)].map((m) => m[1])
+  const gptSteps = (card.match(/<pre id="mcp-gpt">([\s\S]*?)<\/pre>/) || [])[1] || ''
+  const gptUrl = (gptSteps.match(/<span id="mcp-gpt-url">([^<]*)<\/span>/) || [])[1]
+  check('the connect card: URL, Claude Code, ChatGPT, then mcp.json', heads.length === 4 && heads[0] === 'MCP server URL' && heads[1] === 'Claude Code' && heads[2] === 'ChatGPT (web)' && heads[3] === 'mcp.json')
+  check('...the ChatGPT block gives the same plans and steps as the line above and the tutorial', /^Plans: Pro, Business, Enterprise\/Edu\n1\. Plugins → \+ → Add custom MCP server\n2\. Server URL: /.test(gptSteps) && /\n3\. Authentication: No authentication\n4\. Create as a plugin, then install it\n5\. In a chat, type @ and pick it$/.test(gptSteps))
+  check('...its URL is the one the other blocks use, and its copy button copies just that URL', gptUrl === urlBlock && /<button type="button" class="btn" data-copy="mcp-gpt-url">copy URL<\/button>/.test(card) && (gptSteps.match(/<span/g) || []).length === 1)
   const howTo = ['../README.md', '../docs/README.md', '../docs/stocks-passport-agent.md', '../docs/tutorials/connect-an-agent.md'].map((f) => fs.readFileSync(new URL(f, import.meta.url), 'utf8'))
   const tut = howTo[3]
+  const appJs = fs.readFileSync(new URL('./stocks-web/app.js', import.meta.url), 'utf8')
+  check('...after a click every copy button gets its own label back (copy URL stays copy URL)', /const label = copy\.textContent\n/.test(appJs) && /setTimeout\(\(\) => \{ copy\.textContent = label \}, 1600\)/.test(appJs) && !/copy\.textContent = 'copy'/.test(appJs))
   check('the client name is proofofstock in the command and the JSON, here and in every how-to; stock-passport is left only in the tutorial\'s remove line', /<pre id="mcp-cc">claude mcp add --transport http proofofstock /.test(agents) && /"mcpServers": \{\n {4}"proofofstock": \{/.test(agents) && ![agents, ...howTo].some((t) => t.replace('claude mcp remove stock-passport', '').includes('stock-passport')) && tut.includes('claude mcp remove stock-passport') &&howTo.every((t) => !/claude mcp add/.test(t) || /claude mcp add --transport http proofofstock https:\/\/proofofstock\.xyz\/mcp/.test(t)))
   const tutGpt = (tut.match(/### ChatGPT \(web\)\n([\s\S]*?)\n### /) || [])[1] || ''
-  check('...the tutorial gives the same ChatGPT steps with the public URL', /\*\*Plugins\*\*/.test(tutGpt) && /\*\*Add custom MCP server\*\*/.test(tutGpt) && /`https:\/\/proofofstock\.xyz\/mcp`/.test(tutGpt) && /\*\*No authentication\*\*/.test(tutGpt) && /\*\*Create as a plugin\*\*/.test(tutGpt))
+  check('...the tutorial gives the same ChatGPT plans and steps as the card, install and @ included, with the public URL', /\*\*Plugins\*\*/.test(tutGpt) && /\*\*Add custom MCP server\*\*/.test(tutGpt) && /`https:\/\/proofofstock\.xyz\/mcp`/.test(tutGpt) && /\*\*No authentication\*\*/.test(tutGpt) && /\*\*Create as a plugin\*\*/.test(tutGpt) && /Pro, Business or Enterprise\/Edu/.test(tutGpt) && /Install the plugin\. In a new chat, type `@` and pick it/.test(tutGpt))
 }
 
 console.log(`\n${passed} passed, ${failed} failed`)

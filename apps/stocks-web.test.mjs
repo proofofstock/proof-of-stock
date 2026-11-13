@@ -11,6 +11,7 @@ import path from 'node:path'
 import zlib from 'node:zlib'
 import { fileURLToPath } from 'node:url'
 import { createStocksWeb, SECURITY_HEADERS, PAGE_CACHE_MS, MCP_REGISTRY_AUTH_RE } from './stocks-web.mjs'
+import { statsPage } from './stocks-stats.mjs'
 import { COINBASE_URL, ROBINHOOD_ASSETS_URL, ROBINHOOD_PRICES_URL } from '../evm/core/stocks/registries.mjs'
 import { loadWindow, readingsOf } from '../evm/core/stocks/readings-window.mjs'
 
@@ -522,7 +523,26 @@ console.log('verify and badge')
   check('...through the gate it is the dashboard: by day, the MCP clients, the recorder, the exam; never stored, never indexed', ok.status === 200 && /By day/.test(html) && /Recorder, Base/.test(html) && /Public exam/.test(html) && /<td class="n">1<\/td>/.test(html) && ok.headers.get('cache-control') === 'no-store, private' && /noindex/.test(ok.headers.get('x-robots-tag') || ''))
   check('...an MCP client name from outside renders as text, and the page runs no script and no beacon', !html.includes('<img src=x') && html.includes('&lt;img src=x') && !/<script/i.test(html))
   check('...the bars are meters, so the CSP needs no inline style', /<meter class="sx-bar/.test(html) && !/style="/.test(html))
+  check('...and the page says noindex itself, and loads no beacon and nothing from another host', /<meta name="robots" content="noindex, nofollow">/.test(html) && !/beacon\.js/.test(html) && !/(src|href)="(https?:)?\/\//.test(html))
+  // One screen: six tabs as radio inputs (CSS only), the first checked; a panel for each; tiles on top.
+  const radios = html.match(/<input class="sx-r sr" type="radio" name="sx-tab" id="sx-t-[a-z]+"( checked)?>/g) || []
+  check('...tabs are radio inputs and labels, no script: Overview checked, then Visits, MCP, Recorder, Exam, Days', radios.length === 6 && radios.filter((r) => r.includes(' checked')).length === 1 && radios[0].includes('sx-t-overview') && ['overview', 'visits', 'mcp', 'recorder', 'exam', 'days'].every((id) => html.includes(`<label for="sx-t-${id}">`) && html.includes(`class="sx-panel sx-p-${id}"`)) && (html.match(/class="sx-kpi /g) || []).length === 6)
+  check('...the histograms are inline SVG drawn on the server, with a bar for the day that has data and its value under it', /<svg class="sx-svg" viewBox="0 0 140 100" preserveAspectRatio="none" role="img"/.test(html) && /<rect class="b0" x="[\d.]+" y="[\d.]+" width="6.2" height="92.00"\/>/.test(html) && /<ol class="sx-x">(<li class=""><b>·<\/b><span>\d\d<\/span><\/li>){13}<li class=""><b>1<\/b>/.test(html))
   await appS.stop()
+  // Empty: no analytics file, no run, no exam. Every tab still renders, with words instead of numbers, and no NaN.
+  const days14 = Array.from({ length: 14 }, (_, i) => ({ day: new Date(NOW - (13 - i) * 864e5).toISOString().slice(0, 10), summary: null }))
+  const empty = statsPage({ days: days14, runs: { base: [], robinhood: [] }, exam: null, now: NOW, version: 't', assets: { css: 'style.css', docsCss: 'docs.css' } })
+  check('/stats with no data: every tab renders, charts say no data, the recorder and the exam say none, no NaN or undefined', (empty.match(/class="sx-panel sx-p-/g) || []).length === 6 && (empty.match(/<span class="sx-nodata">no data<\/span>/g) || []).length >= 3 && /no run today or yesterday/.test(empty) && /no exam report from the last 36 h/.test(empty) && (empty.match(/<td colspan="9">no data<\/td>/g) || []).length === 14 && !/NaN|undefined|Infinity/.test(empty) && !/<script|style="/i.test(empty))
+  // The day-over-day delta is only against the calendar day before; a gap says so instead of comparing older days.
+  const sm = (people) => ({ people, engaged: 0, median_visible_s: null, browsers_without_beacon: 0, bots: 0, tools: 0, views: [], tokens: [], refs: [], countries: [], actions: {}, mcp_clients: 0, mcp_calls: [], mcp_client_names: [] })
+  const gap = days14.map((d, i) => ({ ...d, summary: i === 13 ? sm(9) : i === 10 ? sm(4) : null }))
+  const next = days14.map((d, i) => ({ ...d, summary: i === 13 ? sm(9) : i === 12 ? sm(4) : null }))
+  const page = (ds) => statsPage({ days: ds, runs: {}, exam: null, now: NOW, version: 't', assets: { css: 'style.css', docsCss: 'docs.css' } })
+  check('...the people tile compares with the day before only when that day has data; no auto refresh to reset the tab', page(gap).includes('no data for the day before') && page(next).includes('+5 vs the day before') && !/http-equiv="refresh"/.test(empty))
+  // Sample runs: a run near its budget is amber, a stopped one red, in the chart and the table; the reason is escaped.
+  const run = (o) => ({ started_at: '2026-11-13T10:00:00Z', duration_s: 100, budget_s: 600, rows_written: 4, tokens_considered: 4, ...o })
+  const withRuns = statsPage({ days: days14, runs: { base: [run({ duration_s: 590 }), run({})], robinhood: [run({ aborted: '<b>rpc down</b>' })] }, exam: null, now: NOW, version: 't', assets: { css: 'style.css', docsCss: 'docs.css' } })
+  check('...with runs: a chart per chain with the budget as a tick, slow runs amber and stopped ones red, the reason escaped', (withRuns.match(/class="sx-card sx-chart rec"/g) || []).length === 2 && /<g class="sx-s warn">/.test(withRuns) && /<g class="sx-s bad">/.test(withRuns) && /<line class="mk"/.test(withRuns) && /<tr class="warn">/.test(withRuns) && withRuns.includes('&lt;b&gt;rpc down') && !withRuns.includes('<b>rpc down'))
 }
 {
   // /status and /history: one build serves every request for PAGE_CACHE_MS, then the page is built again.
@@ -632,7 +652,7 @@ console.log('the public address')
   const { port: p4 } = await app4.start(0, '127.0.0.1')
   const page = await (await fetch(`http://127.0.0.1:${p4}/stocks/`)).text()
   await app4.stop()
-  check('the page shows the MCP URL of the public origin, three times, and no placeholder is left', (page.replace(/<script type="application\/ld\+json">[^<]*<\/script>/g, '').match(/https:\/\/proofofstock.xyz\/mcp/g) || []).length === 3 && !page.includes('__MCP_URL__'))
+  check('the page shows the MCP URL of the public origin, four times (URL, command, ChatGPT steps, JSON), and no placeholder is left', (page.replace(/<script type="application\/ld\+json">[^<]*<\/script>/g, '').match(/https:\/\/proofofstock.xyz\/mcp/g) || []).length === 4 && !page.includes('__MCP_URL__'))
   const app3 = createStocksWeb({ roots: { base: baseRoot, robinhood: rhRoot }, fetchImpl, now: () => NOW, log: () => {}, publicOrigin: 'https://example.test', publicPath: '/x' })
   const { port: p3 } = await app3.start(0, '127.0.0.1')
   const other = await (await fetch(`http://127.0.0.1:${p3}/stocks/?chain=base&address=${A}`)).text()

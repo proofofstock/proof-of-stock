@@ -45,7 +45,7 @@ export const ACTIONS = Object.freeze({
   command: /^(help|how|clear|now|matrix|impostors|exam|chain|pick)$/, // typed into the terminal
   search: /^(ticker|name|isin):(none|one|many|error)$|^address:(listed|impostor|unlisted|error)$/,
   tab: /^(base|robinhood|all)$/,
-  copy: /^(mcp-url|mcp-cc|mcp-json|address)$/,
+  copy: /^(mcp-url|mcp-cc|mcp-gpt-url|mcp-json|address)$/,
   faq: /^q[1-9]$/, // which question was opened, by its place
   section: /^(checks|findings|why|agents|faq|foot)$/, // scrolled into view, once per page view
   out: /^(gecko|explorer|github|registry|other)$/, // a link to another site

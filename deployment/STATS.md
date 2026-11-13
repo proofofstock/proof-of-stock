@@ -4,6 +4,10 @@
 last runs per chain and the latest public exam. It shows aggregates only, from the same counter as
 `scripts/stocks/analytics-report.mjs`: no pseudonym, no address, no user agent.
 
+It fits one desktop screen: six tiles on top, then tabs (Overview, Visits, MCP, Recorder, Exam, Days) made of radio
+inputs and CSS, and histograms drawn on the server as inline SVG. On a phone it is one column and scrolls. It does
+not refresh itself (a reload would reset the open tab); reload it to see new numbers.
+
 ## How it is closed
 
 1. nginx asks for a password (`location = /stats` in `deployment/nginx/proofofstock.xyz.conf`, `auth_basic`).
