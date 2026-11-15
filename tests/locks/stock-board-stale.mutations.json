@@ -1,0 +1,28 @@
+{
+  "_finding": "The board ranked the latest reading of each token however old it was, so a stopped recorder would have been shown as today's market. And search never answers a ticker with another company: on 09.11 COIN returned USDEc, HOOD AAOI and SPY Krispy Kreme, by substrings inside other names.",
+  "target": "evm/core/stocks/cross-chain.mjs",
+  "runner": [
+    "node",
+    "evm/core/stocks/cross-chain.test.mjs"
+  ],
+  "mutations": [
+    {
+      "name": "stale readings stay on the board",
+      "find": "      if (now != null && now - t > staleS * 1000) { stale++; continue }\n",
+      "replace": "",
+      "expect": "FAIL readings older than two recorder runs leave the board"
+    },
+    {
+      "name": "exact matches are mixed with fuzzy ones",
+      "find": "  const kept = exact.length ? exact : hits\n",
+      "replace": "  const kept = hits\n",
+      "expect": "FAIL an exact ticker returns only the exact token"
+    },
+    {
+      "name": "a query inside a word matches",
+      "find": "company.split(/[^a-z0-9]+/).some((w) => w.startsWith(q))",
+      "replace": "company.includes(q)",
+      "expect": "FAIL a query inside a word matches nothing"
+    }
+  ]
+}

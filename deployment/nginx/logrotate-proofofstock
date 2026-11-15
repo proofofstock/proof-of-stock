@@ -1,0 +1,36 @@
+# deployment/nginx/logrotate-proofofstock: install as /etc/logrotate.d/proofofstock.
+#
+# The site's own logs, kept for 3 days and then gone. A search in the terminal is a URL (/?q=...), so both files hold
+# what visitors typed: the access log on every request, the error log whenever one of them ends in a 429, a 499 or a
+# 502 (nginx writes the request line into it). This file is what makes the three days true rather than a wish, and
+# docs/legal.md says the same three days to readers, under "What the web server logs". The two move together: change
+# `rotate` here and that section is wrong until it is changed too.
+#
+# ⚠ The paths are under /var/log/pos/, NOT /var/log/nginx/. The host's own rule there is a `/var/log/nginx/*.log` glob
+#   belonging to another project: a file covered by both rules is a duplicate entry logrotate refuses, and the site's
+#   log would quietly keep the shared 14 days while this file looked right. Separate directory, no overlap, and
+#   /etc/logrotate.d/nginx is not edited.
+# ⚠ `rotate N` with `daily` keeps the live file plus N rotated ones, so the oldest data is up to N+1 days old. The
+#   owner said three days, so this is `rotate 2`: today plus two, and nothing older than three days exists.
+#
+# Owner, 13.11.2026: three days, to see how the site is used in its first weeks. When that is over, the honest end is
+# to stop logging the request line at all, not to make the window longer.
+#
+# The directory is created at install time (see deployment/nginx/proofofstock.xyz.conf):
+#   install -d -m 750 -o www-data -g adm /var/log/pos
+# 750 matters on day one: nginx creates the files as root with mode 644, and only the directory keeps other users out
+# until the first rotation applies the `create` line below.
+/var/log/pos/access.log
+/var/log/pos/error.log {
+    daily
+    rotate 2
+    missingok
+    notifempty
+    compress
+    delaycompress
+    create 0640 www-data adm
+    sharedscripts
+    postrotate
+        invoke-rc.d nginx rotate >/dev/null 2>&1
+    endscript
+}

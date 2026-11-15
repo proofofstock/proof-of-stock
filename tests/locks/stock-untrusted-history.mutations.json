@@ -1,0 +1,16 @@
+{
+  "_finding": "The case archive was served with each event's symbol and name as archived.",
+  "target": "apps/stocks-history.mjs",
+  "runner": [
+    "node",
+    "apps/untrusted-text.test.mjs"
+  ],
+  "mutations": [
+    {
+      "name": "events are served as archived",
+      "find": "symbol: symbolLabel(e.symbol), name: nameLabel(e.name),",
+      "replace": "symbol: e.symbol ?? null, name: e.name ?? null,",
+      "expect": "FAIL /api/history/cases: labels, and the note before the events"
+    }
+  ]
+}

@@ -1,0 +1,51 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://proofofstock.xyz/schemas/v2/stock-case.schema.json",
+  "title": "Impostor case event",
+  "description": "One row per change of an impostor case (evm/core/stocks/history.mjs, docs/stocks-truth-layer-tz.md §H1). Append-only: a case's state is the replay of its rows. source=backfilled marks a fact derived later from older data, never seen live.",
+  "type": "object",
+  "required": ["_schema_version", "chain_id", "event", "at", "source", "rule_version", "address", "kind", "registry_symbol", "registry_address", "first_seen_at", "flagged_at"],
+  "properties": {
+    "_schema_version": { "const": "1.0" },
+    "chain_id": { "type": "integer" },
+    "event": { "enum": ["opened", "kind_changed", "listed", "gone"] },
+    "at": { "type": "string", "format": "date-time", "description": "when this run wrote the event" },
+    "source": { "enum": ["observed", "backfilled"] },
+    "backfill_source": { "type": "string" },
+    "rule_version": { "type": "string", "minLength": 1 },
+    "address": { "type": "string", "pattern": "^0x[0-9a-f]{40}$" },
+    "symbol": { "type": ["string", "null"] },
+    "name": { "type": ["string", "null"] },
+    "kind": { "type": "string", "minLength": 1 },
+    "previous_kind": { "type": "string" },
+    "ticker": { "type": ["string", "null"] },
+    "registry_symbol": { "type": ["string", "null"] },
+    "registry_address": { "type": ["string", "null"], "pattern": "^0x[0-9a-f]{40}$" },
+    "first_seen_at": { "type": ["string", "null"], "format": "date-time", "description": "first time the collector saw the token" },
+    "flagged_at": { "type": ["string", "null"], "format": "date-time", "description": "the run that first listed it; null when backfilled" },
+    "text_evidence": {
+      "description": "what the contract itself returned for symbol() and name() at one block when the case was opened or its kind changed (scripts/stocks/text-evidence.mjs); hex, never decoded into our text. null when the chain could not be read; absent on events written before 2026-11-13",
+      "oneOf": [
+        { "type": "null" },
+        {
+          "type": "object", "additionalProperties": false,
+          "required": ["chain_id", "block_number", "block_hash", "symbol_return", "name_return", "matches_collector", "reproduce", "needs_archive_rpc"],
+          "properties": {
+            "chain_id": { "type": ["integer", "null"] },
+            "block_number": { "type": "integer", "minimum": 0 },
+            "block_hash": { "type": "string", "pattern": "^0x[0-9a-f]{64}$" },
+            "symbol_return": { "type": ["string", "null"], "pattern": "^0x[0-9a-f]*$" },
+            "name_return": { "type": ["string", "null"], "pattern": "^0x[0-9a-f]*$" },
+            "matches_collector": { "type": "boolean" },
+            "reproduce": { "type": "string" },
+            "needs_archive_rpc": { "type": "boolean" }
+          }
+        }
+      ]
+    },
+    "deployer": { "type": ["string", "null"] }
+  },
+  "additionalProperties": false,
+  "if": { "properties": { "source": { "const": "backfilled" } } },
+  "then": { "required": ["backfill_source"], "properties": { "flagged_at": { "type": "null" } } }
+}

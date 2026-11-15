@@ -1,0 +1,31 @@
+{
+  "_finding": "A transaction is signed by hand here, from keccak and secp256k1. A wrong byte does not fail loudly: it spends gas and leaves either nothing or something we did not mean, and nobody notices for days. The test rebuilds a real transaction taken off Base mainnet, so every one of these mutations has to break it.",
+  "target": "evm/core/stocks/evm-tx.mjs",
+  "runner": ["node", "evm/core/stocks/evm-tx.test.mjs"],
+  "mutations": [
+    {
+      "name": "the typed-transaction envelope is dropped",
+      "find": "  return Buffer.concat([Buffer.from([0x02]), rlp(txFields(tx))])",
+      "replace": "  return rlp(txFields(tx))",
+      "expect": "FAIL and our payload recovers the sender the node reports"
+    },
+    {
+      "name": "zero is encoded as a zero byte instead of nothing",
+      "find": "  if (n === 0n) return Buffer.alloc(0)",
+      "replace": "  if (n === 0n) return Buffer.from([0])",
+      "expect": "FAIL zero is no bytes at all, which rlp writes as 0x80"
+    },
+    {
+      "name": "rlp switches to its long form one byte late",
+      "find": "  if (len < 56) return Buffer.from([offset + len])",
+      "replace": "  if (len <= 56) return Buffer.from([offset + len])",
+      "expect": "FAIL 56 bytes switches to the long form"
+    },
+    {
+      "name": "the address is taken from the whole public key, prefix byte included",
+      "find": "  return '0x' + keccak256(pub.subarray(1)).subarray(12).toString('hex')",
+      "replace": "  return '0x' + keccak256(pub).subarray(12).toString('hex')",
+      "expect": "FAIL and our payload recovers the sender the node reports"
+    }
+  ]
+}

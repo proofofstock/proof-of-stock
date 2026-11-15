@@ -1,0 +1,81 @@
+# deployment/systemd/stp-web.service: the public Stock Token Passport site and MCP server (apps/stocks-web.mjs) on
+# 127.0.0.1:3005, behind nginx (deployment/nginx/proofofstock.xyz.conf). It runs the release /opt/stp/current points at
+# (scripts/deploy.sh). It reads the recorded readings and the impostor files under /var/lib/pos, never the token dataset
+# of the other project. It writes one thing: its own visit counter, under /var/lib/stp-analytics
+# (apps/stocks-analytics.mjs).
+[Unit]
+OnFailure=stp-alert@%n.service
+Description=Stock Token Passport: public site and MCP server (read-only)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# The dedicated user pos (deployment/CUTOVER.md), never root.
+User=pos
+Group=pos
+WorkingDirectory=/opt/stp/current
+Environment=STOCKS_WEB_HOST=127.0.0.1
+Environment=STOCKS_WEB_PORT=3005
+Environment=STOCKS_ROOT_BASE=/var/lib/pos/base
+Environment=STOCKS_ROOT_ROBINHOOD=/var/lib/pos/robinhood
+Environment=STP_ANALYTICS_DIR=/var/lib/stp-analytics
+Environment=STP_ANCHOR_DIR=/var/lib/stp-anchors
+# The addresses the counter does not count, written on the host and never in git (deployment/STATS.md "Not counting
+# ourselves"): STP_ANALYTICS_IGNORE=<address or range>,... The server's own traffic needs no setting, so the file may
+# be absent, which is what the leading "-" allows. systemd reads it before InaccessiblePaths=/etc/pos applies below.
+EnvironmentFile=-/etc/pos/analytics.env
+# Site values that belong to the host and never to this repository, which is exported publicly: today only
+# STP_GLAMA_CLAIM, the claim proving the MCP connector at /mcp is ours (deployment/PUBLISHING.md). The leading dash
+# means an absent file is normal. systemd reads it before InaccessiblePaths=-/etc/pos applies, as with the others.
+EnvironmentFile=-/etc/pos/web.env
+StateDirectory=stp-analytics
+StateDirectoryMode=0700
+ExecStart=/usr/bin/node apps/stocks-web.mjs
+Restart=on-failure
+RestartSec=5s
+Nice=5
+MemoryAccounting=true
+MemoryMax=384M
+CPUQuota=50%
+NoNewPrivileges=true
+# No capability: everything it reads under /var/lib/pos is world-readable, and it binds an unprivileged port. The file
+# system is read-only except its own counter directory.
+CapabilityBoundingSet=
+AmbientCapabilities=
+# It sees only its own user's processes in /proc, and what it writes (the counter files) is readable by pos alone.
+ProtectProc=invisible
+UMask=0077
+ProtectSystem=strict
+ReadWritePaths=/var/lib/stp-analytics
+# The recorder's private copies of third-party answers are not the site's to read: the path does not exist for it.
+InaccessiblePaths=-/var/lib/stp-raw
+# The owner's secrets do not exist for it (systemd itself reads EnvironmentFile= before this applies).
+InaccessiblePaths=-/etc/pos -/etc/stp
+ProtectHome=read-only
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+# AF_NETLINK is here for one read: at startup the counter asks which addresses this host itself holds, so its own
+# visits are not counted (apps/stocks-analytics.mjs selfEntries), and getifaddrs() needs a netlink socket. Reading
+# only: the unit holds no capability, so it can change nothing through it, and without this line the call throws and
+# the server's own visits are counted (observed on the host, 13.11).
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources @mount @reboot @swap @raw-io @module @debug @cpu-emulation @obsolete
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=stp-web
+
+[Install]
+WantedBy=multi-user.target

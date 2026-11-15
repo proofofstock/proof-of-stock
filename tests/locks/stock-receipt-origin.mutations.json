@@ -1,0 +1,22 @@
+{
+  "_finding": "A receipt is a file somebody handed you. Its own hash proves only that nobody edited it after it was made, and anyone can make one: write a verdict, serve a list that hashes to what it claims, rehash the receipt. The one thing that ties a receipt to us is where its list is served from, so the origin is pinned. Without the pin, our own checker printed \"The receipt holds\" over an impostor's bytes, and fetched the author's URL from the reader's machine.",
+  "target": "evm/core/stocks/receipt.mjs",
+  "runner": [
+    "node",
+    "evm/core/stocks/receipt.test.mjs"
+  ],
+  "mutations": [
+    {
+      "name": "a receipt may name any archive it likes",
+      "find": "  if (!isOurs(r.list && r.list.addresses_url, origins)) {",
+      "replace": "  if (false) {",
+      "expect": "FAIL a receipt pointing anywhere but our archive fails, and nothing of the author is fetched"
+    },
+    {
+      "name": "the pin accepts plain http and a look-alike host",
+      "find": "  return u.protocol === 'https:' && !u.username && !u.password && origins.includes(u.origin)",
+      "replace": "  return origins.some((o) => String(url).includes(new URL(o).hostname))",
+      "expect": "FAIL ...and the pin is the site itself by default, over https only"
+    }
+  ]
+}

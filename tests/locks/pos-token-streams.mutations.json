@@ -1,0 +1,34 @@
+{
+  "_finding": "The look-alike list is built from another project's token streams. If that collector stops, the list goes stale silently. The health check must alert per chain past 8 hours, count an unreadable stream as an alert, and never let a day compressed later (a new mtime) look fresher than the end of that day, so a stopped collector is not made to look alive.",
+  "target": "scripts/stocks/health-check.mjs",
+  "runner": [
+    "node",
+    "scripts/stocks/health-standalone.test.mjs"
+  ],
+  "mutations": [
+    {
+      "name": "a stale stream is never an alert",
+      "find": "    const old = ageS > maxAgeS\n    out.push({ key: `token-streams:${c}`",
+      "replace": "    const old = false\n    out.push({ key: `token-streams:${c}`",
+      "expect": "FAIL a stream older than 8 h is an alert for that chain only"
+    },
+    {
+      "name": "an unreadable stream passes for fresh",
+      "find": "    if (!s || s.error) {",
+      "replace": "    if (!s || s.error) { continue",
+      "expect": "FAIL an unreadable dataset or one with no day file is an alert, not a silence"
+    },
+    {
+      "name": "a day compressed later passes for fresh",
+      "find": "    mtimeMs = Math.min(mtimeMs, Date.parse(m[1] + 'T00:00:00Z') + 864e5)",
+      "replace": "    mtimeMs = mtimeMs + 0",
+      "expect": "FAIL a stopped stream whose last day was compressed just now still alerts"
+    },
+    {
+      "name": "no backup is not an alert",
+      "find": "    return [{ key: 'backup:pos', bad: true, text: `no successful backup",
+      "replace": "    return [{ key: 'backup:pos', bad: false, text: `no successful backup",
+      "expect": "FAIL no status file is an alert: no copy off the host yet"
+    }
+  ]
+}

@@ -1,0 +1,41 @@
+# Publishes server.json to the official MCP registry (registry.modelcontextprotocol.io) as xyz.proofofstock/proof-of-stock.
+# The registry proves the name by HTTP: it reads https://proofofstock.xyz/.well-known/mcp-registry-auth (the public key,
+# deployment/mcp-registry-auth) and checks a signature made here with the private half, the MCP_REGISTRY_KEY secret,
+# which the owner created and nobody else has seen. Run by hand after a version bump; public repository only.
+name: MCP registry
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: mcp-registry
+  cancel-in-progress: false
+jobs:
+  publish:
+    if: github.repository == 'proofofstock/proof-of-stock'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # The repository runs GitHub's own actions only, so the publisher is pinned by the SHA-256 of its release archive
+    # (the value in the release's registry_1.8.9_checksums.txt, checked 12.11). A new version means a new hash here.
+    env:
+      MCP_PUBLISHER_VERSION: v1.8.9
+      MCP_PUBLISHER_SHA256: 4d527ca8f1ced0394c962dc925c2a4a4addef441cbefd62501c875e9481823a8
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - name: The version published is the package's
+        run: test "$(jq -r .version server.json)" = "$(jq -r .version package.json)"
+      - name: Download mcp-publisher and check its hash
+        run: |
+          set -euo pipefail
+          archive="mcp-publisher_linux_amd64.tar.gz"
+          curl --fail --location --silent --show-error --output "$archive" "https://github.com/modelcontextprotocol/registry/releases/download/${MCP_PUBLISHER_VERSION}/$archive"
+          echo "${MCP_PUBLISHER_SHA256}  $archive" | sha256sum --check --strict
+          tar xzf "$archive" mcp-publisher
+          rm -f "$archive"
+      - name: Prove the domain and publish
+        env:
+          MCP_REGISTRY_KEY: ${{ secrets.MCP_REGISTRY_KEY }}
+        run: |
+          set -euo pipefail
+          ./mcp-publisher login http --domain proofofstock.xyz --private-key "$MCP_REGISTRY_KEY"
+          ./mcp-publisher publish

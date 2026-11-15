@@ -1,0 +1,12 @@
+[Unit]
+Description=Stock Token Passport: mirror the issuer lists from the chain every 15 minutes
+
+[Timer]
+OnBootSec=4min
+OnCalendar=*:04/15
+RandomizedDelaySec=30s
+Persistent=true
+Unit=stp-mirror.service
+
+[Install]
+WantedBy=timers.target

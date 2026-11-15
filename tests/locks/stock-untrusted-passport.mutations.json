@@ -1,0 +1,22 @@
+{
+  "_finding": "The passport of an address outside the registry carried the token's symbol and name as written, on every reader's path (HTTP, MCP, the stdio server). It carries labels and says whose text they are.",
+  "target": "evm/core/stocks/passport.mjs",
+  "runner": [
+    "node",
+    "apps/untrusted-text.test.mjs"
+  ],
+  "mutations": [
+    {
+      "name": "the name is published as written",
+      "find": "name: nameLabel(identity.name) }",
+      "replace": "name: identity.name ?? null }",
+      "expect": "FAIL the symbol and name are labels: one line, cut, nothing invisible"
+    },
+    {
+      "name": "the note is gone",
+      "find": "untrusted_text: UNTRUSTED_TEXT_NOTE, identity:",
+      "replace": "identity:",
+      "expect": "FAIL the answer says whose text that is"
+    }
+  ]
+}

@@ -1,0 +1,28 @@
+{
+  "_finding": "Identity is the issuer registry's exact address; a name only ever claims one. A matcher that flags a registry token as resembling itself calls the real NVDAc an impostor, and one that compares symbols ignoring case promotes every memecoin called `nvda` to the strong claim `registry_symbol`. And on Robinhood the issuer's symbols ARE the bare tickers (GME, COIN, F): a strong grade on an exact symbol match there took in borrowed tickers by the thousand on the first census, so the strong grade requires a distinctive issuer symbol.",
+  "target": "evm/core/stocks/impostor.mjs",
+  "runner": [
+    "node",
+    "evm/core/stocks/passport.test.mjs"
+  ],
+  "mutations": [
+    {
+      "name": "a registry token is checked for resemblance to itself",
+      "find": "  if (!addr || recs.some((r) => r.address === addr)) return null",
+      "replace": "  if (!addr) return null",
+      "expect": "FAIL a registry token resembles nothing: it IS the asset"
+    },
+    {
+      "name": "the strong match ignores case",
+      "find": "    const exact = recs.find((r) => r.symbol === sym && tickerOf(r) !== r.symbol)",
+      "replace": "    const exact = recs.find((r) => r.symbol.toLowerCase() === sym.toLowerCase() || tickerOf(r).toLowerCase() === sym.toLowerCase())",
+      "expect": "FAIL the bare ticker is a weak resemblance"
+    },
+    {
+      "name": "a bare-ticker issuer symbol makes the strong claim",
+      "find": "    const exact = recs.find((r) => r.symbol === sym && tickerOf(r) !== r.symbol)",
+      "replace": "    const exact = recs.find((r) => r.symbol === sym)",
+      "expect": "FAIL a bare-ticker issuer symbol (Robinhood GME) is only a weak resemblance"
+    }
+  ]
+}

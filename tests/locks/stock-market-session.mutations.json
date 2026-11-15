@@ -1,0 +1,28 @@
+{
+  "_finding": "A peg reading is read against the session of the primary listing: a reference held over a weekend or a holiday is expected, held during a regular session it is not. A session module that guesses `regular` on a day it has no calendar for, ignores a holiday, or keeps the 16:00 close on an early-close day, turns a held reference into a fresh-looking one on exactly the days the series exists to capture (Thanksgiving and the day after).",
+  "target": "evm/core/stocks/market-session.mjs",
+  "runner": [
+    "node",
+    "evm/core/stocks/market-session.test.mjs"
+  ],
+  "mutations": [
+    {
+      "name": "a year past the calendar is treated as a normal trading year",
+      "find": "  if (!calendar.years.includes(c.year)) return out('unknown', 'outside_calendar')\n",
+      "replace": "",
+      "expect": "FAIL a date past the last covered year is unknown, not regular"
+    },
+    {
+      "name": "holidays are ignored",
+      "find": "  if (holiday) return out('closed', 'holiday', { holiday })\n",
+      "replace": "",
+      "expect": "FAIL Thanksgiving 2026 at noon is closed, holiday named"
+    },
+    {
+      "name": "an early-close day closes at 16:00",
+      "find": "  const close = early ? 13 * 60 : 16 * 60\n",
+      "replace": "  const close = 16 * 60\n",
+      "expect": "FAIL ...and at 13:00 it is after hours"
+    }
+  ]
+}

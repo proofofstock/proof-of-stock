@@ -1,0 +1,34 @@
+{
+  "_finding": "The case archive is append-only. After the move to /var/lib/pos (deployment/CUTOVER.md), the impostor list started on an empty history would write a second, backfilled set of cases that cannot be undone. It must refuse while the old place holds a history and ours does not, and the list must never be written into the token dataset.",
+  "target": "scripts/stocks/impostor-list.mjs",
+  "runner": [
+    "node",
+    "scripts/stocks/impostor-list.test.mjs"
+  ],
+  "mutations": [
+    {
+      "name": "the guard never fires",
+      "find": "  return has(dataset) !== 'no' && has(root) !== 'yes'",
+      "replace": "  return false",
+      "expect": "FAIL a case archive left behind at the old place, none at ours: the history is refused"
+    },
+    {
+      "name": "an empty history directory counts as migrated",
+      "find": "fs.readdirSync(path.join(dir, 'stock-peg', 'history')).some((f) => f.endsWith('.jsonl')) ? 'yes' : 'no'",
+      "replace": "(fs.existsSync(path.join(dir, 'stock-peg', 'history')) ? 'yes' : 'no')",
+      "expect": "FAIL ...an empty history directory at ours is still not a migrated one"
+    },
+    {
+      "name": "a missing token dataset falls back to the working directory",
+      "find": "  if (!tokenDataset) throw new Error('tokenDataset is required: the directory of the token streams this list is built from')\n",
+      "replace": "  tokenDataset = tokenDataset || '.'\n",
+      "expect": "FAIL without a token dataset it refuses instead of reading the working directory"
+    },
+    {
+      "name": "an unreadable old history counts as none",
+      "find": "return e && e.code === 'ENOENT' ? 'no' : 'unknown'",
+      "replace": "return 'no'",
+      "expect": "FAIL an old history that cannot be read counts as one that may exist: refused"
+    }
+  ]
+}

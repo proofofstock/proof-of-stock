@@ -1,0 +1,34 @@
+{
+  "_finding": "The MCP chart read as demand when most of it was catalogues indexing our registry entry. The split must be what an agent DID in the day (did it call a tool), never what it calls itself: a name list goes stale the day a new crawler appears, and a crawler can send any name. Every request of an agent that called a tool counts as use, not only the tools/call row, and the request count comes from the rows, not from the capped top list.",
+  "target": "scripts/stocks/analytics-report.mjs",
+  "runner": [
+    "node",
+    "apps/stocks-analytics.test.mjs"
+  ],
+  "mutations": [
+    {
+      "name": "the split goes by the client name instead of behaviour",
+      "find": "      if (isToolCall(r)) mcpUsers.add(r.visitor)",
+      "replace": "      if (r.client && !/probe|beat|crawl/i.test(r.client)) mcpUsers.add(r.visitor)",
+      "expect": "FAIL a probe that calls a tool is use, whatever it calls itself"
+    },
+    {
+      "name": "every request counts as use",
+      "find": "    mcp_use_requests: mcpRows.filter((r) => mcpUsers.has(r.visitor)).length,",
+      "replace": "    mcp_use_requests: mcpRows.length,",
+      "expect": "FAIL every request of a using agent counts as use, and the rest as discovery"
+    },
+    {
+      "name": "only the tools/call row counts as use, not the agent's day",
+      "find": "    mcp_use_requests: mcpRows.filter((r) => mcpUsers.has(r.visitor)).length,",
+      "replace": "    mcp_use_requests: mcpRows.filter((r) => isToolCall(r)).length,",
+      "expect": "FAIL every request of a using agent counts as use, and the rest as discovery"
+    },
+    {
+      "name": "requests are counted from the capped top list",
+      "find": "    mcp_requests: mcpRows.length,",
+      "replace": "    mcp_requests: top(mcpCalls, 15).reduce((n, [, v]) => n + v, 0),",
+      "expect": "FAIL the count of requests comes from the rows, not from the top calls, which is capped"
+    }
+  ]
+}

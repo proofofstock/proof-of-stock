@@ -1,0 +1,166 @@
+# Publishing: npm package and MCP catalogs
+
+Each step needs the owner's own login. No credential for npm, GitHub or Smithery lives in this repository or on a host.
+
+## 1. `@proofofstock/guard` on npm
+
+Published, and from the next version on it is published **from CI, with provenance**, not from anyone's laptop.
+
+**Why.** A package sitting inside somebody else's agent is a link in their supply chain: a stolen npm account would
+be enough to put code there, and nothing we do on our own host would stop it. A publish from the workflow attaches
+npm provenance, so the registry records and displays which public repository and which commit the tarball was built
+from, signed by GitHub's OIDC token. "What you install is what the repository says" stops being our promise and
+becomes a link on the package page.
+
+**There is no publishing token.** npm's trusted publishing is used instead: the package names this repository and
+this workflow file as the only thing allowed to publish it, and the job proves who it is with a short-lived OIDC
+token GitHub mints for that run. Nothing long-lived exists to steal, rotate or leak.
+
+**Set up once (the owner):** npmjs.com, Packages, `@proofofstock/guard`, Settings, **Trusted publishing**, GitHub
+Actions:
+
+| Field | Value |
+|---|---|
+| Organization or user | `proofofstock` |
+| Repository | `proof-of-stock` |
+| Workflow filename | `publish-guard.yml` |
+| Environment name | leave empty |
+| Allowed actions | leave BOTH unchecked: `npm stage publish` is always allowed, and that is all this workflow may do |
+
+Two things to know. The first publish through it must happen **within two days** of saving, or the configuration
+expires and has to be made again. And `repository.url` in the package's `package.json` must match that repository
+exactly, which it does.
+
+Afterwards, in Settings, Publishing access, choose **"Require two-factor authentication and disallow tokens"**: then
+no token can publish this package at all, by anybody, and the workflow is the only way in.
+
+**Each release:**
+
+1. Bump `version` in `packages/proofofstock-guard/package.json`, merge it, and export the public repository as usual.
+2. In the public repository: Actions, **Publish guard to npm**, Run workflow.
+3. The workflow runs the package's tests, refuses a version that is already in the registry, and **stages** it.
+4. On npmjs.com, the package page shows the staged version: look at it and release it. That click is the only way a
+   version reaches anybody's install, so a compromised repository or workflow still cannot do it alone.
+5. Check the package page afterwards: it should show the commit the tarball was built from.
+
+Publishing by hand still works and needs the owner's own login (`npm login`, then `npm publish --access public` in
+the package directory), but it produces a version without provenance, so it is for an emergency only. `npm pack
+--dry-run` shows exactly which files go out.
+
+## 2. The official MCP registry
+
+`server.json` at the repository root describes the remote server (`https://proofofstock.xyz/mcp`). Its `version` must match `package.json`, and a test checks this.
+
+The name is on our own domain, `xyz.proofofstock/proof-of-stock` (reverse DNS of proofofstock.xyz, the registry's form), so a reader sees the listing comes from the domain the server runs on (owner, 12.11). The registry proves it over HTTP:
+
+- `deployment/mcp-registry-auth` holds one line, `v=MCPv1; k=ed25519; p=<public key>`. The site serves it at `https://proofofstock.xyz/.well-known/mcp-registry-auth` (an exact nginx location, like security.txt).
+- The private half lives only in the public repository's secret `MCP_REGISTRY_KEY`. The owner made the pair on their own machine and put the private half straight into the secret; it is in no file here and no host.
+- `.github/workflows/mcp-registry.yml` (run by hand, public repository only) downloads `mcp-publisher` pinned by the SHA-256 of its release archive (the repository allows only GitHub's own actions), logs in with `login http`, and publishes.
+
+To make or replace the key (the owner, in Git Bash, OpenSSL 3), then commit the printed line to `deployment/mcp-registry-auth` and deploy:
+
+```bash
+openssl genpkey -algorithm Ed25519 -out pos-mcp-key.pem && openssl pkey -in pos-mcp-key.pem -noout -text | grep -A3 'priv:' | tail -n +2 | tr -d ' :\n' | gh secret set MCP_REGISTRY_KEY -R proofofstock/proof-of-stock && echo "v=MCPv1; k=ed25519; p=$(openssl pkey -in pos-mcp-key.pem -pubout -outform DER | tail -c 32 | base64)"
+```
+
+Several catalogs (PulseMCP, GitHub's MCP list and others) read from the official registry.
+
+## 3. Smithery
+
+smithery.ai → Add server → "URL / remote" → `https://proofofstock.xyz/mcp`. It needs no key and no configuration.
+
+## 4. Glama: claiming the connector
+
+Glama lists the server by itself, taken from the official registry, so there is nothing to submit. To manage that
+listing (its description, its thumbnail, its health checks and its analytics) the connector has to be claimed, and
+the method that needs nothing of DNS or GitHub is a file we serve: `GET /mcp/.well-known/glama.json`.
+
+**The claim belongs to the host, never to this repository.** The repository is exported to a public one, and an
+ownership claim has no business being published. The site reads it from the environment, so it lives in one file on
+the host, like the alert token and the statistics ignore list. Without it the path answers 404 and nothing breaks.
+
+On the host, as root. The claim comes from the Claim ownership dialog on the connector's page:
+
+```sh
+umask 077
+install -d -m 0755 /etc/pos
+read -rp 'Glama claim (glama_claim_...): ' C
+printf 'STP_GLAMA_CLAIM=%s\n' "$C" > /etc/pos/web.env
+unset C
+chown root:root /etc/pos/web.env; chmod 0600 /etc/pos/web.env
+sed 's/=.*/=.../' /etc/pos/web.env; stat -c '%U:%G %a %n' /etc/pos/web.env
+systemctl restart stp-web
+curl -fsS https://proofofstock.xyz/mcp/.well-known/glama.json; echo
+```
+
+The unit reads `/etc/pos/web.env` through `EnvironmentFile=-`, so an absent file is the normal state. The vhost needs
+the matching location (`deployment/nginx/proofofstock.xyz.conf`), which is the third and last dot-path it serves;
+without it nginx answers 404 before the app is reached. `ship.sh` installs neither units nor nginx config, so both
+have to be copied by hand after a release that changes them.
+
+## Opening the source
+
+This repository stays private. The public one, `proofofstock/proof-of-stock`, is a copy built by
+`scripts/export-public.sh`: the tree at a commit, internal notes replaced by a stub, as one commit with no history,
+refused if it names anything on `scripts/public-deny.txt`. CI dry-runs that export on every push.
+
+The site's GitHub links (a footer chip, the docs top bar and the docs footer) point at `repository.url` in
+`package.json` and stay hidden while `stp.source_public` is false, so no visitor follows one to a 404. To open:
+
+1. Export the commit that runs in production and add it on top of the public repository's `main` (no force-push: each
+   release is one new commit there, the tree exactly as exported):
+   ```bash
+   scripts/export-public.sh /tmp/pos-public <sha>
+   cd /tmp/pos-public
+   git remote add origin https://github.com/proofofstock/proof-of-stock && git fetch -q origin main
+   git reset --soft FETCH_HEAD                                 # same tree, parent = the public main
+   git -c user.name='Proof of Stock' -c user.email=hello@proofofstock.xyz commit -q -C HEAD@{1}
+   git log -1 --format='%an <%ae> / %cn <%ce>'                  # both must be Proof of Stock <hello@…>, never a person
+   git push origin HEAD:main
+   ```
+   Every commit of the public history becomes visible, so an old one must pass today's deny list too (checked 11.11).
+2. Make `proofofstock/proof-of-stock` public (Settings → Danger zone → Change visibility).
+3. Set `"stp": { "source_public": true }` in `package.json`, merge and deploy. The links appear with that release.
+4. Run the MCP registry workflow (section 2).
+
+## After a deploy that changes what the canary pins
+
+The outside check lives in the PUBLIC repository and pins facts about the live site: how many MCP tools there are, a
+known listed address, a known look-alike (`scripts/canary.mjs`, `KNOWN`). The host is deployed from the private
+repository, so between a deploy and the next public export those two disagree, and the check alerts about a
+difference that is only our own lag. That happened on 14.11: the seventh tool went live in the morning and the public
+copy followed in the evening, so the outside check was red for hours and every alert it sent was false.
+
+**So: a deploy that changes anything in `KNOWN` is followed by the public export in the same sitting**, not next
+week. A false alert costs more than a late export: it is the thing that teaches everybody to ignore the alarm.
+
+## Each release
+
+Bump `version` in `package.json` and `server.json` together, then run the MCP registry workflow again: `gh workflow run mcp-registry.yml -R proofofstock/proof-of-stock`. Bump the guard's own `version` only when its code changes.
+
+## Paid passes (x402): turning them on
+
+Off by default: without the two host facts below
+
+The module itself is a host file. `evm/core/stocks/x402.mjs` (and its test) are **gitignored**: the
+money path does not belong in a repository that is exported to a public one. Copy them to the host at the
+same paths beside the app; a deploy through git pull leaves them untouched, because git keeps ignored files;
+and add them to the host's config backup, the way a key file is, because a checkout without them is the
+free service and nothing more., every refusal stays the plain 429 and no 402 is ever served. To turn
+them on, give the web unit both facts (in `/etc/pos/web.env` or the unit's environment):
+
+1. `STP_X402_PAY_TO` : the Base address that receives the payments. A fresh wallet made for this; it is public and it
+   appears in every 402 the site serves.
+2. The settlement key: a file with 32 bytes of hex, named by `STP_X402_KEY_FILE` (or systemd `LoadCredential=x402-key`
+   with `CREDENTIALS_DIRECTORY`). `chmod 600`, owned by the service user, never in the repository, never an env value.
+   This is the same pattern as the anchor mirror's key (`loadKey` there).
+
+The settlement wallet needs gas on Base: about 0.001 ETH covers thousands of settlements at the fee cap in the module.
+A dry wallet refuses politely (the buyer is told the payment was not taken) and the journal says
+`the settlement wallet is out of gas`, which is the alert to top it up. The node it settles through is `STP_RPC_BASE`,
+the same env the anchor mirror reads; the default is `mainnet.base.org`.
+
+The price, the pass length, the cooldown and the queue cap live in `evm/core/stocks/x402.mjs`, not in env: changing
+them is a code change and a release, so that the price a buyer was shown in a 402 and the price settled can never
+disagree. After enabling, watch the journal for `[x402] pass granted` on the first live purchase, and run the how-to's
+own two-step curl against the live site.

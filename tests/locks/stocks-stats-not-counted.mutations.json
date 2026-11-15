@@ -1,0 +1,22 @@
+{
+  "_finding": "The owner asked the dashboard to say who is not counted, after his own visits had been counted for days. The block must be on the page, and it must warn when nothing is set yet or when the server cannot read its own addresses: a block that looks fine in that state is worse than no block, because it says the opposite of the truth.",
+  "target": "apps/stocks-stats.mjs",
+  "runner": [
+    "node",
+    "apps/stocks-web.test.mjs"
+  ],
+  "mutations": [
+    {
+      "name": "the block is not on the page",
+      "find": "${card('MCP calls', topList(ts?.mcp_calls, { limit: 7, cls: 'mcp' }), { sub: when })}${notCounted(ignoring)}",
+      "replace": "${card('MCP calls', topList(ts?.mcp_calls, { limit: 7, cls: 'mcp' }), { sub: when })}",
+      "expect": "FAIL ...it says who is not counted, in counts and a date, and never an address"
+    },
+    {
+      "name": "nothing set and unreadable addresses look like any other row",
+      "find": "  const row = (k, v, cls = '') => `<li><span class=\"k\">${esc(k)}</span><span class=\"v ${cls}\">${esc(v)}</span></li>`",
+      "replace": "  const row = (k, v, _cls = '') => `<li><span class=\"k\">${esc(k)}</span><span class=\"v \">${esc(v)}</span></li>`",
+      "expect": "FAIL ...and says so when nothing is set or the server cannot read its own addresses"
+    }
+  ]
+}

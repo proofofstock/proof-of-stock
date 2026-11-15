@@ -1,0 +1,16 @@
+{
+  "_finding": "The lead sentence of MCP recent_impostors named each impostor by its own symbol: its creator's text inside a sentence an agent reads as the server's. It names the address and the issuer's symbol only.",
+  "target": "apps/stocks-mcp-http.mjs",
+  "runner": [
+    "node",
+    "apps/untrusted-text.test.mjs"
+  ],
+  "mutations": [
+    {
+      "name": "the impostor's own name is back in the lead",
+      "find": "const shown = r.items.slice(0, 5).map((i) => `${i.address} (",
+      "replace": "const shown = r.items.slice(0, 5).map((i) => `${i.name} ${i.address} (",
+      "expect": "FAIL MCP recent_impostors: the lead names the address and the issuer's symbol only"
+    }
+  ]
+}

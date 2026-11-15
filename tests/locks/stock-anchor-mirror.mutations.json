@@ -1,0 +1,112 @@
+{
+  "_finding": "The only key in the project runs here, once a day, unattended. What has to hold: it pays nobody but itself, it refuses a gas price out of line instead of paying it, it never writes a day twice, and it stops rather than guess when an rpc answers for another chain.",
+  "target": "scripts/stocks/anchor-mirror.mjs",
+  "runner": [
+    "node",
+    "scripts/stocks/anchor-mirror.test.mjs"
+  ],
+  "mutations": [
+    {
+      "name": "the transaction is sent somewhere other than its own address",
+      "find": "    maxFeePerGas: fees.maxFeePerGas, gasLimit: fees.gasLimit, to: from, value: 0, data,",
+      "replace": "    maxFeePerGas: fees.maxFeePerGas, gasLimit: fees.gasLimit, to: '0x' + '11'.repeat(20), value: 0, data,",
+      "expect": "FAIL it sends exactly the transaction we meant: to itself, value zero, the day and the hash"
+    },
+    {
+      "name": "any gas price is paid",
+      "find": "  if (worstCaseWei > maxFeeWei) return { send: false, reason: `one write would cost up to ${worstCaseWei} wei, over the cap of ${maxFeeWei}` }",
+      "replace": "  if (false) return { send: false, reason: 'never' }",
+      "expect": "FAIL a gas price out of line is refused rather than paid"
+    },
+    {
+      "name": "a day already written is written again",
+      "find": "  if (previous && previous.tx && previous.sha256 === sha256 && previous.status !== 'reverted') {",
+      "replace": "  if (false) {",
+      "expect": "FAIL a day already sent is never sent again, only looked up"
+    },
+    {
+      "name": "an rpc answering for another chain is trusted anyway",
+      "find": "  if (chainId !== cfg.chainId) throw new Error(`${chain}: the rpc answers for chain ${chainId}, not ${cfg.chainId}`)",
+      "replace": "  if (false) throw new Error('never')",
+      "expect": "FAIL an rpc answering for another chain stops the write"
+    },
+    {
+      "name": "a transaction the chain has dropped is still called pending",
+      "find": "    if (inPool === undefined || inPool) return { ...previous, status: previous.status === 'confirmed' ? 'confirmed' : 'pending' }",
+      "replace": "    return { ...previous, status: previous.status === 'confirmed' ? 'confirmed' : 'pending' }",
+      "expect": "FAIL a transaction the chain no longer has is sent again, and the record says which one it replaces"
+    },
+    {
+      "name": "a transaction stuck without a block never raises an alert",
+      "find": "      const stalePending = m.status === 'pending' && (!Number.isFinite(since) || at - since > STALE_PENDING_MS)",
+      "replace": "      const stalePending = false",
+      "expect": "FAIL a transaction stuck without a block raises an alert too, which nothing else would"
+    },
+    {
+      "name": "whatever the node answers is written down as a transaction hash",
+      "find": "  if (!TX_HASH_RE.test(String(tx))) throw new Error('the node did not answer with a transaction hash')",
+      "replace": "  if (false) throw new Error('never')",
+      "expect": "FAIL an answer that is not a transaction hash is refused, so no rpc text can reach a sentence we are quoted on"
+    },
+    {
+      "name": "a day already in a block can be sent again by a node that lost it",
+      "find": "  if (previous && previous.tx && previous.sha256 === sha256 && Number.isInteger(previous.block) && previous.status !== 'reverted') {",
+      "replace": "  if (false) {",
+      "expect": "FAIL a day already in a block is never sent again, whatever a node that lost it says"
+    },
+    {
+      "name": "a chain that says nothing about the base fee is read as free",
+      "find": "  if (baseFeePerGas == null || BigInt(baseFeePerGas) <= 0n) throw new Error('the chain did not say what the base fee is')",
+      "replace": "  if (false) throw new Error('never')",
+      "expect": "FAIL a block with no base fee is refused, not read as free"
+    },
+    {
+      "name": "the nonce is taken from the node alone, as it was on the first live run",
+      "find": "  const nonce = reclaim ? previous.nonce : Math.max(counted, ours)",
+      "replace": "  const nonce = reclaim ? previous.nonce : counted",
+      "expect": "FAIL a run counts its own nonces when the node keeps answering the same one"
+    },
+    {
+      "name": "the node's transaction hash is taken on trust",
+      "find": "  if (String(tx) !== signed.hash) throw new Error(`the node answered a different transaction hash than the one we signed (${String(tx).slice(0, 12)}...)`)",
+      "replace": "  if (false) throw new Error('never')",
+      "expect": "FAIL a hash that is not the one we signed is refused: we computed it ourselves before sending"
+    },
+    {
+      "name": "one witness alone is taken as a confirmation",
+      "find": "  else if (agreed.length >= WITNESSES_NEEDED) { out.status = 'confirmed'; out.block = agreed[0].block }",
+      "replace": "  else if (agreed.length >= 1) { out.status = 'confirmed'; out.block = agreed[0].block }",
+      "expect": "FAIL one witness alone is not a confirmation, and the record says it agreed but was alone"
+    },
+    {
+      "name": "a witness that sees other bytes at our hash is ignored",
+      "find": "  if (against.length) { out.status = 'contradicted'; out.contradicted = against.map((a) => `${a.source}: ${a.why}`) }",
+      "replace": "  if (false) { out.status = 'contradicted' }",
+      "expect": "FAIL a source that says the transaction carries something else makes it contradicted, not confirmed"
+    },
+    {
+      "name": "a witness is allowed to be the endpoint we sent to",
+      "find": "  return urls.filter((u) => !sameHost(u, primary))",
+      "replace": "  return urls",
+      "expect": "FAIL the witnesses of a chain are other operators, and never the endpoint we sent to"
+    },
+    {
+      "name": "a witness need not carry this day and hash",
+      "find": "  if (read.day !== day || read.sha256 !== sha256) return { source, kind: 'contradicted', why: `it carries ${read.day} ${read.sha256.slice(0, 12)}, not this day and hash` }",
+      "replace": "  if (false) return { source, kind: 'contradicted', why: 'never' }",
+      "expect": "FAIL ...a transaction carrying another day or hash is a contradiction that says what it carries"
+    },
+    {
+      "name": "the word confirmed survives with nobody behind it",
+      "find": "    if (previous.status === 'confirmed' && (previous.witnessed_by || []).length) return { ...previous }",
+      "replace": "    if (previous.status === 'confirmed') return { ...previous }",
+      "expect": "FAIL a day called confirmed with no witness named is asked again, and nothing is sent"
+    },
+    {
+      "name": "a malformed answer from a witness is read as a contradiction",
+      "find": "  if (!shaped) return { source, kind: 'silent', why: 'answered something that is not a transaction' }",
+      "replace": "  if (false) return { source, kind: 'silent', why: 'never' }",
+      "expect": "FAIL a witness answering half a transaction is silent, never a contradiction"
+    }
+  ]
+}

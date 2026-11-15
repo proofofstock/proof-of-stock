@@ -1,0 +1,63 @@
+# Publishes packages/proofofstock-guard to npm as @proofofstock/guard, from the PUBLIC repository and nowhere else.
+#
+# Why from here and not from a laptop. A package in somebody else's agent is a link in their supply chain, and an
+# account alone should not be enough to put code there. Publishing from this workflow attaches npm provenance: the
+# registry records, and shows on the package page, which public repository and which commit the tarball was built
+# from, signed by GitHub's own OIDC token, which no stolen npm password can produce. So "the code you install is the
+# code in the repository" stops being our promise and becomes something a reader checks in one click.
+#
+# There is no npm token anywhere in this. The package is configured on npmjs.com with a TRUSTED PUBLISHER: this
+# repository and this filename, and nothing else may publish it. The job proves who it is with a short-lived OIDC
+# token that GitHub mints for this workflow run, so there is no long-lived credential to steal, to rotate or to leak,
+# in a secret or on a laptop. Provenance comes with it automatically.
+#
+# Run by hand, after the version in packages/proofofstock-guard/package.json has been bumped and merged. It does not
+# publish: it stages, and the owner releases the staged version on the package page.
+name: Publish guard to npm
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+  id-token: write # provenance; nothing else is writable
+concurrency:
+  group: publish-guard
+  cancel-in-progress: false
+jobs:
+  publish:
+    if: github.repository == 'proofofstock/proof-of-stock'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      # No registry-url on purpose. That input makes setup-node write an .npmrc with _authToken=${NODE_AUTH_TOKEN},
+      # and with no token in the environment npm sends an empty credential, which the registry answers 401 to before
+      # OIDC is ever tried (seen on the first run, 14.11). Without the file npm detects the OIDC environment itself.
+      # Node 24 carries npm 11, which is past the 11.5.1 that trusted publishing needs, so nothing is installed here.
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+      - name: The npm that will publish, and the identity it will use
+        run: |
+          npm --version
+          test -n "${ACTIONS_ID_TOKEN_REQUEST_URL:-}" || { echo "no OIDC in this run: id-token permission missing" >&2; exit 1; }
+      - name: The package's own tests must pass
+        run: node packages/proofofstock-guard/index.test.mjs
+      - name: The version must not be published already
+        run: |
+          set -euo pipefail
+          v=$(jq -r .version packages/proofofstock-guard/package.json)
+          if npm view "@proofofstock/guard@$v" version >/dev/null 2>&1; then
+            echo "refusing: @proofofstock/guard@$v is already in the registry; bump the version first" >&2
+            exit 1
+          fi
+          echo "publishing $v"
+      # STAGED, not published. This workflow may only prepare a version; putting it in front of other people's
+      # installs is a second step, taken by a person on npmjs.com. So a compromised repository, or a compromised
+      # workflow, still cannot reach anybody's agent on its own. npm's own advice, and the same rule we keep for
+      # anything that leaves this project: a human says yes before it is public.
+      #
+      # No token: npm checks the OIDC identity of this workflow against the package's trusted publisher, and
+      # provenance is attached automatically for a public package from a public repository.
+      - name: Stage the version for the owner to release
+        working-directory: packages/proofofstock-guard
+        run: npm stage publish --access public

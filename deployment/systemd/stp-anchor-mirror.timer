@@ -1,0 +1,12 @@
+[Unit]
+Description=Stock Token Passport: mirror yesterday's anchor hash on chain, once a day
+
+[Timer]
+# Twenty minutes after the anchor itself (00:20 UTC), so the manifest of the day exists and its hash is final.
+OnCalendar=*-*-* 00:40:00 UTC
+RandomizedDelaySec=5min
+Persistent=true
+Unit=stp-anchor-mirror.service
+
+[Install]
+WantedBy=timers.target

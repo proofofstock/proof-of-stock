@@ -1,0 +1,22 @@
+{
+  "_finding": "The counter learned what people do on the page. Only a kind from a fixed list may reach the file: a value outside the list, or text a visitor typed, must be dropped.",
+  "target": "apps/stocks-analytics.mjs",
+  "runner": [
+    "node",
+    "apps/stocks-analytics.test.mjs"
+  ],
+  "mutations": [
+    {
+      "name": "any value of a known kind is taken",
+      "find": "if (!Object.hasOwn(ACTIONS, x) || !ACTIONS[x].test(v)) return null",
+      "replace": "if (!Object.hasOwn(ACTIONS, x)) return null",
+      "expect": "FAIL an action never carries text"
+    },
+    {
+      "name": "any kind is taken",
+      "find": "if (!Object.hasOwn(ACTIONS, x) || !ACTIONS[x].test(v)) return null",
+      "replace": "if (false) return null",
+      "expect": "FAIL an action never carries text"
+    }
+  ]
+}

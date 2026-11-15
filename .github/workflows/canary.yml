@@ -1,0 +1,34 @@
+# The outside check (scripts/canary.mjs): proofofstock.xyz asked known questions from GitHub's runners every 30
+# minutes, its list hashes and price evidence checked independently. It runs only in the public repository, where
+# hosted runners are free; in the private one the job is skipped and costs nothing.
+# Secrets (repository settings of proofofstock/proof-of-stock, set by the owner): STP_ALERT_TELEGRAM_TOKEN and
+# STP_ALERT_TELEGRAM_CHAT. Without them a failure shows as a red run only.
+name: Canary
+on:
+  schedule:
+    # Twice an hour is what we ask for. GitHub drops most scheduled runs on a quiet public repository, and what
+    # actually lands is a handful a day (measured 15.11: six runs in thirty hours). Everything we say about this
+    # check is written to match that, not the cron line: see README.md and the llms.txt block in stocks-web.mjs.
+    - cron: '11,41 * * * *'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: canary
+  cancel-in-progress: false
+jobs:
+  canary:
+    if: github.repository == 'proofofstock/proof-of-stock'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+      - run: node scripts/canary.mjs
+        env:
+          STP_ALERT_TELEGRAM_TOKEN: ${{ secrets.STP_ALERT_TELEGRAM_TOKEN }}
+          STP_ALERT_TELEGRAM_CHAT: ${{ secrets.STP_ALERT_TELEGRAM_CHAT }}

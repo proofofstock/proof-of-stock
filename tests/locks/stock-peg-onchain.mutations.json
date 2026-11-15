@@ -1,0 +1,52 @@
+{
+  "_finding": "On Base, 12.11.2026, DexScreener listed pools from one Aerodrome factory as tens of thousands of dollars deep while each held about $0.01 of USDC, and for 14 of the 41 Base tokens with an eligible pool the premium was read from one of them. The recorder now reads every pool it knows from the chain at one block, and the chain wins. These mutations put the aggregator back in charge, turn a pool round, and drop the bytes that make the evidence re-checkable.",
+  "target": "scripts/stocks/onchain-pools.mjs",
+  "runner": [
+    "node",
+    "scripts/stocks/onchain-pools.test.mjs"
+  ],
+  "mutations": [
+    {
+      "name": "the aggregator keeps its liquidity where the chain read the pool",
+      "find": "liquidity: { ...(p.liquidity || {}), usd: r.liquidityUsd != null ? r.liquidityUsd : p?.liquidity?.usd }",
+      "replace": "liquidity: { ...(p.liquidity || {}), usd: p?.liquidity?.usd }",
+      "expect": "FAIL the chain's liquidity replaces the aggregator's"
+    },
+    {
+      "name": "a pool whose token1 is ours is not inverted",
+      "find": "    const inOther = tIs0 ? p : 1 / p\n    const bT",
+      "replace": "    const inOther = p\n    const bT",
+      "expect": "FAIL token1 is ours: the price inverts"
+    },
+    {
+      "name": "a v4 pool against WETH is read anyway",
+      "find": " && !(e.kind === 'v4' && e.other === weth)",
+      "replace": "",
+      "expect": "FAIL a v4 pool against WETH is not read"
+    },
+    {
+      "name": "the evidence leaves out the WETH/USD leg",
+      "find": "    const usdLeg = e.other === weth ? [eth.slot0, eth.token0] : []",
+      "replace": "    const usdLeg = []",
+      "expect": "FAIL the evidence calldata is exactly the pool's calls and the WETH/USD leg"
+    },
+    {
+      "name": "the result bytes are encoded with a wrong head",
+      "find": "return word(r.success ? 1 : 0) + word(0x40) + word(d.length / 2) + padRight(d)",
+      "replace": "return word(r.success ? 1 : 0) + word(0x20) + word(d.length / 2) + padRight(d)",
+      "expect": "FAIL one result is laid out as the ABI says"
+    },
+    {
+      "name": "a pool values its own token side at its own price",
+      "find": "depth(human(bT, dT), human(bO, dO) * usdO, ctx.tokenUsd)",
+      "replace": "depth(human(bT, dT), human(bO, dO) * usdO, priceUsd)",
+      "expect": "FAIL a pool does not set its own depth: dust at an absurd price is dust"
+    },
+    {
+      "name": "with no issuer price the token side is valued at the pool price",
+      "find": "const depth = (tokens, otherUsd, tokenUsd) => otherUsd + (tokenUsd > 0 ? tokens * tokenUsd : 0)",
+      "replace": "const depth = (tokens, otherUsd, tokenUsd) => otherUsd + tokens * (tokenUsd > 0 ? tokenUsd : 250)",
+      "expect": "FAIL with no issuer price only the stablecoin or WETH side counts"
+    }
+  ]
+}

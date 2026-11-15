@@ -1,0 +1,64 @@
+{
+  "_finding": "What verify_anchor hands an agent is read from disk here, and what a calendar hands us is written here. A proof is a proof OF something and BY something: if it commits to other bytes than the manifest, or if its Bitcoin block is only the calendar's word, saying otherwise would be the one false claim this service cannot make. Same for a mirror record written for other bytes, and for a day still being written when we hash it.",
+  "target": "scripts/stocks/anchor.mjs",
+  "runner": [
+    "node",
+    "scripts/stocks/anchor.test.mjs"
+  ],
+  "mutations": [
+    {
+      "name": "a proof of other bytes is read as a proof of this manifest",
+      "find": "      if (proof.digest.toString('hex') !== digest) { out.state = 'other-digest'; return out }",
+      "replace": "      if (false) { out.state = 'other-digest'; return out }",
+      "expect": "FAIL a proof that commits to OTHER bytes is a fault, never a Bitcoin block beside this hash"
+    },
+    {
+      "name": "a mirror entry written for other bytes is shown under this day",
+      "find": "      mirrors = all.filter((x) => !x.sha256 || x.sha256 === digest)",
+      "replace": "      mirrors = all",
+      "expect": "FAIL ...and so is one entry of other bytes inside a record that otherwise matches"
+    },
+    {
+      "name": "a mirror record of another manifest is shown",
+      "find": "    if (m && m.sha256 === digest) {",
+      "replace": "    if (m) {",
+      "expect": "FAIL a record of other bytes is dropped even when its entries name no hash at all"
+    },
+    {
+      "name": "a fresh calendar answer may already claim a Bitcoin block",
+      "find": "      if (!fresh.length || fresh.some((a) => a.kind !== 'pending')) throw new Error('a fresh calendar answer must be pending only: this one is not')",
+      "replace": "      if (false) throw new Error('never')",
+      "expect": "FAIL a fresh answer that already claims Bitcoin is refused, and nothing is written"
+    },
+    {
+      "name": "the calendar's word about Bitcoin is published as ours",
+      "find": "      out.state = btc ? 'bitcoin-claimed' : atts.some((a) => a.kind === 'pending') ? 'pending' : 'other'",
+      "replace": "      out.state = btc ? 'bitcoin' : atts.some((a) => a.kind === 'pending') ? 'pending' : 'other'",
+      "expect": "FAIL a Bitcoin attestation we have not checked is CLAIMED, never stated"
+    },
+    {
+      "name": "one source confirming a merkle root is enough",
+      "find": "      if (agreed.length >= 2 && !disagreed.length) {",
+      "replace": "      if (agreed.length >= 1) {",
+      "expect": "FAIL one source alone is not enough to call it verified"
+    },
+    {
+      "name": "a day still being written is hashed anyway",
+      "find": "      if (settleMs > 0 && now() - stat.mtimeMs < settleMs) throw new NotSettled(",
+      "replace": "      if (false) throw new NotSettled(",
+      "expect": "FAIL a day whose file was just written is not hashed, and says so as its own kind of error"
+    },
+    {
+      "name": "a proof past the upgrade window stops being looked at",
+      "find": "    if (day > today) continue",
+      "replace": "    if (day > today || day < since) continue",
+      "expect": "FAIL the directory: proofs in the window are completed in place, older ones are read but never written"
+    },
+    {
+      "name": "a confirmed record with nobody behind it keeps the word when read",
+      "find": "  const asRead = (m) => (m && m.status === 'confirmed' && !(m.witnessed_by || []).length ? { ...m, status: 'in-block-unwitnessed' } : m)",
+      "replace": "  const asRead = (m) => m",
+      "expect": "FAIL confirmed with nobody behind it reads back as in-block-unwitnessed"
+    }
+  ]
+}

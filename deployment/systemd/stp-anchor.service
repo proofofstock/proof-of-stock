@@ -1,0 +1,52 @@
+# deployment/systemd/stp-anchor.service: once a day, the manifest of the day's data files and its OpenTimestamps proofs
+# (scripts/stocks/anchor.mjs), and the proofs of the last days completed once Bitcoin confirms them. It reads the data
+# roots and writes only /var/lib/stp-anchors; it talks to the public OpenTimestamps calendars (*.opentimestamps.org)
+# and nothing else. No key, no wallet, no transaction of ours.
+[Unit]
+OnFailure=stp-alert@%n.service
+Description=Stock Token Passport: daily anchor of the data files in Bitcoin (OpenTimestamps)
+After=stp-peg.service stp-impostors.service stp-mirror.service
+
+[Service]
+Type=oneshot
+# The dedicated user pos (deployment/CUTOVER.md), never root. It reads only our own data root.
+User=pos
+Group=pos
+WorkingDirectory=/opt/stp/current
+Environment=STOCKS_ROOT_BASE=/var/lib/pos/base
+Environment=STOCKS_ROOT_ROBINHOOD=/var/lib/pos/robinhood
+Environment=STP_ANCHOR_DIR=/var/lib/stp-anchors
+ExecStart=/usr/bin/node scripts/stocks/anchor.mjs
+# A day is hashed only once the writers have finished with it: the recorder appends its run row when the run ends, so
+# a run that started at 23:52 can still be writing into yesterday's file at 00:20. The script then exits 75 and this
+# brings it back a little later, WITHOUT an alert; exit 1 (a real failure) is left to OnFailure.
+Restart=on-failure
+RestartPreventExitStatus=1
+RestartSec=10min
+StartLimitIntervalSec=2h
+StartLimitBurst=6
+Nice=10
+TimeoutStartSec=5min
+NoNewPrivileges=true
+# It reads /var/lib/pos (0755, ours) and writes only /var/lib/stp-anchors, which StateDirectory gives to pos (systemd
+# re-owns the root-owned files of earlier runs on the first start). No capability at all.
+CapabilityBoundingSet=
+AmbientCapabilities=
+StateDirectory=stp-anchors
+ProtectSystem=strict
+ReadWritePaths=/var/lib/stp-anchors
+# The owner's secrets do not exist for it (systemd itself reads EnvironmentFile= before this applies).
+InaccessiblePaths=-/etc/pos -/etc/stp
+ProtectHome=read-only
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true

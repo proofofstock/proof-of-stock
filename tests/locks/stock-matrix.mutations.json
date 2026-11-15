@@ -1,0 +1,49 @@
+{
+  "_finding": "The Base and Robinhood matrix puts two issuers' tokens of one share side by side. It must pair them by ISIN only (a symbol match pairs unrelated securities that share letters), compare each venue's premium over its own reference and never the raw prices (the multipliers and references differ), keep a stale reading out of the gaps, carry the reason when a premium is missing, and rank by the size of the gap.",
+  "target": "evm/core/stocks/cross-chain.mjs",
+  "runner": ["node", "evm/core/stocks/cross-chain.test.mjs"],
+  "mutations": [
+    {
+      "name": "paired by symbol instead of ISIN",
+      "find": "    for (const b of byIsin.get(a.isin) || []) {\n",
+      "replace": "    for (const b of (byChain[B]?.records || []).filter((x) => low(tickerish(x)) === low(tickerish(a)))) {\n",
+      "expect": "FAIL a look-alike symbol with another ISIN is not paired"
+    },
+    {
+      "name": "raw prices compared instead of premiums",
+      "find": "        gap: refused.length ? null : vb.premium - va.premium,\n",
+      "replace": "        gap: refused.length ? null : vb.dex_price_usd - va.dex_price_usd,\n",
+      "expect": "FAIL the gap is the Robinhood premium minus the Base premium"
+    },
+    {
+      "name": "the gap sign is reversed",
+      "find": "        gap: refused.length ? null : vb.premium - va.premium,\n",
+      "replace": "        gap: refused.length ? null : va.premium - vb.premium,\n",
+      "expect": "FAIL the gap is the Robinhood premium minus the Base premium"
+    },
+    {
+      "name": "a stale reading enters the gap",
+      "find": "  if (v.stale) return `${v.chain}: reading_stale`\n",
+      "replace": "",
+      "expect": "FAIL a reading older than 30 min is flagged stale and gets no gap"
+    },
+    {
+      "name": "a missing premium loses its reason",
+      "find": "  if (v.premium == null) return `${v.chain}: ${v.premium_refused}`\n",
+      "replace": "  if (v.premium == null) return 'missing'\n",
+      "expect": "FAIL a missing premium carries its reason"
+    },
+    {
+      "name": "rows are ranked by signed gap, not its size",
+      "find": "(x.gap != null ? Math.abs(y.gap) - Math.abs(x.gap) : 0)",
+      "replace": "(x.gap != null ? y.gap - x.gap : 0)",
+      "expect": "FAIL rows with a gap come first, the largest |gap| first"
+    },
+    {
+      "name": "the reference age is the stored one, not computed against now",
+      "find": "  const refAge = ref && ref.updated_at && Number.isFinite(Date.parse(ref.updated_at)) ? Math.max(0, Math.round((now - Date.parse(ref.updated_at)) / 1000)) : (ref?.age_s ?? null)\n  const best = l && l.pools",
+      "replace": "  const refAge = ref?.age_s ?? null\n  const best = l && l.pools",
+      "expect": "FAIL the reference age is computed against now, not the stored age"
+    }
+  ]
+}

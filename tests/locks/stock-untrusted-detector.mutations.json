@@ -1,0 +1,22 @@
+{
+  "_finding": "The impostor rule compared the symbol and name as written, so an invisible character was a way past it; and normalizing alone would have dropped names whose stem is only invisible characters, closing those cases as gone.",
+  "target": "evm/core/stocks/impostor.mjs",
+  "runner": [
+    "node",
+    "apps/untrusted-text.test.mjs"
+  ],
+  "mutations": [
+    {
+      "name": "the symbol is compared as written",
+      "find": "  const sym = normalizeUntrusted(identity.symbol)",
+      "replace": "  const sym = typeof identity.symbol === 'string' ? identity.symbol.trim() : ''",
+      "expect": "FAIL a zero-width character in the symbol is no longer a way past the exact comparison"
+    },
+    {
+      "name": "the name as written is no longer tested",
+      "find": "(ROBINHOOD_NAME.test(name) || ROBINHOOD_NAME.test(asWritten))",
+      "replace": "(ROBINHOOD_NAME.test(name))",
+      "expect": "FAIL a name whose stem is only a zero-width space is still a case"
+    }
+  ]
+}

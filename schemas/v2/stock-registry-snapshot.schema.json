@@ -1,0 +1,39 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://proofofstock.xyz/schemas/v2/stock-registry-snapshot.schema.json",
+  "title": "Issuer registry snapshot",
+  "description": "One row per change of an issuer's registry (evm/core/stocks/history.mjs, docs/stocks-truth-layer-tz.md §H2): the full canonical list without prices, its hash, the previous snapshot's hash and what changed by address.",
+  "type": "object",
+  "required": ["_schema_version", "chain_id", "issuer", "fetched_at", "hash", "prev_hash", "records", "added", "removed", "changed", "body"],
+  "properties": {
+    "_schema_version": { "const": "1.0" },
+    "chain_id": { "type": "integer" },
+    "issuer": { "enum": ["coinbase", "robinhood"] },
+    "fetched_at": { "type": "string", "format": "date-time" },
+    "hash": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+    "prev_hash": { "type": ["string", "null"], "pattern": "^sha256:[0-9a-f]{64}$" },
+    "records": { "type": "integer", "minimum": 0 },
+    "added": { "type": "array", "items": { "type": "string", "pattern": "^0x[0-9a-f]{40}$" } },
+    "removed": { "type": "array", "items": { "type": "string", "pattern": "^0x[0-9a-f]{40}$" } },
+    "changed": { "type": "array", "items": { "type": "string", "pattern": "^0x[0-9a-f]{40}$" } },
+    "body": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["address", "symbol", "name", "isin", "multiplier", "multiplier_pending", "supplied", "paused"],
+        "properties": {
+          "address": { "type": "string", "pattern": "^0x[0-9a-f]{40}$" },
+          "symbol": { "type": ["string", "null"] },
+          "name": { "type": ["string", "null"] },
+          "isin": { "type": ["string", "null"] },
+          "multiplier": { "type": ["number", "null"] },
+          "multiplier_pending": { "type": ["number", "null"] },
+          "supplied": { "type": "boolean" },
+          "paused": { "type": "array", "items": { "type": "string" } }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

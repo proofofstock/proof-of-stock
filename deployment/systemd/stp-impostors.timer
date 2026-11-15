@@ -1,0 +1,12 @@
+[Unit]
+Description=Stock Token Passport: impostor list every 6 hours
+
+[Timer]
+OnBootSec=5min
+OnCalendar=*-*-* 00/6:23:00
+RandomizedDelaySec=2min
+Persistent=true
+Unit=stp-impostors.service
+
+[Install]
+WantedBy=timers.target

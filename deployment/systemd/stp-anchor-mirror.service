@@ -1,0 +1,66 @@
+# deployment/systemd/stp-anchor-mirror.service: once a day, the hash that went into Bitcoin is written to Base and to
+# Robinhood Chain as well (scripts/stocks/anchor-mirror.mjs). It runs after stp-anchor.service, which makes the
+# manifest; without that manifest it exits with an error rather than inventing a day.
+#
+# THIS IS THE ONLY UNIT IN THE PROJECT THAT HAS A KEY. It arrives through LoadCredential, which systemd reads as root
+# before this unit's sandbox exists and places in a private directory only this unit can see; /etc/pos stays
+# inaccessible to the unit itself, exactly as in every other unit. The key signs one thing: a transaction to its own
+# address with value zero, carrying the day and the hash as text. It cannot send anyone's token anywhere, and the
+# worst a bug can do is spend its own gas.
+[Unit]
+OnFailure=stp-alert@%n.service
+Description=Stock Token Passport: mirror the daily anchor hash on Base and Robinhood Chain
+After=stp-anchor.service
+
+[Service]
+Type=oneshot
+# The dedicated user pos (deployment/CUTOVER.md), never root.
+User=pos
+Group=pos
+WorkingDirectory=/opt/stp/current
+Environment=STP_ANCHOR_DIR=/var/lib/stp-anchors
+# The key file is the owner's, root-owned and 0600 (scripts/ops/anchor-keygen.mjs); systemd hands this unit a copy at
+# $CREDENTIALS_DIRECTORY/anchor-key, which the script finds by name. The unit fails if the file is missing, which is
+# the right answer: a mirror that silently stops is worse than an alert.
+LoadCredential=anchor-key:/etc/pos/anchor.key
+# A keyed RPC provider may replace either public URL; the file never holds a key of ours.
+EnvironmentFile=-/etc/pos/anchor.env
+ExecStart=/usr/bin/node scripts/stocks/anchor-mirror.mjs
+Nice=10
+# The main day waits up to 90 s for a block; the days it catches up do not wait at all, so a run is bounded by its
+# rpc calls. The limit is generous on purpose: a run killed between sending and writing its record would leave a
+# transaction nobody has written down.
+TimeoutStartSec=15min
+NoNewPrivileges=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+# It writes mirror-<day>.json beside the manifest it mirrors, and nothing else anywhere.
+StateDirectory=stp-anchors
+ProtectSystem=strict
+ReadWritePaths=/var/lib/stp-anchors
+# The owner's secrets do not exist for it: the key it uses came through LoadCredential, not from here.
+InaccessiblePaths=-/etc/pos -/etc/stp
+ProtectHome=read-only
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+# AF_UNIX is here for name resolution, not for anything of ours: on a host using nss-resolve or nscd, getaddrinfo
+# talks to it over a unix socket, and without this the unit would fail to resolve either rpc at 00:40. No MemoryDeny
+# WriteExecute: node's own compiler needs writable executable pages, so it would refuse to start at all.
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources @mount @reboot @swap @raw-io @module @debug @cpu-emulation @obsolete
+# The unit that holds a key says as little as possible about itself and leaves nothing group-readable behind.
+ProtectProc=invisible
+ProcSubset=pid
+UMask=0077

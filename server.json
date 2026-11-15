@@ -1,0 +1,27 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "xyz.proofofstock/proof-of-stock",
+  "title": "Proof of Stock",
+  "description": "Is this stock token the issuer's? Base and Robinhood Chain, with a list hash you can recheck.",
+  "version": "0.7.0",
+  "websiteUrl": "https://proofofstock.xyz",
+  "icons": [
+    {
+      "src": "https://proofofstock.xyz/logo.png",
+      "mimeType": "image/png",
+      "sizes": [
+        "512x512"
+      ]
+    }
+  ],
+  "repository": {
+    "url": "https://github.com/proofofstock/proof-of-stock",
+    "source": "github"
+  },
+  "remotes": [
+    {
+      "type": "streamable-http",
+      "url": "https://proofofstock.xyz/mcp"
+    }
+  ]
+}
