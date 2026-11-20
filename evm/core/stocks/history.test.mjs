@@ -4,7 +4,7 @@
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { replayCases, caseEvents, recordCases, canonicalRegistry, registryHash, recordRegistry, HISTORY_DIR } from './history.mjs'
+import { replayCases, caseEvents, recordCases, canonicalRegistry, registryHash, recordRegistry, HISTORY_DIR, goneReason } from './history.mjs'
 import { createHistoryStore } from '../../../apps/stocks-history.mjs'
 import { eachJsonl } from '../../../scripts/lib/jsonl.mjs'
 import { validateV2 } from '../../../schemas/v2/validate.mjs'
@@ -46,6 +46,9 @@ console.log('H1: the case archive')
   check('replaying the archive reproduces the current list, as sets', [...replay.keys()].sort().join() === [A, C].sort().join())
   run(root, [item(C)], T3 + 6 * 3600e3)
   check('a case that left a complete list closes as gone', rowsOf(root, 'cases-').some((r) => r.event === 'gone' && r.address === A))
+  const gone = rowsOf(root, 'cases-').find((r) => r.event === 'gone' && r.address === A)
+  check('...and says why it closed', gone && ['imitated_left_list', 'no_longer_matches'].includes(gone.gone_reason), JSON.stringify(gone && gone.gone_reason))
+  check('the reason is the imitated stock leaving the issuer\'s list, or the token no longer copying one', goneReason({ registry_address: '0xr' }, new Set()) === 'imitated_left_list' && goneReason({ registry_address: '0xr' }, new Set(['0xr'])) === 'no_longer_matches' && goneReason({ registry_address: null }, new Set()) === 'no_longer_matches')
 }
 {
   // Two runs on the same day land in the same file: the second must add to it, not replace it.

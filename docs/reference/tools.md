@@ -1,7 +1,9 @@
 # MCP tools
 
 Seven read-only tools on a public MCP server. None of them trades, and none signs anything for a caller. (The project
-holds one key, on its own host, which writes nothing but our daily anchor: see [`verify_anchor`](#tool-verify_anchor).)
+holds two keys, on its own host: one writes nothing but our daily anchor, see [`verify_anchor`](#tool-verify_anchor);
+the other only settles a paid pass a buyer has signed for, see [pay per call](../how-to/pay-per-call.md). No tool
+reaches either.)
 
 ```bash
 curl -s https://proofofstock.xyz/mcp \
@@ -47,7 +49,7 @@ curl -s https://proofofstock.xyz/mcp -H 'content-type: application/json' \
     "protocolVersion": "2025-06-18",
     "capabilities": { "tools": { "listChanged": false } },
     "serverInfo": { "name": "proof-of-stock", "title": "Proof of Stock", "version": "__VERSION__", "websiteUrl": "https://proofofstock.xyz" },
-    "instructions": "Checks tokenized stocks on Base (Coinbase registry) and Robinhood Chain (Robinhood registry): …"
+    "instructions": "Checks tokenized stocks, the real-world assets (RWA) that trade on-chain, on Base (Coinbase registry) and Robinhood Chain (Robinhood registry): …"
   }
 }
 ```
@@ -103,7 +105,7 @@ each IP to 10 requests per second (burst 40) and 20 open connections, answering 
 <a id="tool-find_stock_token"></a>
 ## `find_stock_token`
 
-Find issuer-listed tokens on one chain by ticker, company name or ISIN, and get their official contract addresses.
+Find issuer-listed tokens on one chain by ticker, company name or ISIN, and get the issuer's own contract addresses.
 
 ```bash
 curl -s https://proofofstock.xyz/mcp -H 'content-type: application/json' \
@@ -175,7 +177,7 @@ Lead sentences:
 |---|---|
 | `exact` | `1 issuer-listed token on Base has exactly that ticker or ISIN: NVDAc.` |
 | `fuzzy` | `No issuer-listed token on Base has that exact ticker or ISIN. 1 matches by company name or ticker prefix instead (see match_quality): AAPLc. Check that this is the company meant.` |
-| `none` | `No issuer-listed token on Base matches that query by ticker, ISIN or company name. The query is in the answer as` `query` `. That says nothing about tokens outside the registry: check a contract address with stock_passport.` |
+| `none` | `No issuer-listed token on Base matches that query by ticker, ISIN or company name. The query is in the answer as `query`. That says nothing about tokens outside the registry: check a contract address with stock_passport.` |
 
 **The lead never repeats the query.** It is the caller's own text, and the lead is the sentence this server tells an
 agent to quote, so a query written as an instruction would come back as our words. The query stays in the answer as
@@ -296,7 +298,7 @@ curl -s https://proofofstock.xyz/mcp -H 'content-type: application/json' \
 For a token outside the registry the lead opens with `NOT`:
 
 ```
-NOT an issuer token: 0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee is not in the issuer registry on Base; its symbol or name imitates NVDAc (official contract 0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa).
+NOT an issuer token: 0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee is not in the issuer registry on Base; its symbol or name imitates NVDAc (the issuer's contract 0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa).
 ```
 
 ### Input

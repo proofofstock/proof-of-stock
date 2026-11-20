@@ -140,27 +140,86 @@ Bump `version` in `package.json` and `server.json` together, then run the MCP re
 
 ## Paid passes (x402): turning them on
 
-Off by default: without the two host facts below
+**Off by default.** Without the two host facts below every refusal stays the plain 429 and no 402 is ever served,
+which is the free service exactly as it was.
 
-The module itself is a host file. `evm/core/stocks/x402.mjs` (and its test) are **gitignored**: the
-money path does not belong in a repository that is exported to a public one. Copy them to the host at the
-same paths beside the app; a deploy through git pull leaves them untouched, because git keeps ignored files;
-and add them to the host's config backup, the way a key file is, because a checkout without them is the
-free service and nothing more., every refusal stays the plain 429 and no 402 is ever served. To turn
-them on, give the web unit both facts (in `/etc/pos/web.env` or the unit's environment):
+**The module is a host file.** `evm/core/stocks/x402.mjs` and its test are **gitignored** (owner, 15.11): the money
+path does not belong in a repository that is exported to a public one. So it is in neither repository, and therefore
+in no release built from `git archive`.
+
+A repository of its own, private, for the money path alone was weighed and declined (owner, 16.11). The module is not
+self-contained (it imports `evm-tx.mjs` from this tree and its test runs inside this checkout), so a second repository
+buys a history we already have three copies of, at the price of one more place the money path lives. Revisit it when
+somebody outside this pair touches that code, or when its tests have to run in CI rather than in the host's own gate.
+
+That has one consequence worth more than the rest of this section. **A release only has it because the deploy puts
+it there.** The deploy copies everything under `/opt/stp/host/` into the new release before the gate runs, so:
+
+```sh
+install -D -m 644 x402.mjs      /opt/stp/host/evm/core/stocks/x402.mjs
+install -D -m 644 x402.test.mjs /opt/stp/host/evm/core/stocks/x402.test.mjs
+sh /opt/stp/current/scripts/deploy.sh --status        # says which host files the running release has
+```
+
+Put them there, not into a release: a release is replaced by the next deploy. On 15.11 the module was copied into the
+release tree by hand, and the first deploy after that built a tree without it. Nothing complained, because a host
+without the module is a working free service. `--status` now names every host file and says MISSING when a release
+does not carry one, and the site logs a line at startup if the host names a payee or a key file and the module is
+not there.
+
+`/opt/stp/host` holds no secrets (the settlement key stays in `/etc/pos/`), but it is the only copy of the money path
+on the machine: it belongs in the host's config backup.
+
+To turn the passes on, give the web unit both facts (in `/etc/pos/web.env` or the unit's environment):
 
 1. `STP_X402_PAY_TO` : the Base address that receives the payments. A fresh wallet made for this; it is public and it
    appears in every 402 the site serves.
-2. The settlement key: a file with 32 bytes of hex, named by `STP_X402_KEY_FILE` (or systemd `LoadCredential=x402-key`
-   with `CREDENTIALS_DIRECTORY`). `chmod 600`, owned by the service user, never in the repository, never an env value.
-   This is the same pattern as the anchor mirror's key (`loadKey` there).
+2. The settlement key: a file with 32 bytes of hex, never in the repository, never an env value. This is the same
+   pattern as the anchor mirror's key (`loadKey` there), and it is made the same way, on the host, printing only the
+   address:
+
+   ```sh
+   sudo node /opt/stp/current/scripts/ops/anchor-keygen.mjs --file=/etc/pos/x402.key    # root:root 0600
+   ```
+
+   `stp-web` cannot read `/etc/pos` (`InaccessiblePaths=`), so `STP_X402_KEY_FILE` pointing there does not work
+   for it. The key reaches it through `LoadCredential`, which systemd reads as root before the sandbox exists; the
+   module then finds it at `$CREDENTIALS_DIRECTORY/x402-key`. That line is a **host-only drop-in**, not part of
+   `deployment/systemd/stp-web.service`, because a unit naming a credential file that is absent does not start, and a
+   host without passes must still serve:
+
+   ```ini
+   # /etc/systemd/system/stp-web.service.d/x402.conf
+   [Service]
+   LoadCredential=x402-key:/etc/pos/x402.key
+   ```
+
+   Like the anchor key, it is deliberately in no backup: it holds only gas, and a lost one is replaced by making a new
+   one and funding it. The drop-in and `/etc/pos/web.env` are host config, and belong in the host's config backup.
+
+   What the key signs: one transaction per purchase, calling USDC's `transferWithAuthorization` with the buyer's own
+   signature. That signature fixes the payee, the amount and the nonce, and the server sends it only after checking
+   the payee and amount are the ones its own 402 named, so the key cannot redirect or enlarge a payment. The USDC goes
+   to `STP_X402_PAY_TO`, a wallet this key does not control.
 
 The settlement wallet needs gas on Base: about 0.001 ETH covers thousands of settlements at the fee cap in the module.
 A dry wallet refuses politely (the buyer is told the payment was not taken) and the journal says
-`the settlement wallet is out of gas`, which is the alert to top it up. The node it settles through is `STP_RPC_BASE`,
-the same env the anchor mirror reads; the default is `mainnet.base.org`.
+`the settlement wallet is out of gas`. The node it settles through is `STP_RPC_BASE`, the same env the anchor mirror
+reads; the default is `mainnet.base.org`.
+
+**The alarms reach Telegram through stp-health** (since 20.11; before that they were journal lines nobody read). The
+site keeps what is needed in `/api/status` under `payments`, and stp-health turns it into alerts every 15 minutes:
+
+- `x402:paused`: several settlements in a row failed after broadcast, the griefing pattern. Selling resumes by itself
+  after 30 minutes, and a day's settlements may not cost more than 0.0003 ETH of gas in any case (`DAILY_GAS_WEI` in
+  the module).
+- `x402:late:<tx>`: a broadcast had no receipt for 10 minutes. Look the hash up on BaseScan and refund by hand if the
+  USDC moved and no pass was given. Sent once; it is a task, never "resolved".
+- `x402:gas`: the settlement wallet holds less than a day of gas (0.0003 ETH), or its balance could not be read.
+
+Every settlement writes `[x402] settled <tx> payer <address>` to the journal: that line is the refund record.
 
 The price, the pass length, the cooldown and the queue cap live in `evm/core/stocks/x402.mjs`, not in env: changing
 them is a code change and a release, so that the price a buyer was shown in a 402 and the price settled can never
-disagree. After enabling, watch the journal for `[x402] pass granted` on the first live purchase, and run the how-to's
+disagree. After enabling, watch the journal for `[x402] settled <tx> payer <address>` on the first live purchase, and run the how-to's
 own two-step curl against the live site.

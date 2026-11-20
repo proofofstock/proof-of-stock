@@ -1,6 +1,6 @@
 {
   "name": "proof-of-stock",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "private": true,
   "license": "MIT",
   "repository": {
@@ -11,7 +11,8 @@
     "source_public": true
   },
   "type": "module",
-  "description": "Is this token the issuer's tokenized stock? Registry check, issuer reference price and its age, on-chain premium; a site, a public MCP server and a pre-trade guard for agents. Base and Robinhood Chain.",
+  "keywords": ["rwa", "real-world-assets", "tokenized-stocks", "base", "robinhood-chain", "mcp"],
+  "description": "RWA: is this token the issuer's tokenized stock? Registry check, issuer reference price and its age, on-chain premium; a site, a public MCP server and a pre-trade guard for agents. Base and Robinhood Chain.",
   "engines": {
     "node": ">=20"
   },

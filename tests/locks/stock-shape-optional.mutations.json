@@ -1,0 +1,28 @@
+{
+  "_finding": "DexScreener puts `boosts` on a pair only while the token has a paid boost, so a run that met none read the field as gone and alerted (16.11, Robinhood Chain), and the next run that met one would have read it as new. The allowance for such paths must silence exactly that and nothing else: not a field that matters, and not a change of type.",
+  "target": "evm/core/stocks/shape.mjs",
+  "runner": [
+    "node",
+    "scripts/stocks/health.test.mjs"
+  ],
+  "mutations": [
+    {
+      "name": "an optional path that disappears is still called gone",
+      "find": "if (!after.paths[p] && !isOptional(p, optional)) out.push(",
+      "replace": "if (!after.paths[p]) out.push(",
+      "expect": "FAIL a boost that disappears from the answer is not a format change"
+    },
+    {
+      "name": "an optional path that appears is still called new",
+      "find": "if (!was) { if (!isOptional(p, optional)) out.push(",
+      "replace": "if (!was) { if (true) out.push(",
+      "expect": "FAIL ...nor is one that appears"
+    },
+    {
+      "name": "any allowance silences every missing field",
+      "find": "optional.some((o) => p === o || p.startsWith(o + '.') || p.startsWith(o + '[]'))",
+      "replace": "optional.length > 0",
+      "expect": "FAIL ...but the same disappearance of a field that matters is still seen"
+    }
+  ]
+}

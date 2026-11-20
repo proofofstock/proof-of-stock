@@ -87,8 +87,8 @@ curl -s https://proofofstock.xyz/mcp \
   -d '{"jsonrpc":"2.0","id":2,"method":"tools/list"}' | jq -r '.result.tools[].name'
 ```
 
-You should see six names: `find_stock_token`, `list_stock_tokens`, `stock_passport`, `verify_stock_tokens`,
-`recent_impostors` and `compare_venues`. Each is described in [the tools reference](../reference/tools.md).
+You should see seven names: `find_stock_token`, `list_stock_tokens`, `stock_passport`, `verify_stock_tokens`,
+`recent_impostors`, `compare_venues` and `verify_anchor`. Each is described in [the tools reference](../reference/tools.md).
 
 ## Step 2: ask for a passport
 

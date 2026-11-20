@@ -44,11 +44,15 @@ about the mirror.
 5. The mirror record of a day sits beside the manifest: `https://proofofstock.xyz/anchors/mirror-2026-11-12.json`.
    It names, per chain, the transaction hash and the address that sent it. Open the transaction in any explorer: its
    calldata is ASCII and reads `proofofstock anchor 2026-11-12 sha256:<hash>`, which must be the same hash as the
-   manifest's.
+   manifest's. On Base the line may be followed by our Base Builder Code ([ERC-8021](https://docs.base.org/specifications/builder-codes/for-app-developers):
+   the code in ASCII, one length byte, `00`, and the 16-byte marker `8021…8021`), which tells Base the transaction is
+   ours. It changes nothing in the line; cut it off before you compare.
 6. Or ask once and get all of it: the MCP tool [`verify_anchor`](../reference/tools.md#tool-verify_anchor) returns
    the hash, the state of each OpenTimestamps proof and every mirror transaction for a day, with the steps.
 
 The transactions are sent by a key that exists for this and nothing else. It signs a transfer of nothing to its own
-address, so the worst it can do is spend its own gas; it holds no token of anyone's and never touches one.
+address, so the worst it can do is spend its own gas; it holds no token of anyone's and never touches one. The
+project's other key, the one that settles paid passes, never sends an anchor: a mirror from any address other than
+the one the record names is not ours.
 
 The manifests form a chain: each names the SHA-256 of the one before (`previous`), so a gap or a rewritten day shows.

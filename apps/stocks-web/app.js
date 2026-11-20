@@ -39,7 +39,7 @@
   const blank = (v) => (v === NA ? '' : v)
   const usd = (x) => (x == null ? NA : '$' + Number(x).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: x >= 100 ? 2 : 4 }))
   const big = (x) => (x == null ? NA : '$' + Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 1 }).format(x))
-  const pct = (x) => (x == null ? NA : (x > 0 ? '+' : '') + (x * 100).toFixed(2) + '%')
+  const pct = (x) => { if (x == null) return NA; const s = (x * 100).toFixed(2); return Number(s) === 0 ? '0.00%' : (x > 0 ? '+' : '') + s + '%' }
   // The on-chain price against the issuer's: above it green, below it red, as a market reader expects; under 0.5% it is
   // noise and stays neutral, and beyond 2% it is bold. (Until 10.11 the colour was the gap's size whatever its sign, amber
   // then red, which read as "a rise is red".)
@@ -305,7 +305,7 @@
         out.append(line(`No issuer stock token matches “${q}”${chain !== 'all' ? ' on ' + CHAIN_LABEL[chain] : ''}.`, 'muted'))
         const acts = h('div', { class: 'actions' })
         if (chain !== 'all') acts.append(h('button', { type: 'button', class: 'btn', onclick: () => { setChain('all', true); run(q) } }, 'search both chains'))
-        acts.append(h('button', { type: 'button', class: 'btn', onclick: () => run('fakes') }, 'see tokens pretending to be stocks'))
+        acts.append(h('button', { type: 'button', class: 'btn', onclick: () => run('fakes') }, 'see the week\'s look-alikes'))
         out.append(acts, line('If you have a contract address, paste it to check it.', 'faint'))
         return
       }
@@ -425,6 +425,11 @@
         const inside = l.dex_inside_quote === true ? ' The on-chain price is inside the issuer\'s quote.' : l.dex_inside_quote === false ? ' The on-chain price is outside the issuer\'s quote.' : ''
         return { text: `This is the issuer's token. Its bid and ask are ${ref.spread != null ? pct(ref.spread).replace('+', '') + ' ' : ''}apart right now, too wide to use as one price${stale}.${inside}`, cls: '' }
       }
+      if (l.premium_refused === 'implausible_vs_reference' && l.dex_price_usd != null) {
+        // The pool is not this token's: a coin with the same symbol, a wrong quote asset, decimals. Both numbers are
+        // shown, because the reader can see the mismatch faster than any wording of ours (16.11).
+        return { text: `This is the issuer's token, but the deepest pool we found prices it at ${usd(l.dex_price_usd)} against the issuer's ${usd(ref.price_usd)}. Those cannot be the same thing, so we do not call it a difference in price${stale}.`, cls: 'warn' }
+      }
       return { text: `This is the issuer's token, but no on-chain pool is deep enough to compare with the issuer price${stale || ' right now'}.`, cls: '' }
     }
     const d = l.premium, a = Math.abs(d)
@@ -518,9 +523,9 @@
           : r ? `Not the issuer's token. Its ticker matches ${r.ticker}. Many tokens reuse tickers, and this one is not the issuer's ${r.registry_symbol}.`
             : 'This contract is not in the issuer\'s registry for this chain, so it is not that issuer\'s stock token.'),
         p.issuer_factory && p.issuer_factory.created === false ? line('A second source agrees: ' + (FACTORY_OF[p.chain] || "the issuer's") + ' token factory never created this contract (checked on chain to block ' + Number(p.issuer_factory.checked_to_block).toLocaleString('en-US') + ').', 'faint') : null,
-        p.impostor_listing ? line('On our list of tokens pretending to be stocks since ' + String(p.impostor_listing.first_seen_at).slice(0, 10) + '.', 'faint') : null,
+        p.impostor_listing ? line('On our look-alike list since ' + String(p.impostor_listing.first_seen_at).slice(0, 10) + '.', 'faint') : null,
         caseLine(p.case),
-        r && r.registry_address ? h('div', { class: 'actions' }, h('button', { type: 'button', class: 'btn', onclick: () => passport(p.chain, r.registry_address, 'official ' + (r.registry_symbol || r.ticker)) }, 'open the official ' + (r.registry_symbol || r.ticker), h('span', { class: 'i i-arrow', 'aria-hidden': 'true' }))) : null,
+        r && r.registry_address ? h('div', { class: 'actions' }, h('button', { type: 'button', class: 'btn', onclick: () => passport(p.chain, r.registry_address, 'the issuer\'s ' + (r.registry_symbol || r.ticker)) }, 'open the issuer\'s ' + (r.registry_symbol || r.ticker), h('span', { class: 'i i-arrow', 'aria-hidden': 'true' }))) : null,
         impostorLinks(p, r ? (r.registry_symbol || r.ticker || 'stock token') : null, strong))
       return card
     }
@@ -572,7 +577,7 @@
         h('div', null, h('h2', null, i.symbol + (i.token_name ? ' · ' + i.token_name.replace(/\s+Robinhood Token$/i, '') : '')), h('div', { class: 'sub' }, where, copyAddress(p.address, true))),
         h('span', { class: 'state ok' }, 'Issuer-listed')),
       fields,
-      h('div', { class: 'plain ok' }, `Official: this exact contract is on ${ISSUER_LABEL[i.name] || i.name}'s list of its stock tokens${p.registry_age_s != null ? ` (list read ${age(p.registry_age_s)})` : ''}.`),
+      h('div', { class: 'plain ok' }, `Issuer-listed: this exact contract is on ${ISSUER_LABEL[i.name] || i.name}'s list of its stock tokens${p.registry_age_s != null ? ` (list read ${age(p.registry_age_s)})` : ''}.`),
       h('div', { class: 'plain' + (bl.cls ? ' ' + bl.cls : '') }, bl.text.replace(/^This is the issuer's token\. /, '').replace(/^This is the issuer's token, but /, 'But ')),
       notesOf(p),
       listedCase,
@@ -831,13 +836,17 @@
   // The wall of findings (spec 4): the newest cases of the last 7 days from /api/history/cases, both chains, our misses
   // included. A token's own symbol is its creator's text: it goes into a table cell as text (h() never parses HTML),
   // never into a sentence, a title or a label. No links out, no deployer: the board must not advertise a fake.
-  const BOARD_STATUS = { opened: 'open', listed: 'later listed by the issuer: we were early or wrong', gone: 'gone from our list', kind_changed: 'kind changed' }
+  const BOARD_STATUS = { opened: 'open', listed: 'later listed by the issuer: we were early or wrong', gone: 'closed', kind_changed: 'kind changed' }
+  const GONE_WHY = { imitated_left_list: 'closed: the stock it copied left the issuer\'s list', no_longer_matches: 'closed: no longer copies a listed stock' }
   async function findingsBoard () {
     const rows = $('#board-rows'), counts = $('#board-counts'), empty = $('#board-empty')
     if (!rows) return
     let r
     try { r = await api('api/history/cases?limit=24') } catch (_) { counts.textContent = 'The case archive could not be read right now.'; return }
-    const per = Object.entries(r.chains || {}).filter(([, v]) => v && !v.error)
+    // A page that hides Robinhood Chain (index.html <body class="no-rh">) shows the board for Base alone; the terminal
+    // still answers for both.
+    const hideRh = document.body.classList.contains('no-rh')
+    const per = Object.entries(r.chains || {}).filter(([c, v]) => v && !v.error && !(hideRh && c === 'robinhood'))
     if (!per.length) { counts.textContent = 'The case archive could not be read right now.'; return }
     const ev = per.flatMap(([c, v]) => (v.events || []).map((e) => ({ ...e, chain: c }))).sort((a, b) => Date.parse(b.at) - Date.parse(a.at)).slice(0, 24)
     const open = per.map(([c, v]) => `${v.counts?.open ?? 0} on ${CHAIN_LABEL[c] || c}`).join(', ')
@@ -849,11 +858,11 @@
     rows.replaceChildren(...ev.map((e) => {
       const tr = h('tr', { class: 'click', tabindex: '0' },
         h('td', null, CHAIN_LABEL[e.chain] || e.chain),
-        h('td', null, h('code', null, e.symbol || '?'), e.name ? h('span', { class: 'board-name' }, String(e.name).replace(/s+/g, ' ').slice(0, 28)) : null),
+        h('td', null, h('code', null, e.symbol || '?'), e.name ? h('span', { class: 'board-name' }, String(e.name).replace(/\s+/g, ' ').slice(0, 28)) : null),
         h('td', null, e.imitates_symbol || (e.kind === 'issuer_name_suffix' ? "the issuer's naming" : '?'),
           h('span', { class: 'board-why' }, e.kind === 'registry_name' ? 'by name' : e.kind === 'ticker' ? 'by ticker' : e.kind === 'registry_symbol' ? 'by symbol' : e.kind === 'issuer_name_suffix' ? 'by naming' : '')),
         h('td', null, age(Math.round((Date.now() - Date.parse(e.flagged_at || e.at)) / 1000))),
-        h('td', { class: e.event === 'listed' ? 'warn' : '' }, BOARD_STATUS[e.event] || e.event))
+        h('td', { class: e.event === 'listed' ? 'warn' : '' }, (e.event === 'gone' && GONE_WHY[e.gone_reason]) || BOARD_STATUS[e.event] || e.event))
       const open = () => { act('board', 'open'); toTerminal(); passport(e.chain, e.address, e.address) }
       tr.addEventListener('click', open)
       tr.addEventListener('keydown', (k) => { if (k.key === 'Enter') open() })

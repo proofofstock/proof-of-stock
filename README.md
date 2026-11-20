@@ -6,7 +6,11 @@
 ## At a glance
 
 **Is this stock token the real one?** Paste an address or a ticker; we check it against the issuer's own list on Base
-(Coinbase) and Robinhood Chain (Robinhood).
+(Coinbase) and Robinhood Chain (Robinhood). Tokenized stocks are a kind of real-world asset (RWA); we check stocks only,
+not bonds, funds or commodities.
+
+We are a centralised service, and that is why every claim here comes with a way to check it without us. The chain is
+not here so that we can be trusted: it is here so that we cannot rewrite yesterday.
 
 <table>
   <tr>
@@ -56,7 +60,7 @@ No key and no sign-up for any of these.
 | | |
 |---|---|
 | **Site** | [proofofstock.xyz](https://proofofstock.xyz): paste an address or type a ticker. |
-| **MCP server** | `https://proofofstock.xyz/mcp` (Streamable HTTP, stateless). Six tools: `find_stock_token`, `list_stock_tokens`, `stock_passport`, `verify_stock_tokens`, `recent_impostors`, `compare_venues`. |
+| **MCP server** | `https://proofofstock.xyz/mcp` (Streamable HTTP, stateless). Seven tools: `find_stock_token`, `list_stock_tokens`, `stock_passport`, `verify_stock_tokens`, `recent_impostors`, `compare_venues`, `verify_anchor`. |
 | **JSON API** | `GET /verify`, `GET /badge.svg`, `GET /api/passport` and more. See the [HTTP API reference](docs/reference/http-api.md). |
 | **Guard** | `@proofofstock/guard`, a pre-trade check for Node agents, with a Coinbase AgentKit action. `npm install @proofofstock/guard`, no dependencies. It lives in [`packages/proofofstock-guard`](packages/proofofstock-guard/). |
 
@@ -116,7 +120,7 @@ actually lists. A `503` means the registry could not be read: that is no answer,
 
 ## What it does not do
 
-- **It only reads.** It never trades, has no accounts and no cookies, and holds no wallet. Its one key lives on our own server and writes our daily anchor hash to Base and Robinhood Chain, from its own address, value zero; it can do nothing else, and nothing you send can make it sign.
+- **It only reads.** It never trades, has no accounts and no cookies, and holds no wallet of yours. It has two keys, both on our own server, each holding only gas. The anchor key writes our daily anchor hash to Base and Robinhood Chain, from its own address, value zero; nothing you send can make it sign. The settlement key exists only for [paid passes](docs/how-to/pay-per-call.md): it submits the USDC payment a buyer signed, exactly as signed, and can neither change the payee nor the amount; the payment goes to a separate wallet it does not control.
 - **It is not advice.** An answer is a fact about data at a stated time. See [Legal](docs/legal.md).
 - **"Not listed" is not "fake".** A genuine token of another issuer answers the same. Only Coinbase on Base and
   Robinhood on Robinhood Chain are checked.

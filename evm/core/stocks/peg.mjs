@@ -28,6 +28,22 @@ export const DEXSCREENER_PAIR_CAP = 30
 // for pools with their own contract, 1% for one Uniswap v4 pool. A default the owner may still change; Infinity turns it off.
 export const MAX_SOURCE_DISAGREEMENT = 0.02
 
+/**
+ * How many times the issuer's price a pool may say before we stop believing the pool rather than the market.
+ *
+ * A tokenized stock that really moved away from its share moves by percent: an outside report of this market in
+ * November 2026 put the typical distance at a fraction of a percent and the wide moments above one percent. Our own
+ * readings agree in the middle and disagreed wildly in the tail: on 16.11 one token was recorded at a premium of
+ * 7740%, a pool pricing it at $341 against an issuer price of $4.36, a factor of 78. That is not a market gap, it is
+ * a pool that is not this token's: a different coin with the same symbol, a wrong quote asset, or decimals.
+ *
+ * So four, and the bound is a RATIO, not a percentage: anything between a quarter and four times the issuer's price
+ * is still reported as a premium, however shocking, because a real depeg must never be hidden by a safety rail. Past
+ * that we refuse the premium and say what the pool said instead, which is both more honest and more useful than a
+ * number with four digits in front of the decimal point.
+ */
+export const MAX_PLAUSIBLE_RATIO = 4
+
 // Refusals, in the order they are decided; a null premium always comes with exactly one. The list itself lives in
 // schemas/v2/enums.mjs, where the CI holds it equal to the schema's enum.
 export { PEG_REFUSALS } from '../../../schemas/v2/enums.mjs'
@@ -119,5 +135,10 @@ export function pegReading (token, reference, pairs, { referenceAssets = null } 
   if (cross > 0 && Math.abs(best.price_usd / cross - 1) > MAX_SOURCE_DISAGREEMENT) return out('sources_disagree')
   const spread = num(reference?.spread)
   if (spread != null && (spread < 0 || spread > MAX_REFERENCE_SPREAD)) return out('reference_spread_wide')
-  return out(null, best.price_usd / ref - 1)
+  // Every gate above asks whether the POOL is sound: deep enough, agreed on by two sources, quoted against a sane
+  // spread. A deep pool for the wrong asset passes all of them, so the last gate asks the only remaining question:
+  // can this price and the issuer's price be the same thing at all. The numbers stay in the answer either way.
+  const ratio = best.price_usd / ref
+  if (!(ratio > 0) || ratio > MAX_PLAUSIBLE_RATIO || ratio < 1 / MAX_PLAUSIBLE_RATIO) return out('implausible_vs_reference')
+  return out(null, ratio - 1)
 }

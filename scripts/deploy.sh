@@ -30,6 +30,8 @@ if [ "${1:-}" = "--status" ]; then
   echo "running release : $(readlink -f "$BASE/current" 2>/dev/null || echo none)"
   echo "running commit  : $(running_sha)"
   for u in stp-web.service stp-peg.timer stp-impostors.timer; do printf '%-22s %s\n' "$u" "$(systemctl is-active "$u" 2>/dev/null || true)"; done
+  # Host files are invisible in git and in the archive, so the one place they can be seen is here.
+  sh "$BASE/current/scripts/host-files.sh" check "$BASE" "$BASE/current" || echo "host files      : COULD NOT BE READ (see the error above)"
   printf 'health          : '; curl -fsS -m 5 "$HEALTH" >/dev/null 2>&1 && echo 200 || echo FAIL
   exit 0
 fi
@@ -44,6 +46,11 @@ REL="$BASE/releases/$SHORT"
 if [ ! -f "$REL/.release-sha" ]; then
   echo "building $REL"
   rm -rf "$REL.tmp"; mkdir -p "$BASE/releases"; cp -a "$SRC" "$REL.tmp"
+  # The files that live on this host and in neither repository (the paid-pass module). A release is built from
+  # `git archive`, so without this step every deploy builds a tree without them: installed by hand on 15.11, the
+  # module was gone from the running release by the next deploy, silently, because a host without it is a working
+  # free service. Copied in BEFORE the gate, so the tests run against what will actually run.
+  sh "$REL.tmp/scripts/host-files.sh" copy "$BASE" "$REL.tmp"
   ( cd "$REL.tmp" && npm ci --omit=dev --no-audit --no-fund --loglevel=error )
   echo "gate: npm test in the release"
   ( cd "$REL.tmp" && npm test ) > "$BASE/gate-$SHORT.log" 2>&1 || { tail -30 "$BASE/gate-$SHORT.log"; echo "GATE FAILED: nothing switched"; exit 1; }
@@ -53,6 +60,10 @@ if [ ! -f "$REL/.release-sha" ]; then
 fi
 
 [ "$(running_sha)" = "$EXPECT" ] || { echo "REFUSED: the running release changed during the gate; re-run"; exit 3; }
+# Again, and not only when the release is built: a release already on disk is reused as it is, so a host file
+# installed after it was built would never reach it and the deploy would look like it had done its job (Codex,
+# 16.11). Copying a file that is already there costs nothing.
+sh "$REL/scripts/host-files.sh" copy "$BASE" "$REL"
 PREV=$(readlink -f "$BASE/current" 2>/dev/null || true)
 ln -sfn "$REL" "$BASE/current.new" && mv -T "$BASE/current.new" "$BASE/current"
 if systemctl cat "$WEB_UNIT" >/dev/null 2>&1; then

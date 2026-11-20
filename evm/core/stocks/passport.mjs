@@ -113,6 +113,9 @@ export function buildPassport ({ address, chainId, registry, readings = [], iden
     if (latest.premium_refused === 'reference_spread_wide') notes.push('reference_spread_wide')
     // The chain and an aggregator priced the deepest pool more than 2% apart: there is a price (the chain's) and no premium.
     if (latest.premium_refused === 'sources_disagree') notes.push('sources_disagree')
+    // The deepest pool we found prices this token so far from the issuer that the two cannot be the same thing: the
+    // pool is not this token's (16.11). There is a price, it is in the answer, and it is not a premium.
+    if (latest.premium_refused === 'implausible_vs_reference') notes.push('pool_price_implausible')
     if (latest.pools?.capped) notes.push('pools_capped')
   }
   const pending = latest ? latest.multiplier_pending : rec.multiplier_pending

@@ -1,0 +1,28 @@
+{
+  "_finding": "The Bankr skill speaks to an agent that may act on it. It would do harm the day it called a check it could not make 'listed', let a look-alike's own words into the agent's context, or called a weak resemblance a look-alike. These mutations put each back.",
+  "target": "packages/bankr-skill/proof-of-stock/scripts/check.mjs",
+  "runner": [
+    "node",
+    "packages/bankr-skill/bankr-skill.test.mjs"
+  ],
+  "mutations": [
+    {
+      "name": "a failed check reads as listed",
+      "find": "if (!v || v.status !== 200 || !v.body || typeof v.body.listed !== 'boolean') {",
+      "replace": "if (!v || !v.body) {",
+      "expect": "FAIL a body that is not a verdict is UNAVAILABLE, never listed"
+    },
+    {
+      "name": "the look-alike's own symbol is printed",
+      "find": "and it imitates ${imp.imitates_symbol ? safe(imp.imitates_symbol, 16) : \"the issuer's naming\"}.`]",
+      "replace": "and it imitates ${imp.imitates_symbol ? safe(imp.imitates_symbol, 16) : \"the issuer's naming\"}. It calls itself ${b.symbol}.`]",
+      "expect": "FAIL ...and the token's own words never reach the output"
+    },
+    {
+      "name": "any resemblance is a look-alike",
+      "find": "imp.kinds.some((k) => STRONG.has(k))",
+      "replace": "imp.kinds.length > 0",
+      "expect": "FAIL a weak resemblance is not called a look-alike"
+    }
+  ]
+}

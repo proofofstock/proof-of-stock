@@ -132,19 +132,47 @@ const SEND_TIMEOUT_MS = 20_000
 const RECEIPT_WAIT_MS = 90_000
 const RECEIPT_EVERY_MS = 5_000
 
-/** What the transaction carries: readable in any explorer, in one line, forever. */
-export function anchorCalldata (day, sha256) {
-  if (!DAY_RE.test(day)) throw new Error('day must be YYYY-MM-DD')
-  if (!/^[0-9a-f]{64}$/.test(sha256)) throw new Error('sha256 must be 64 lower-case hex characters')
-  return '0x' + Buffer.from(`proofofstock anchor ${day} sha256:${sha256}`, 'ascii').toString('hex')
+// Base's Builder Code (ERC-8021, docs.base.org/specifications/builder-codes): an app's code appended to a transaction's
+// data, so Base can count the app's activity. The layout, read from the end: the 16-byte marker, a schema byte (0), a
+// length byte, then that many bytes of ASCII codes (comma-separated). It goes AFTER our line, which stays the same
+// bytes it always was, and it is cut off again before the line is read. Base only: no other chain counts it.
+export const ERC8021_MARKER = '80218021802180218021802180218021'
+export const BUILDER_CODE_RE = /^[A-Za-z0-9_]{1,32}$/
+/** The suffix for one code, as hex without 0x. */
+export function builderSuffix (code) {
+  if (!BUILDER_CODE_RE.test(code || '')) throw new Error('a builder code is 1 to 32 letters, digits or underscores')
+  const codes = Buffer.from(code, 'ascii')
+  return codes.toString('hex') + codes.length.toString(16).padStart(2, '0') + '00' + ERC8021_MARKER
+}
+/** The code a chain's anchor carries: STP_BUILDER_CODE, on Base only; null when unset. A malformed one is refused. */
+export function builderCodeOf (chain, env = process.env) {
+  const code = String(env.STP_BUILDER_CODE || '').trim()
+  if (chain !== 'base' || !code) return null
+  if (!BUILDER_CODE_RE.test(code)) throw new Error('STP_BUILDER_CODE must be 1 to 32 letters, digits or underscores')
+  return code
 }
 
-/** The same line back out of the calldata, or null if it is not one of ours. */
+/** What the transaction carries: readable in any explorer, in one line, forever, and on Base our Builder Code after it. */
+export function anchorCalldata (day, sha256, builderCode = null) {
+  if (!DAY_RE.test(day)) throw new Error('day must be YYYY-MM-DD')
+  if (!/^[0-9a-f]{64}$/.test(sha256)) throw new Error('sha256 must be 64 lower-case hex characters')
+  return '0x' + Buffer.from(`proofofstock anchor ${day} sha256:${sha256}`, 'ascii').toString('hex') + (builderCode ? builderSuffix(builderCode) : '')
+}
+
+/** The same line back out of the calldata (any ERC-8021 suffix cut off first), or null if it is not one of ours. */
 export function readAnchorCalldata (data) {
-  const hex = String(data || '').replace(/^0x/, '')
-  if (!hex.length || hex.length % 2 || !/^[0-9a-f]+$/i.test(hex)) return null
+  let hex = String(data || '').replace(/^0x/, '').toLowerCase()
+  if (!hex.length || hex.length % 2 || !/^[0-9a-f]+$/.test(hex)) return null
+  let codes = null
+  if (hex.endsWith(ERC8021_MARKER)) {
+    const rest = hex.slice(0, -ERC8021_MARKER.length)
+    const schema = rest.slice(-2), len = parseInt(rest.slice(-4, -2), 16)
+    if (schema !== '00' || !(len > 0) || rest.length < 4 + len * 2) return null
+    codes = Buffer.from(rest.slice(-4 - len * 2, -4), 'hex').toString('ascii').split(',')
+    hex = rest.slice(0, -4 - len * 2)
+  }
   const m = Buffer.from(hex, 'hex').toString('ascii').match(/^proofofstock anchor (\d{4}-\d{2}-\d{2}) sha256:([0-9a-f]{64})$/)
-  return m ? { day: m[1], sha256: m[2] } : null
+  return m ? { day: m[1], sha256: m[2], ...(codes ? { builder_codes: codes } : {}) } : null
 }
 
 /**
@@ -237,7 +265,7 @@ export async function mirrorChain ({ chain, day, sha256, key, fetchImpl = fetch,
   if (!cfg) throw new Error(`unknown chain ${chain}`)
   const url = rpcUrlOf(chain, env)
   const from = addressOfKey(key)
-  const data = anchorCalldata(day, sha256)
+  const data = anchorCalldata(day, sha256, builderCodeOf(chain, env))
   const out = { chain, chain_id: cfg.chainId, from: checksumAddress(from), to: checksumAddress(from), sha256 }
 
   // Already sent for this day and this hash? Then see whether it has a block yet. A transaction can also be DROPPED:

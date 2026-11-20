@@ -26,6 +26,7 @@ curl -s 'https://proofofstock.xyz/verify?chain=base&address=0xaaaaaaaaaaaaaaaaaa
 - [`GET /api/overview`](#route-overview)
 - [`GET /api/impostors`](#route-impostors)
 - [`GET /api/history/cases` and `/api/history/registry`](#route-history)
+- [`GET /api/archive/at`](#route-archive-at)
 - [`GET /api/list/<hex>`](#route-list)
 - [`GET /api/matrix`](#route-matrix)
 - [`GET /api/status`](#route-status)
@@ -82,7 +83,7 @@ curl -s 'https://proofofstock.xyz/verify?chain=base&address=0xeeeeeeeeeeeeeeeeee
 |---|---|---|
 | `chain` | yes | `base` or `robinhood` |
 | `address` | one of the two | `0x` + 40 hex |
-| `addresses` | one of the two | 1 to 50 addresses, comma-separated, each `0x` + 40 hex. Costs ⌈n/10⌉ units of the rate limit, as MCP `verify_stock_tokens` does. Larger batches are not served here |
+| `addresses` | one of the two | 1 to 50 addresses free, comma-separated, each `0x` + 40 hex. Costs ⌈n/10⌉ units of the rate limit, as MCP `verify_stock_tokens` does. 51 to 150 with a [paid pass](#paid-passes): without one the answer is the pass's 402, saying why; the verdicts are the same either way. More than 150 is a 400 (the batch is a GET, and 150 addresses are what fits the proxy's request line) |
 | `receipt` | no | `1`: with `address`, add a `receipt` to keep, never cached. See [Keep a receipt of a check](../how-to/keep-a-receipt.md) |
 
 With `addresses` the answer is `{ chain, count, listed, impostors, results[], list_proof }`: one result per address, in
@@ -344,12 +345,43 @@ leaves, the server hashes it again; bytes that do not hash to their name are nev
 | 429 | over the rate limit (1 unit, like any API read) | `Retry-After: 60` |
 | 500 | `internal error`: a stored list did not hash to its name | `no-store` |
 
+<a id="route-archive-at"></a>
+## `GET /api/archive/at`
+
+What one address was on one day, from what was recorded then. Free, 1 unit of the limit.
+
+```bash
+curl -s 'https://proofofstock.xyz/api/archive/at?chain=base&address=0x77d1db15e423762aff479ecd67c49bf6bdbf4ba3&date=2026-11-15'
+```
+
+| Parameter | Required | Constraint |
+|---|---|---|
+| `chain` | yes | `base` or `robinhood` |
+| `address` | yes | `0x` + 40 hex |
+| `date` | yes | `YYYY-MM-DD`, a real calendar day (2026-02-30 is a 400, never another day), not in the future |
+
+The answer has `summary` (one plain sentence), `attestation` and `how_to_check`. `attestation` holds:
+
+- `verdict_on_date`: `listed` (on the issuer's list: that decides, even if a case was still open), `impostor` (not listed and an open look-alike case that day), `not_listed`, or `unknown` when no issuer list was recorded for that day;
+- `list`: the issuer list in force at the end of that day (UTC), by `registry_hash`, `in_force_since`, `addresses_sha256` and the URLs of that exact list frozen (`/api/list/<hex>`);
+- `case`: the look-alike case as it stood at the end of the day (`open` with what it imitated and what the contract said, `closed` with `gone_reason`, `listed_by_issuer`, or `none`);
+- `anchors`: the anchor of the day the list was recorded and of the day asked, each a manifest SHA-256 in Bitcoin and its mirror transactions. A day is anchored the night after it, so `anchors.date` is null until then and appears later;
+- `partial: true` when the day asked is today: the answer is as of now and may change before midnight UTC;
+- `sha256`: the SHA-256 of the attestation's canonical JSON (keys sorted, without this field). For a past day whose anchor exists, the same question gives the same bytes. Nothing is signed; it is checkable through the hashes.
+
+It answers one address and one day. There is no range, no list of addresses and no cursor: the archive is a window,
+not a download.
+
+---
+
 <a id="route-history"></a>
 ## `GET /api/history/cases` and `GET /api/history/registry`
 
 The dated archive (`/history` is the same for people). **A list shows the last 7 days of observed events, at most 50 rows; cases archived from the collector's earlier history are not listed.** Any one address keeps its whole case in `/verify` and `/api/passport` (`case`), and the counts cover the whole archive. The full archive is available on request: hello@proofofstock.xyz. Every row is appended and never rewritten. A case is one
 address outside the registry that claimed an issuer token; each change of it is an event: `opened`, `kind_changed`,
-`listed` (the issuer later listed that address) or `gone` (it left our list). The archive began on 10 Nov 2026; cases
+`listed` (the issuer later listed that address) or `gone` (the case closed). A `gone` event carries `gone_reason`:
+`imitated_left_list` when the listed stock it imitated left the issuer's list, `no_longer_matches` otherwise. Closes
+recorded before 19 Nov 2026 get it from the registry archive at the time of the close. The archive began on 10 Nov 2026; cases
 the collector had seen before then are archived with `source: "backfilled"`, their collector `first_seen_at` and no
 `flagged_at`, because we did not flag them at the time.
 
@@ -453,7 +485,7 @@ not a price difference and not an arbitrage. Row and cell fields are listed unde
 <a id="route-status"></a>
 ## `GET /api/status`
 
-What the server holds, per chain.
+What the server holds, per chain, and the state of paid passes (`payments`).
 
 ```bash
 curl -s 'https://proofofstock.xyz/api/status'
@@ -470,9 +502,12 @@ curl -s 'https://proofofstock.xyz/api/status'
     "registry_records": 1, "registry_age_s": 120, "registry_error": null,
     "readings_tokens": 1, "readings_age_s": 120, "readings_error": null,
     "newest_reading_at": "2026-11-10T14:45:00.000Z", "newest_reading_age_s": 900
-  }
+  },
+  "payments": { "enabled": true, "settlement_wallet": "0x0252…bf4a", "paused_until": null, "late_settlements": [] }
 }
 ```
+
+`payments` is `{ "enabled": false }` where paid passes are off. Otherwise: `settlement_wallet` is the address that sends the settlement transactions and pays their gas (the sender of every one on chain); `paused_until` is set while selling is paused after failed settlements; `late_settlements` lists, for 24 hours, the transactions that were sent and had no receipt after 10 minutes (`{ transaction, at }`). Our own health check alerts on these (`deployment/PUBLISHING.md`).
 
 | Field | Type | Unit | Null means |
 |---|---|---|---|
@@ -548,10 +583,14 @@ curl -O 'https://proofofstock.xyz/anchors/manifest-2026-11-12.json.a-pool-openti
     "day": "2026-11-12",
     "manifest": "anchors/manifest-2026-11-12.json",
     "proofs": ["anchors/manifest-2026-11-12.json.b-pool-opentimestamps-org.ots", "anchors/manifest-2026-11-12.json.a-pool-opentimestamps-org.ots"],
-    "mirror": "anchors/mirror-2026-11-12.json"
+    "mirror": "anchors/mirror-2026-11-12.json",
+    "btc_check": "anchors/btc-check-2026-11-12.json"
   }]
 }
 ```
+
+`mirror` and `btc_check` are `null` until that file exists: the mirror is written by its own daily unit, and the
+Bitcoin check only once a proof names a block, so for the newest day both can be missing.
 
 A manifest holds `day`, `built_at`, `previous` (the day before and its SHA-256, so a gap or a rewritten day shows)
 and `files[]`, each with its `chain`, `file`, `bytes` and `sha256`. A `.ots` proof is served as
@@ -590,7 +629,7 @@ A refused request answers **402** with the offer:
   "x402Version": 1,
   "error": "the free minute is used up; pay 0.01 USDC on base for a 10-minute pass at 600 units a minute",
   "accepts": [ { "scheme": "exact", "network": "base", "maxAmountRequired": "10000",
-    "resource": "https://proofofstock.xyz/stocks/api/status", "payTo": "0x…",
+    "resource": "https://proofofstock.xyz/stocks/api/passport", "payTo": "0x…",
     "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", "extra": { "name": "USD Coin", "version": "2" } } ]
 }
 ```

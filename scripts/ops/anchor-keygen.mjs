@@ -1,7 +1,12 @@
-// scripts/ops/anchor-keygen.mjs: make the one key this project has, on the host, and print only its address.
+// scripts/ops/anchor-keygen.mjs: make one of this project's two keys, on the host, and print only its address.
 //
 //   sudo node scripts/ops/anchor-keygen.mjs --file=/etc/pos/anchor.key      make it (refuses to overwrite)
 //   sudo node scripts/ops/anchor-keygen.mjs --file=/etc/pos/anchor.key --address   print the address again
+//   sudo node scripts/ops/anchor-keygen.mjs --file=/etc/pos/x402.key        the settlement key for paid passes
+//
+// The settlement key (deployment/PUBLISHING.md "Paid passes") is made the same way and is the same kind of thing: a
+// file of 32 bytes of hex, root-only, holding only gas. What it signs is described there and in the threat model; the
+// rest of this header is about the anchor key.
 //
 // The key signs one kind of transaction and nothing else: our daily anchor mirror, to its own address, value zero
 // (scripts/stocks/anchor-mirror.mjs). It is made here, on the machine that will use it, by the owner. It is never

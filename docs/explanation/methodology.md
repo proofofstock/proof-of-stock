@@ -7,7 +7,9 @@ pools      (every 15 min)  what does the deepest eligible pool pay for it?
 premium                    pool price / reference - 1, with both ages attached
 ```
 
-This page explains why each of those layers works the way it does. The field-by-field description is in
+The tokenized stocks we check are real-world assets (RWA) whose issuer keeps the list of genuine contracts and publishes the
+reference price; every layer below reads that issuer first and the chain second. This page explains why each of those
+layers works the way it does. The field-by-field description is in
 [the passport reference](../reference/passport.md); the routes are in [the HTTP API reference](../reference/http-api.md).
 
 ## Sources, per layer
@@ -326,7 +328,7 @@ is public and each can be run without us, which is the point: a check you have t
 |---|---|---|
 | **The issuer's factory, mirrored from the chain** (`scripts/stocks/issuer-mirror.mjs`) | every 15 min | Each issuer deploys its tokens from one factory that logs every one. We read those logs and compare that set with the API's list, so a verdict on an address carries `issuer_factory` as a second source. The health check alerts when a listed token was never created by the factory, or when the mirror stops updating. It answers "did the issuer's factory create this contract"; it never turns into "listed" |
 | **A public exam** (`scripts/exam.mjs`, the `exam` branch) | once a day | Every token on the issuers' lists, the week's look-alikes, strangers and listed tokens asked on the other chain, with the right answers read from the issuers themselves. It scores false "listed", false "not listed", real tokens called fakes, look-alikes missed, refusals, `list_proof` against the issuer's list, price evidence replayed on chain, and latency. The report carries the SHA-256 of the question set, so anyone can rerun it; the latest is at [`/api/exam`](../reference/http-api.md#route-exam) |
-| **An outside check** (`scripts/canary.mjs`, on GitHub's runners) | every 30 min | It runs off our host: the page, the freshness of lists and prices, a known listed token and a known look-alike, the MCP tool list, each issuer list hashed independently from the issuer's own API against our `list_proof`, and a passport's on-chain price evidence called again at its block for the same bytes |
+| **An outside check** (`scripts/canary.mjs`, on GitHub's runners) | asks for every 30 min; GitHub runs it a few times a day | It runs off our host: the page, the freshness of lists and prices, a known listed token and a known look-alike, the MCP tool list, each issuer list hashed independently from the issuer's own API against our `list_proof`, and a passport's on-chain price evidence called again at its block for the same bytes |
 | **Daily anchors in Bitcoin** (`scripts/stocks/anchor.mjs`) | once a day, 00:20 UTC | A manifest of the SHA-256 of every data file the previous day produced, chained to the day before and timestamped through two OpenTimestamps calendars. It proves when the files existed in this form, so a recorded reading cannot be changed after the fact. It does not prove the reading is right: the exam is for that. The block a proof names is not taken on the calendar's word either: the merkle root its path ends at is compared daily with what block explorers outside OpenTimestamps report for that height, and until two of them agree the answer says the block is claimed, not confirmed. The same hash also goes to Base and Robinhood Chain once a day as plain text, which is reach rather than proof: those two chains are sequenced by the issuers this service checks, which is why Bitcoin is the root. Public at [`/anchors/`](../reference/http-api.md#route-anchors) |
 
 Keeping one answer, rather than checking the whole service, is a different thing:
@@ -346,8 +348,11 @@ Keeping one answer, rather than checking the whole service, is a different thing
 - **Two chains, two issuers.** Base is checked against Coinbase's registry and Robinhood Chain against Robinhood's.
   A genuine tokenized stock of another issuer shows as "not in the registry". That is a statement about these two
   lists, not about the token.
-- **Impostor coverage is limited to tokens our dataset has seen.** The list is built from the names our own collector
-  recorded. A token it never saw has no name here, so the passport cannot say what it resembles.
+- **Impostor coverage is limited to tokens our dataset has seen, plus what a symbol search finds.** The list is built
+  from the names our own collector recorded, and every 6 hours from a search of DexScreener (every issuer symbol) and
+  GeckoTerminal (a few symbols a run, in rotation) for tokens sold under an issuer's symbol. A token found by search is
+  judged only on the symbol and name its contract returns on chain, never on the provider's text. A token that neither
+  the collector saw nor a search returns has no name here, so the passport cannot say what it resembles.
 - **The Base tail-6 look-alike rule is unmeasured.** On Base every Coinbase address starts the same way, so the
   look-alike rule there compares only the last 6 hex characters. Chance matches are expected. The signal is internal
   and stays unpublished until its precision is measured.

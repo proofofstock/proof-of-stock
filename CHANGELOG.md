@@ -12,6 +12,82 @@ The version is in `package.json`, and the site footer, the MCP `serverInfo.versi
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-11-20
+
+### Changed
+- **Payment alarms reach Telegram.** A pause in selling after failed settlements, a sent payment with no receipt after 10 minutes, and a settlement wallet with less than a day of gas are now alerts from stp-health, not journal lines. `/api/status` carries `payments` for it.
+- **The seal block shows the newest sealed day first**, not a record of the week rotated by date. A week-old record on top could not show that last night's seal was set; now, if it was not, the block falls back to the day before. Within one day the record still changes daily.
+
+### Added
+- **Look-alikes the token dataset never saw are found by symbol search.** Every 6 hours, before the look-alike list is built, `scripts/stocks/symbol-sweep.mjs` asks DexScreener for every issuer symbol and GeckoTerminal for a few, in rotation (its keyless budget is shared with the peg recorder). Each find outside the issuer's registry is read on chain (`symbol()` and `name()`), and only the chain's text enters the list, judged by the same rule as every other token. What only the search found is counted under `internal.sweep`; the published file keeps its keys. `POS_SYMBOL_SWEEP=0` turns it off.
+- **`GET /api/archive/at`: what one address was on one day, free.** The archive answers from what was recorded then:
+  - whether the address was on the issuer's list in force at the end of that day, by the list's hash, with the frozen list's URL;
+  - whether the address was an open look-alike case, what it imitated and what the contract said about itself;
+  - the day's anchors.
+
+  The answer carries an `attestation` whose SHA-256 covers it, so it is checkable through the hashes; nothing is signed. It covers one address and one day: no range, no address list, no cursor. The archive is a window, not a download.
+
+  The route refuses:
+  - a day that is not on the calendar (2026-02-30), instead of rolling it over;
+  - a date in the future.
+
+  Today is marked `partial`, and a case the archive backfilled is `unknown` before the archive's own start rather than `none`.
+- **The big batch is the paid route.** `/verify?addresses=` with 51 to 150 addresses needs a pass. Without one, the answer is the pass's 402 with the reason. The verdicts are the same either way.
+  - 150 is the most a GET request line can carry through the proxy; 500 was tried and got a 431.
+  - Every check that can refuse the request runs before any payment is taken.
+  - Failed purchases are capped at 5 per client in 10 minutes.
+  - A paid answer is `private, no-store`.
+
+### Changed
+- **A closed look-alike case says why it closed.** A `gone` event now carries `gone_reason`:
+  - `imitated_left_list` when the listed stock it copied left the issuer's list. On 17 Nov Coinbase pruned 303 entries, and two dozen cases closed in one run.
+  - `no_longer_matches` when the token simply no longer copies a listed stock.
+
+  Closes recorded earlier get the reason from the registry archive at the time of the close. On /history the word is "closed because HOGc left the Coinbase list", and the landing board says the same; neither says "left the list" alone. The case schema gains the field.
+- **One vocabulary: look-alike and issuer-listed** (`docs/stocks-truth-layer-tz.md`).
+  - The landing button "known fakes" becomes "look-alikes", and "not official" becomes "not the issuer's".
+  - In the terminal, "Official:" becomes "Issuer-listed:" and "tokens pretending to be stocks" becomes "look-alikes".
+  - The MCP passport sentence, the token page description and the reference docs say "the issuer's contract" instead of "official contract".
+  - "Fake" stays only where it answers a reader's own question ("Is it fake? Not necessarily"), or warns that there is no Proof of Stock token.
+- The terminal window is titled `proof-of-stock` with a small **Terminal** label beside it.
+
+### Added
+- **Our Base Builder Code on the daily anchor** (`STP_BUILDER_CODE`, `deployment/ANCHOR-MIRROR.md`). When it is set, the Base transaction carries the code after our line as an ERC-8021 suffix, so Base counts the anchor as our app's activity. The line itself is unchanged, the witnesses cut the suffix off before they read it, and Robinhood Chain never gets it. Unset, nothing changes. A malformed code stops the run.
+- **"Used in the last 7 days" on /status**, from the same counter as the private dashboard:
+  - MCP agents that called a tool (once a day each) and their tool calls;
+  - programs that called the data API, their calls, and the addresses checked through /verify;
+  - people on the site.
+
+  Catalogues and health checks that only list tools are left out. Browsers on our own site and our own exam and canary leave no API row. The block says these are our numbers, not onchain ones.
+- **The counter records API use** (`apps/stocks-analytics.mjs` `api`). It writes one row per data-route answer to a program: the route, how many addresses a /verify batch checked (capped at 50), and whether the client is our guard or our Bankr skill. It never keeps the address or the query. The daily exam (`proofofstock-exam`) is now ignored like the canary.
+
+### Changed
+- **The landing shows Base only, for the hackathon.** Robinhood Chain is hidden on the landing page: the kicker, the two check cards, the seal block, the look-alikes board, the footer and the page description. The terminal, the API, MCP, docs, /status and /history still answer for Robinhood Chain, and no data changed. One class brings it back (`<body class="no-rh">`). The restore point is tag `landing-with-robinhood-2026-11-19`, and the shipped files are in `deployment/restore/robinhood-landing/` with a README.
+- **The shield stands beside the headline** on the landing, as tall as its two lines; the lede and the buttons start from the shield's edge. On a phone it shrinks to 54 px and stays beside the headline.
+- **The site icon is the shield** (`apps/stocks-web/shield.svg`): the favicon on every kind of page, the brand marks in the footer and the docs bar, and `logo.png` (touch icon, organisation logo), re-rendered from `scripts/og/logo.html`.
+- **The seal block says what the chain can and cannot do.** The hash in Bitcoin cannot change; a changed record is caught, not prevented. The demo rewrite is said to happen only in the browser. Both mirrors are named, and the Robinhood Chain transaction is linked beside the Base one when it is confirmed and witnessed.
+- **RWA reaches the served pages.** The description every page is served with and the docs home lede now say tokenized stocks are a kind of RWA; the README drops a claim it gave no source for.
+- **Docs agree with the code:** the guard is published on npm and never throws on bad input (`invalid_input`); seven MCP tools, not six; the outside check asks every 30 minutes and runs a few times a day; the passport hours parameter says how many it shows.
+
+### Fixed
+- Seal block: "Sealed" named the day a mirror copied the record (the mirrors began on 14 Nov and copied older days), so a 12 Nov record read "Sealed 14 Nov". It now names the day the manifest was built and stamped into Bitcoin, the night after the record. The heading says "the past", not "yesterday", over a record that may be a week old.
+- Look-alikes board: a token's name lost every letter "s" (a regex missing its backslash).
+- A premium that rounds to zero printed `-0.00%`.
+- History: "uses the company name of GMEc" named a symbol as a company; it now reads "the company name behind GMEc".
+- `tools.md`: broken code span in the `find_stock_token` table.
+- Paid passes: the first live purchase on mainnet reverted before anything moved. The settlement call named a function USDC does not have (its signature text lacked the second `address`), and passed `v` as 0/1 where USDC takes 27/28. Both are fixed in the host module, which a pinned reference vector from an independent encoder now holds. The next purchase settled.
+- Paid passes: the same `X-PAYMENT` sent again after its payment was broadcast is answered from the record of that transaction however late it comes, instead of "the payment window is too short". Once the pass is over, an old header buys nothing.
+- `pay-per-call.md`: resend a pending payment every 10 to 15 seconds, not "in a minute"; sign for the full 120 seconds; the authorization numbers are decimal strings.
+- The 402 offer named the app's internal path as its `resource` (`https://proofofstock.xyz/stocks/verify`, a 404); it now names the public URL (`/verify`).
+- `deployment/PUBLISHING.md` named a journal line the payment module never writes (`pass granted`); a settled purchase writes `[x402] settled <tx> payer <address>`.
+
+### Added
+- **A Bankr skill** (`packages/bankr-skill/proof-of-stock/`), in the format of the BankrBot/skills catalog. An agent checks a stock-token contract before it buys (`ISSUER-LISTED`, `LOOK-ALIKE` with the issuer's own contract, `NOT ON THE ISSUER'S LIST`, `UNAVAILABLE`), or gets the issuer's own contracts for a ticker. The helper prints fixed words only. A non-listed token's own symbol and name never reach the agent's context, and a check it could not make is never called listed. It has no dependencies and uses only the public `/verify` and `/api/find`.
+- **The seal block shows what we write on the chain, word for word.** Under the two mosaics, the one line that day's Base transaction carries (`proofofstock anchor <day> sha256:<hash>`), built from the hash the visitor's browser just computed, with a link to that transaction: not the record, one line a day. A test holds the line to the anchor script's own calldata, letter for letter.
+- **A seal a visitor can try to break, on the landing** (`apps/stocks-web/seal.js`). Under the sentence that says the chain is here so that we cannot rewrite yesterday, one real line from the case archive is shown with the seal of its day, and the visitor is invited to rewrite our answer: the seal stops fitting. The seal is the SHA-256 of that day's manifest, computed in the visitor's browser from the manifest's own bytes and compared with the hash our Base transaction carries; the block stays hidden unless the two are equal and the mirror was confirmed by a node that is not the chain's operator. The 64 squares are the 64 hex digits of the hash. A rewrite changes the hash of the day's cases file in the manifest, which is what rewriting a line of that file would do; nothing a visitor does leaves the page. When the 7-day window holds no sealed case, one pinned case from the archive is shown. The token's symbol and name are its creator's text and reach the page as a short label, as text.
+- **`/anchors/` names the Bitcoin check of a day** (`btc_check`, beside `mirror`, `null` until the file exists). The seal block reads it and no longer asks for a file that is not there yet: for the newest day that request could only answer 404, an error in a reader's console for nothing.
+- **The seal block shows a different record each day**: the sealed cases of the week, rotated by the UTC date, so every visitor sees the same one that day. On desktop the block is as wide as the sections around it.
+
 ## [0.7.0] - 2026-11-15
 
 ### Added

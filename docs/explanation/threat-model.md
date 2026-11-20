@@ -11,11 +11,24 @@ attacking here is the claim itself.
 Nothing of yours. There are no accounts, no sessions, no cookies, no personal data, no custody, no approvals and no
 transaction we can send on your behalf. If this server were taken over completely, nobody's tokens would move.
 
-The project holds exactly one private key. It lives on the host, reaches exactly one systemd unit through
-`LoadCredential`, and signs one kind of transaction: to its own address, value zero, carrying the day's manifest hash
-as text. The balance on it is kept at a few days' worth of gas on purpose, so that losing it costs nothing worth
-defending. It is deliberately not in any backup: if it is lost or suspected, we make a new one, fund it, and the
-mirrors continue from the next day under a new address that the record names.
+The project holds two private keys. Both live on the host, in root-only files under `/etc/pos`, and each reaches
+exactly one systemd unit through `LoadCredential`; no unit can read `/etc/pos` itself.
+
+- **The anchor key** (`stp-anchor-mirror`) signs one kind of transaction: to its own address, value zero, carrying
+  the day's manifest hash as text.
+- **The settlement key** (`stp-web`, only on a host that sells paid passes) pays the gas to settle a pass a buyer
+  has already paid for: it submits the buyer's own signed USDC `transferWithAuthorization` to the USDC contract on
+  Base. The buyer's signature fixes the payee, the amount and a one-time nonce, so the key cannot change who is paid,
+  how much, or reuse a payment; the USDC goes to the payee address, which is a separate wallet this key does not
+  control. The server sends it only after checking that the payee and the amount are exactly the ones its own 402
+  named. It holds no USDC and no token of anyone's.
+
+What either key can do if stolen: spend its own gas, and sign transactions from its own address. Neither can move a
+caller's tokens, a buyer's funds beyond the one payment that buyer signed, or the payments already received. The
+balance on each is kept at gas only on purpose, so that losing one costs nothing worth defending. Neither is in any
+backup: if one is lost or suspected, we make a new one and fund it. For the anchor key the mirrors continue from the
+next day under a new address that the record names; for the settlement key the passes continue as soon as the new
+address has gas, and until then a purchase is refused without taking the payment.
 
 So the thing worth attacking is **what we say**. Two outcomes are worth something to an attacker: make this service
 state something false (an impostor shown as listed, a day's archive shown as proved when it is not), or make it go

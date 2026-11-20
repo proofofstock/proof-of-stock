@@ -419,7 +419,7 @@ What the name of a token outside the registry imitates. A resemblance, not a ver
 | `kind` | string | never null | `"registry_symbol"` |
 | `ticker` | string or null | no listed token could be named (`issuer_name_suffix` only) | `"NVDA"` |
 | `registry_symbol` | string or null | as above | `"NVDAc"` |
-| `registry_address` | string or null | as above. The official contract | `"0xaaaa…aaaa"` |
+| `registry_address` | string or null | as above. The issuer's own contract | `"0xaaaa…aaaa"` |
 
 Kinds, strongest first; the strongest that fires is returned:
 

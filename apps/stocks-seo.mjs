@@ -139,7 +139,7 @@ export function homeJsonLd ({ site, version, image, logo }) {
         applicationCategory: 'FinanceApplication', operatingSystem: 'Any (web browser)', browserRequirements: 'Requires JavaScript',
         softwareVersion: version, isAccessibleForFree: true, offers: free, publisher: org, inLanguage: 'en',
         featureList: [
-          'Issuer registry check: is this contract the issuer\'s tokenized stock (Coinbase on Base, Robinhood on Robinhood Chain)',
+          'Issuer registry check: is this contract the issuer\'s tokenized stock (Coinbase on Base)',
           'Issuer reference price with its age, against the NYSE calendar',
           'On-chain premium of the deepest pool, by US market session',
           'Impostor list: tokens that copy a listed symbol or the issuer\'s naming',

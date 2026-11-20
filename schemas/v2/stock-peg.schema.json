@@ -68,7 +68,7 @@
     "dex_price_usd": { "type": ["number", "null"] },
     "dex_pool": { "type": ["string", "null"] },
     "premium": { "type": ["number", "null"] },
-    "premium_refused": { "enum": ["no_reference", "pairs_unavailable", "no_pairs", "no_eligible_pool", "sources_disagree", "reference_spread_wide", null], "description": "sources_disagree: the chain and an aggregator both priced the deepest pool and differ by more than 2% (evm/core/stocks/peg.mjs MAX_SOURCE_DISAGREEMENT); dex_price_usd is the chain's" },
+    "premium_refused": { "enum": ["no_reference", "pairs_unavailable", "no_pairs", "no_eligible_pool", "sources_disagree", "reference_spread_wide", "implausible_vs_reference", null], "description": "sources_disagree: the chain and an aggregator both priced the deepest pool and differ by more than 2% (evm/core/stocks/peg.mjs MAX_SOURCE_DISAGREEMENT); dex_price_usd is the chain's. implausible_vs_reference: the pool price is more than MAX_PLAUSIBLE_RATIO times the issuer price or less than its reciprocal, so the pool is not this token's; both prices are kept" },
     "dex_inside_quote": { "type": ["boolean", "null"], "description": "whether the deepest pool's price sits inside the issuer's bid/ask; null when there is no bid/ask or no pool" },
     "price_evidence": {
       "description": "what dex_price_usd rests on: the DEX leg only, never the issuer's reference (see reference_evidence). Null when there is no price. onchain: the chain's answer at one block, which anyone can ask again. none: an aggregator alone priced the pool; its answer cannot be asked for again, so there is no evidence. Absent from rows recorded before the recorder read the chain",

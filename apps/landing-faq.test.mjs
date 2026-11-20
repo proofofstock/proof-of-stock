@@ -36,9 +36,9 @@ console.log('the answers keep to the code')
 const all = shown.map(([q, a]) => q + ' ' + a).join(' ')
 check('independence is said, and no answer frames the site around one issuer', /Proof of Stock is independent/.test(all) && !/Coinbase|Robinhood/.test(all))
 check('read-only, no sign-in, no transaction for a caller', /no wallet, no sign-in/.test(all) && /signs or sends a transaction/.test(all))
-// The one key we do have is said here, in the answer about safety, and not only in a document nobody opens: once it
-// exists, "no key" would be a false claim, and the whole product is that we do not make those (spec H4).
-check('...and the one key we hold is disclosed where the question is asked', /one key this project has/.test(all) && /value zero/.test(all))
+// The keys we do have are said here, in the answer about safety, and not only in a document nobody opens: once they
+// exist, "no key" or "one key" would be a false claim, and the whole product is that we do not make those (spec H4).
+check('...and both keys we hold are disclosed where the question is asked', /two keys/.test(all) && /value zero/.test(all) && /cannot change who is paid or how much/.test(all))
 check('the cadences and the stale mark: lists 5 min, prices 15, stale past 30, no verdict past 15 min', /every 5 minutes/.test(all) && /recorded every 15/.test(all) && /past 30 minutes it is marked stale/.test(all) && /more than 15 minutes/.test(all) && /never "not listed"/.test(all))
 check('listed is not a price verdict, and the first question says so', /safe to buy\?$/.test(shown[0][0]) && /says nothing about the price/.test(shown[0][1]))
 check('an impostor is a distinctive copy, not a shared ticker', /distinctive symbol/.test(all) && /shares a ticker/.test(all))
@@ -173,6 +173,78 @@ console.log('a jump to a section stops below the ticker')
   check('...and the terminal still lands where it did (padding plus its margin, 60px)', pad + termMargin === 60, `${pad} + ${termMargin}`)
 }
 
+console.log('the guard has a mark, and it is a door')
+{
+  // Owner, 16.11: the package needed a face and a way in. The shield carries our own emblem, and it sits where the
+  // install line is, so the picture and the thing it stands for are in the same row.
+  const svg = fs.readFileSync(new URL('./stocks-web/shield.svg', import.meta.url), 'utf8')
+  // A reference to #something inside this file is how a shape is reused and a clip is named. A reference to anything
+  // else is a fetch, and this file must make none: it is served under a policy that allows no outside image, and a
+  // badge that quietly loads something from elsewhere is the exact thing we tell people to watch for.
+  const refs = [...svg.matchAll(/(?:xlink:)?href\s*=\s*"([^"]*)"/g)].map((m) => m[1])
+    .concat([...svg.matchAll(/url\(\s*['"]?([^'")]*)/g)].map((m) => m[1]))
+  const outside = refs.filter((r) => !r.startsWith('#'))
+  check('the shield is one file, drawn here, with nothing fetched from anywhere', /<svg[\s\S]*<\/svg>/.test(svg) && !/<image[\s>]/.test(svg) && outside.length === 0, outside.join())
+  // The badge is lit, so it needs shades: a light rim, a deep one, a gloss, a shadow. What it must never do is
+  // bring in a colour that is not ours. Every colour here is either our blue (blue the strongest channel) or a
+  // neutral (white for light, near-black for shadow), and nothing else.
+  const colours = [...new Set(svg.match(/#[0-9A-Fa-f]{6}/g) || [])]
+  const foreign = colours.filter((c) => {
+    const [r, g, b] = [1, 3, 5].map((i) => parseInt(c.slice(i, i + 2), 16))
+    const neutral = Math.max(r, g, b) - Math.min(r, g, b) <= 12
+    return !neutral && !(b > r && b >= g)
+  })
+  check('...in our blue and neutrals, with no colour of its own invented', colours.length > 0 && foreign.length === 0, foreign.join())
+  check('...and it says what it is to a screen reader', /role="img"/.test(svg) && /aria-label="Proof of Stock guard"/.test(svg) && /<title>/.test(svg))
+  const head = (html.match(/<div class="code-head">(?:(?!<\/div>)[\s\S])*guard-head[\s\S]*?<\/div>/) || [''])[0]
+  check('it stands beside the line that installs the package', /guard-shield/.test(head) && /npm, for your own code/.test(head))
+  check('...and the whole thing is a link to what the package does', /<a class="guard-head" href="docs\/how-to\/check-before-listing\.md">/.test(head) && fs.existsSync(new URL('../docs/how-to/check-before-listing.md', import.meta.url)))
+  // A picture that repeats the words beside it is noise to a screen reader: the link already says them.
+  check('...with the picture itself hidden from a screen reader, because the link already speaks', /class="guard-shield"[^>]*alt=""[^>]*aria-hidden="true"/.test(head), head.slice(0, 80))
+  const web = fs.readFileSync(new URL('./stocks-web.mjs', import.meta.url), 'utf8')
+  check('and the site serves it', /'\/shield\.svg': \['shield\.svg', 'image\/svg\+xml'\]/.test(web))
+}
+
+console.log('what kind of service this is, said once')
+{
+  // Owner, 16.11, after asking whether this could be sold as decentralised: it cannot, and the honest sentence is
+  // stronger than the fashionable one. It is said on the page and to the agents that read llms.txt, in the same
+  // words, so the two can never drift into two different positions.
+  const stance = (html.match(/<p class="stance">([\s\S]*?)<\/p>/) || [])[1] || ''
+  const plain = stance.replace(/<[^>]*>/g, '')
+  check('the page says it is centralised, and why that is the reason for the proofs', /centralised service/.test(plain) && /check it without us/.test(plain))
+  check('...and says what the chain is for, which is not being trusted', /not here so that we can be trusted/.test(plain) && /cannot rewrite yesterday/.test(plain))
+  check('...where a reader meets it: after what we check, before what we flag', html.indexOf('class="checks"') < html.indexOf('class="stance"') && html.indexOf('class="stance"') < html.indexOf('class="board"'))
+  const web = fs.readFileSync(new URL('./stocks-web.mjs', import.meta.url), 'utf8')
+  const forAgents = (web.match(/head\.push\('## How to check us'[\s\S]*?\n\s*'',/) || [''])[0]
+  check('the same sentence heads the section an agent reads, word for word', forAgents.includes('centralised service') && forAgents.includes('cannot rewrite yesterday'), forAgents.slice(0, 60))
+  const readme = fs.readFileSync(new URL('../README.md', import.meta.url), 'utf8')
+  check('...and the repository says it too, where it says what this is', /centralised service/.test(readme) && /cannot rewrite yesterday/.test(readme))
+}
+
+console.log('one question, one frame')
+{
+  // Owner, 16.11: in a long feed an answer ran into the next question and a passport read as more of the same wall of
+  // text. Each answered question is a rectangle now. Two things keep it from becoming a form: the greeting, which
+  // answers nothing, has no frame, and the passport inside drops its own box rather than sitting in a second one.
+  const css = fs.readFileSync(new URL('./stocks-web/style.css', import.meta.url), 'utf8')
+  const framed = (css.match(/^\.block:has\(> \.echo\) \{([^}]*)\}/m) || [])[1] || ''
+  check('a block that answers a question is a thin rectangle', /border: 1px solid var\(--line\)/.test(framed) && /border-radius: 12px/.test(framed), framed.trim().slice(0, 60))
+  check('...with the question itself as its head, cut off from the answer by a hairline', /^\.block > \.echo \{[^}]*border-bottom: 1px solid var\(--line\)/m.test(css) && /^\.block > \.echo \{[^}]*padding:/m.test(css))
+  // Not one rule: every rule in the sheet that reaches a plain .block, phone overrides included. One of them giving
+  // the greeting a border of any kind is what this has to catch (Codex, 16.11).
+  const plainBlock = [...css.matchAll(/(^|\})\s*([^{}@]*?\.block(?![\w:.-])[^{}]*?)\{([^}]*)\}/g)]
+    .filter((m) => !/:has|\.echo/.test(m[2])).map((m) => m[3])
+  check('...and the greeting, which answers nothing, keeps none: the frame is tied to the echo, not to the block', plainBlock.length > 0 && !plainBlock.some((d) => /(^|[;\s])border(-\w+)*\s*:/.test(d)), plainBlock.join(' | ').slice(0, 80))
+  const inner = (css.match(/^\.block:has\(> \.echo\) \.card \{([^}]*)\}/m) || [])[1] || ''
+  check('the passport inside drops its own box rather than being a frame in a frame', /border-top: 0/.test(inner) && /border-right: 0/.test(inner) && /border-bottom: 0/.test(inner) && /border-radius: 0/.test(inner))
+  // The verdict's colour has to survive that: it is the one thing in the card a reader takes at a glance. It travels
+  // as a variable now, so the spine keeps it whether the card is a box or a panel against the frame's edge. This reads
+  // the sheet, not a rendered page: that the three shapes look right was checked in a browser, by a person.
+  check('...but keeps the spine, in the colour of the verdict, in both shapes', ['ok', 'bad', 'warn'].every((k) => new RegExp(`\\.card\\.is-${k} \\{ --spine: var\\(--${k}\\); \\}`).test(css)) && /\.card\.is-ok, \.card\.is-bad, \.card\.is-warn \{ border-left: 3px solid var\(--spine/.test(css) && /border-left: 3px solid var\(--spine, var\(--line\)\)/.test(inner))
+  check('and the frame itself takes a hint of the verdict, quieter than the spine', ['ok', 'bad', 'warn'].every((k) => new RegExp(`\\.block:has\\(\\.card\\.is-${k}\\) \\{ border-color: color-mix\\(in srgb, var\\(--${k}\\) \\d\\d%, var\\(--line\\)\\)`).test(css)))
+}
+
 console.log('what a phone does not get')
 {
   // Owner, 15.11: the page reads long on a phone. The cut is a class, not a second copy of the text: .wide-only is a
@@ -231,7 +303,9 @@ console.log('connecting from Claude and ChatGPT')
   const jsonUrl = (agents.match(/"url": "([^"]+)"/) || [])[1]
   check('...the URL it says to paste is the one block that the command and the JSON also name', urlBlock === '__MCP_URL__' && ccUrl === urlBlock && jsonUrl === urlBlock && /data-copy="mcp-url"/.test(agents))
   const card = (agents.match(/<div class="code">([\s\S]*?)<\/div>\s*<\/section>/) || [])[1] || ''
-  const heads = [...card.matchAll(/<div class="code-head"><span>([^<]*)<\/span>/g)].map((m) => m[1])
+  // A head's label may be wrapped in a link now (the npm row, whose shield links to what the package does), so the
+  // label is read from the first span of the row either way.
+  const heads = [...card.matchAll(/<div class="code-head">(?:<a [^>]*>)?(?:<img [^>]*>)?<span>([^<]*)<\/span>/g)].map((m) => m[1])
   const gptSteps = (card.match(/<pre id="mcp-gpt">([\s\S]*?)<\/pre>/) || [])[1] || ''
   const gptUrl = (gptSteps.match(/<span id="mcp-gpt-url">([^<]*)<\/span>/) || [])[1]
   // The order is the reader's: connect an agent first (URL, then the two clients that need their own steps), then the

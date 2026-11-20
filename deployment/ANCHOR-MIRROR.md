@@ -83,6 +83,14 @@ sudo systemctl enable --now stp-anchor-mirror.timer
   root is untouched by any of that, and the old transactions stay where they are, with the record naming the address
   that sent each one.
 
+## Our Base Builder Code
+
+Optional. `/etc/pos/anchor.env` may set `STP_BUILDER_CODE` to the project's code from Base Dashboard (Settings →
+Project Settings → Builder Code, e.g. `bc_…`). The Base transaction then carries it after our line as an ERC-8021
+suffix, so Base counts the anchor as our app's activity; Robinhood Chain never gets it. The line itself is unchanged,
+and the witnesses and `readAnchorCalldata` cut the suffix off before they read it. Unset, the anchor is sent as before.
+A malformed code stops the run instead of sending something we did not mean.
+
 ## A keyed RPC provider
 
 Optional. `/etc/pos/anchor.env` may set `STP_RPC_BASE` or `STP_RPC_ROBINHOOD` to a provider URL; the public URL is

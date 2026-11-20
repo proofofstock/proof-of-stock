@@ -72,12 +72,24 @@ permissions, never write (`ProtectSystem=strict` keeps everything but our own di
 ## 2. Stop the writers
 
 ```sh
-systemctl stop stp-peg.timer stp-impostors.timer stp-mirror.timer stp-anchor.timer stp-health.timer
+systemctl stop stp-peg.timer stp-impostors.timer stp-mirror.timer stp-anchor.timer stp-anchor-mirror.timer stp-health.timer
 # wait for a run in progress to finish (the recorder takes up to 9 minutes)
-while systemctl is-active --quiet stp-peg.service || systemctl is-active --quiet stp-impostors.service || systemctl is-active --quiet stp-mirror.service || systemctl is-active --quiet stp-anchor.service; do sleep 5; done; echo stopped
+while systemctl show -p ActiveState --value stp-peg.service stp-impostors.service stp-mirror.service stp-anchor.service stp-anchor-mirror.service | grep -qE '^(activating|active|deactivating)$'; do sleep 5; done; echo stopped
 ```
 
 The site keeps running on the old units and the old root meanwhile.
+
+**The loop reads `ActiveState`, not `systemctl is-active`.** These units are `Type=oneshot`: while the run is going
+the state is `activating`, and `is-active --quiet` is false for it. The older loop here asked exactly that question,
+so it waited for nothing and returned at once (measured on the host, 16.11: `stp-peg` mid-run reads `activating`
+while `is-active --quiet` returns false).
+
+That matters most for `stp-anchor-mirror`, the only unit in this project that signs. A run of it is a transaction on
+its way to two chains, and the record of it (`/var/lib/stp-anchors/mirror-<day>.json`) is written after the node
+answers, not before (`scripts/stocks/anchor-mirror.mjs`, `mirrorChain`). A run killed between those two moments
+leaves the nonce spent and nothing written down about what it was spent on. Stopping a timer does not stop a run
+that has started, so wait, as the loop does. Waiting costs nothing: the next run skips a day that is already sent
+and in a block, which is one of the things its mutation lock holds (`tests/locks/stock-anchor-mirror.mutations.json`).
 
 ## 3. Copy and verify
 
@@ -169,10 +181,22 @@ systemctl start stp-mirror.service; journalctl -u stp-mirror -n 4 --no-pager
 ls -l /var/lib/pos/*/stock-peg/mirror.json          # owner pos, modified just now
 systemctl start stp-anchor.service; journalctl -u stp-anchor -n 2 --no-pager
 stat -c '%U %n' /var/lib/stp-anchors | head -1      # pos: systemd re-owned the directory of the root runs
+# the key first: the unit fails without it, and this is the one run that can spend money
+stat -c '%U:%G %a %n' /etc/pos/anchor.key           # root:root 600, and no copy of it anywhere else
+grep -c '"status": "confirmed"' /var/lib/stp-anchors/mirror-$(date -u -d yesterday +%F).json
+systemctl start stp-anchor-mirror.service; journalctl -u stp-anchor-mirror -n 6 --no-pager
+ls -l /var/lib/stp-anchors/mirror-*.json | tail -2  # owner pos, readable by everyone: the site serves them
 ```
 
 The mirror continues from the `mirror.json` copied in step 3, so it costs a call or two. The anchor run rebuilds
 nothing: yesterday's manifest exists, so it only completes pending proofs.
+
+The chain mirror is the one run here that can spend money, so look before starting it rather than assume. The
+`grep -c` above says how many chains carry yesterday's day already: **2** means both are in a block and this run only
+reads them, names its witnesses and stops. Anything less, or a missing file, means it has a day to write, and then it
+needs the key: `LoadCredential` reads `/etc/pos/anchor.key` as root and hands the run a copy under
+`$CREDENTIALS_DIRECTORY`, so the file itself stays root-owned and `0600` and the `pos` user never sees it. If the run
+fails with no key, that `stat` line is the first thing to read.
 
 The health check:
 
@@ -185,7 +209,7 @@ systemctl start stp-health.service; journalctl -u stp-health -n 3 --no-pager
 ## 6. Start the timers
 
 ```sh
-systemctl start stp-peg.timer stp-impostors.timer stp-mirror.timer stp-anchor.timer stp-health.timer
+systemctl start stp-peg.timer stp-impostors.timer stp-mirror.timer stp-anchor.timer stp-anchor-mirror.timer stp-health.timer
 systemctl enable --now pos-backup.timer
 systemctl list-timers --no-pager | grep -E 'stp-|pos-'
 sh /opt/stp/current/scripts/deploy.sh --status
@@ -203,8 +227,8 @@ At any point after step 3. It carries what was recorded since the cutover back t
 lost, and restores the old units.
 
 ```sh
-systemctl stop stp-peg.timer stp-impostors.timer stp-mirror.timer stp-anchor.timer stp-health.timer pos-backup.timer
-while systemctl is-active --quiet stp-peg.service || systemctl is-active --quiet stp-impostors.service || systemctl is-active --quiet stp-mirror.service || systemctl is-active --quiet stp-anchor.service; do sleep 5; done
+systemctl stop stp-peg.timer stp-impostors.timer stp-mirror.timer stp-anchor.timer stp-anchor-mirror.timer stp-health.timer pos-backup.timer
+while systemctl show -p ActiveState --value stp-peg.service stp-impostors.service stp-mirror.service stp-anchor.service stp-anchor-mirror.service | grep -qE '^(activating|active|deactivating)$'; do sleep 5; done
 # the files only grew since the copy (append-only days and history) or were rewritten whole (pool book, lists):
 # copy them back over the frozen old ones, root-owned as before, deleting nothing
 for c in base robinhood; do rsync -a --chown=root:root /var/lib/pos/$c/stock-peg/ /var/lib/stp/$c/stock-peg/; done
@@ -213,7 +237,7 @@ cp -a /var/backups/pos-cutover/* /etc/systemd/system/
 systemctl daemon-reload
 systemctl restart stp-web.service
 curl -fsS -o /dev/null -w 'healthz %{http_code}\n' http://127.0.0.1:3005/healthz
-systemctl start stp-peg.timer stp-impostors.timer stp-mirror.timer stp-anchor.timer stp-health.timer
+systemctl start stp-peg.timer stp-impostors.timer stp-mirror.timer stp-anchor.timer stp-anchor-mirror.timer stp-health.timer
 ```
 
 The code does not need rolling back: it runs the old units as before. `/var/lib/pos` stays as it was, for a second

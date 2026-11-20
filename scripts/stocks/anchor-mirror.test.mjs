@@ -10,7 +10,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import crypto from 'node:crypto'
-import { anchorCalldata, readAnchorCalldata, feesFrom, sendDecision, mirrorChain, mirrorDay, catchUp, loadKey, readMirror, needsWork, runVerdict, rpcUrlOf, witnessUrls, askWitness, witnessMirror, MIRRORS, WITNESSES, MAX_FEE_WEI, STALE_PENDING_MS } from './anchor-mirror.mjs'
+import { anchorCalldata, readAnchorCalldata, builderCodeOf, feesFrom, sendDecision, mirrorChain, mirrorDay, catchUp, loadKey, readMirror, needsWork, runVerdict, rpcUrlOf, witnessUrls, askWitness, witnessMirror, MIRRORS, WITNESSES, MAX_FEE_WEI, STALE_PENDING_MS } from './anchor-mirror.mjs'
 import { signTransaction, addressOfKey, checksumAddress, keccak256 } from '../../evm/core/stocks/evm-tx.mjs'
 
 let passed = 0, failed = 0
@@ -33,6 +33,15 @@ check('the calldata is one readable line', Buffer.from(anchorCalldata(DAY, HASH)
 check('...and reads back', JSON.stringify(readAnchorCalldata(anchorCalldata(DAY, HASH))) === JSON.stringify({ day: DAY, sha256: HASH }))
 check('a day that is not a day is refused', threw(() => anchorCalldata('yesterday', HASH)))
 check('a hash that is not 32 bytes of hex is refused', threw(() => anchorCalldata(DAY, 'abc')))
+{
+  const code = 'bc_b7k3p9da'
+  const withCode = anchorCalldata(DAY, HASH, code)
+  check('a Builder Code follows the line as ERC-8021: codes, length, schema 0, the 16-byte marker', withCode.endsWith('62635f62376b33703964610b0080218021802180218021802180218021') && withCode.startsWith(anchorCalldata(DAY, HASH)))
+  check('...and the line still reads back, with the code named', JSON.stringify(readAnchorCalldata(withCode)) === JSON.stringify({ day: DAY, sha256: HASH, builder_codes: [code] }))
+  const codeHex = Buffer.from(code, 'ascii').toString('hex')
+  check('a broken suffix is not ours', readAnchorCalldata(anchorCalldata(DAY, HASH) + codeHex + '0b01' + '8021'.repeat(8)) === null && readAnchorCalldata(anchorCalldata(DAY, HASH) + 'ff00' + '8021'.repeat(8)) === null && readAnchorCalldata(anchorCalldata(DAY, HASH) + codeHex + '0000' + '8021'.repeat(8)) === null)
+  check('the code is Base only, read from STP_BUILDER_CODE, and a malformed one is refused', builderCodeOf('base', { STP_BUILDER_CODE: code }) === code && builderCodeOf('robinhood', { STP_BUILDER_CODE: code }) === null && builderCodeOf('base', {}) === null && threw(() => builderCodeOf('base', { STP_BUILDER_CODE: 'bc_ x' })) && threw(() => anchorCalldata(DAY, HASH, 'no spaces')))
+}
 check('somebody else transaction is not read as ours', readAnchorCalldata('0xdeadbeef') === null && readAnchorCalldata('0x') === null)
 
 console.log('fees and the refusals')

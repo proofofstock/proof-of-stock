@@ -1,0 +1,22 @@
+{
+  "_finding": "The use figures on /status are the link we give judges as evidence. They would mislead the day they counted our own site's browsers or our own daily exam as somebody else's API use. These mutations put each back.",
+  "target": "apps/stocks-analytics.mjs",
+  "runner": [
+    "node",
+    "apps/status-usage.test.mjs"
+  ],
+  "mutations": [
+    {
+      "name": "a browser on our own site counts as API use",
+      "find": "      if (ignored(ip, ua) || uaClass(ua) === 'browser') return",
+      "replace": "      if (ignored(ip, ua)) return",
+      "expect": "FAIL a program calling a data route leaves one row"
+    },
+    {
+      "name": "our own daily exam counts as use",
+      "find": "export const IGNORE_UA = /proofofstock-(canary|exam)/i",
+      "replace": "export const IGNORE_UA = /proofofstock-canary/i",
+      "expect": "FAIL ...never a browser, our own exam or canary, or a route that is not a data route"
+    }
+  ]
+}

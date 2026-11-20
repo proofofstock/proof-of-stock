@@ -107,6 +107,18 @@
       "find": "  if (!shaped) return { source, kind: 'silent', why: 'answered something that is not a transaction' }",
       "replace": "  if (false) return { source, kind: 'silent', why: 'never' }",
       "expect": "FAIL a witness answering half a transaction is silent, never a contradiction"
+    },
+    {
+      "name": "the Builder Code goes on every chain, Robinhood included",
+      "find": "  if (chain !== 'base' || !code) return null",
+      "replace": "  if (!code) return null",
+      "expect": "FAIL the code is Base only, read from STP_BUILDER_CODE, and a malformed one is refused"
+    },
+    {
+      "name": "a suffix with the wrong schema byte is read as ours",
+      "find": "    if (schema !== '00' || !(len > 0) || rest.length < 4 + len * 2) return null",
+      "replace": "    if (!(len > 0) || rest.length < 4 + len * 2) return null",
+      "expect": "FAIL a broken suffix is not ours"
     }
   ]
 }

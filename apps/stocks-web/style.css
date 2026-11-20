@@ -1,6 +1,10 @@
 /* apps/stocks-web/style.css, Proof of Stock as a terminal window. Black with blue, after Base: the solid blue
    (#0052FF) fills buttons and labels with white text on it; a lighter blue carries accent text on black, where the solid
    one is too dark to read. Green / red / amber only for verdicts. */
+/* Robinhood Chain hidden on the landing for the hackathon (index.html <body class="no-rh">); the terminal still answers
+   for it. Text that reads differently without it sits in .base-only. Removing the class restores the page. */
+.no-rh .rh-only { display: none !important; }
+body:not(.no-rh) .base-only { display: none !important; }
 :root {
   --i-check-src: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 8.5l3.2 3.2L13 4.8'/%3E%3C/svg%3E");
   --ink: #050608;          /* page background */
@@ -65,6 +69,7 @@ kbd { font: inherit; background: var(--glass-2); border: 1px solid var(--line); 
 .term { transition: max-width .25s ease, height .25s ease; }
 .term.large { max-width: min(1372px, calc(100vw - 32px)); height: min(896px, 90vh); }
 .titlebar h2 { font-size: 12.5px; font-weight: 400; color: var(--dim); margin: 0; flex: 1; letter-spacing: .02em; }
+.titlebar .title-kind { margin-left: 6px; padding: 1px 7px; border: 1px solid var(--line); border-radius: 6px; color: var(--accent-hi); font-size: 11px; letter-spacing: .06em; vertical-align: 1px; }
 .tabs { display: flex; gap: 4px; }
 .tab { background: transparent; border: 1px solid transparent; border-radius: 7px; padding: 3px 10px; font-size: 12.5px; color: var(--dim); }
 .tab:hover { color: var(--text); }
@@ -74,12 +79,22 @@ kbd { font: inherit; background: var(--glass-2); border: 1px solid var(--line); 
 
 /* the feed */
 .log { flex: 1; overflow-y: auto; padding: 16px 18px 8px; scroll-behavior: smooth; position: relative; }
+/* One question, one frame. The feed runs long and every answer used to end where the next question began, with
+   nothing between them but space, so a passport read as part of the same wall of text (owner, 16.11). A block that
+   answers a question gets a thin rectangle with the question itself as its head; the greeting, which answers nothing,
+   keeps none. The frame takes its colour from the verdict inside it, quietly: the card's own spine says it louder. */
 .block { margin: 0 0 18px; animation: rise .18s ease-out; }
+.block:has(> .echo) { border: 1px solid var(--line); border-radius: 12px; overflow: hidden; background: linear-gradient(180deg, rgba(255, 255, 255, .012), transparent); }
+.block:has(.card.is-ok) { border-color: color-mix(in srgb, var(--ok) 26%, var(--line)); }
+.block:has(.card.is-bad) { border-color: color-mix(in srgb, var(--bad) 30%, var(--line)); }
+.block:has(.card.is-warn) { border-color: color-mix(in srgb, var(--warn) 28%, var(--line)); }
 @keyframes rise { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
 .echo { color: var(--dim); word-break: break-all; }
+.block > .echo { padding: 7px 14px; background: var(--glass-2); border-bottom: 1px solid var(--line); }
 .echo b { color: var(--accent-hi); font-weight: 400; }
 .echo span { color: var(--text); }
 .out { margin-top: 6px; }
+.block:has(> .echo) > .out { margin-top: 0; padding: 12px 14px 13px; }
 .line { white-space: pre-wrap; word-break: break-word; }
 /* Drawn output (the hidden commands): kept exactly as written, and allowed to scroll rather than wrap on a phone. */
 .line.art { white-space: pre; word-break: normal; overflow-x: auto; color: var(--dim); line-height: 1.25; }
@@ -115,7 +130,10 @@ a.btn { text-decoration: none; display: inline-block; }
 .warnbox b { color: var(--bad); }
 
 /* the passport */
+/* Inside a framed block the passport is no longer a box of its own: two rectangles one inside the other is a form,
+   not a terminal. It keeps the spine that says what the verdict is, and the frame around the question carries it. */
 .card { border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px 12px; margin-top: 6px; background: linear-gradient(180deg, rgba(255, 255, 255, .015), transparent); }
+.block:has(> .echo) .card { border-top: 0; border-right: 0; border-bottom: 0; border-left: 3px solid var(--spine, var(--line)); border-radius: 0; padding: 0 0 0 12px; margin-top: 0; background: none; }
 .cardhead { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; flex-wrap: wrap; }
 .cardhead h2 { font: 600 18px/1.3 var(--sans); margin: 0; }
 .cardhead .sub { color: var(--dim); font-size: 12px; word-break: break-all; }
@@ -139,7 +157,10 @@ a.btn { text-decoration: none; display: inline-block; }
 .state { display: inline-flex; align-items: center; gap: 8px; font: 500 13px/1.2 var(--sans); white-space: nowrap; padding-top: 4px; }
 .state::before { content: ''; width: 8px; height: 8px; border-radius: 50%; background: currentColor; box-shadow: 0 0 0 3px color-mix(in srgb, currentColor 20%, transparent); }
 .state.ok { color: var(--ok); } .state.bad { color: var(--bad); } .state.warn { color: var(--warn); }
-.card.is-ok { border-left: 3px solid var(--ok); } .card.is-bad { border-left: 3px solid var(--bad); } .card.is-warn { border-left: 3px solid var(--warn); }
+/* The verdict's colour travels as a variable, so the spine keeps it whether the card is a box of its own (it is not,
+   inside a framed block) or a panel against the frame's edge. */
+.card.is-ok { --spine: var(--ok); } .card.is-bad { --spine: var(--bad); } .card.is-warn { --spine: var(--warn); }
+.card.is-ok, .card.is-bad, .card.is-warn { border-left: 3px solid var(--spine, var(--line)); }
 .state.bad { font-weight: 600; font-size: 14px; }
 .fields { margin: 12px 0 4px; display: grid; gap: 3px; }
 .field { display: flex; align-items: baseline; gap: 8px; }
@@ -268,7 +289,12 @@ a.btn { text-decoration: none; display: inline-block; }
   .titlebar h2 { flex-basis: calc(100% - 60px); }
   .tabs { width: 100%; }
   .tab { flex: 1; }
-  .log { padding: 12px; }
+  .log { padding: 12px 10px; }
+  /* The frame costs width twice on a phone, once for the feed's padding and once for its own: it keeps the rectangle
+     and gives the sentence inside it back the room. */
+  .block > .echo { padding: 6px 10px; }
+  .block:has(> .echo) > .out { padding: 10px 10px 11px; }
+  .block:has(> .echo) .card { padding-left: 10px; }
   .pick button { grid-template-columns: 2em 1fr; }
   .pick .addr, .pick .nm { grid-column: 2; }
   .pick .nm, .pick.two .nm { grid-template-columns: auto 1fr; gap: 8px; } /* no room for a fixed slot on a phone */
@@ -288,8 +314,10 @@ a.btn { text-decoration: none; display: inline-block; }
   .out > .tbl, .more .tbl { display: block; overflow-x: auto; white-space: nowrap; }
   /* The rows scroll sideways on a phone, but a block's caption is a sentence: keep it on screen and let it wrap,
      as it did when it was a line of its own. The width is the screen less the feed's padding and its scroll bar, with
-     room to spare: wrapping a word early costs nothing, running under the edge would hide text. */
-  .out > .tbl .cap .cap-w { white-space: normal; max-width: calc(100vw - 56px); position: sticky; left: 0; }
+     room to spare: wrapping a word early costs nothing, running under the edge would hide text. The frame around the
+     answer (16.11) takes its own padding on each side, so the room left is that much smaller. The caption still
+     sticks: it does so inside the table, which is the scrollport here, not inside the frame. */
+  .out > .tbl .cap .cap-w { white-space: normal; max-width: calc(100vw - 72px); position: sticky; left: 0; }
   .disclaimer { padding: 10px 14px 14px; margin: 0; }
 }
 @media (prefers-reduced-motion: reduce) {
@@ -340,6 +368,11 @@ a.btn { text-decoration: none; display: inline-block; }
 .kicker { color: var(--accent-hi); font-size: 12px; letter-spacing: .14em; text-transform: uppercase; margin: 0 0 14px; }
 .headline { font: 700 clamp(30px, 5.2vw, 56px)/1.05 var(--sans); letter-spacing: -.02em; margin: 0 0 18px; max-width: 16ch; }
 .headline em { font-style: normal; color: var(--accent-hi); }
+/* The shield stands beside the two lines of the headline, as tall as they are; the lede and the buttons start from the
+   shield's edge, so the left line of the hero stays one line (owner, 19.11). */
+.hero-brand { display: flex; align-items: center; gap: clamp(12px, 1.8vw, 20px); margin: 0 0 18px; }
+.hero-brand .headline { margin: 0; }
+.hero-shield { flex: none; width: clamp(54px, 9.5vw, 112px); height: auto; margin-left: -6px; filter: drop-shadow(0 8px 26px rgba(75, 135, 255, .28)); }
 .lede { font: 400 17px/1.6 var(--sans); color: var(--dim); max-width: 60ch; margin: 0 0 22px; }
 .hero-try { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; font-size: 12.5px; }
 .chip { background: var(--glass-2); border: 1px solid var(--line); border-radius: 999px; padding: 3px 12px; font-size: 12.5px; }
@@ -403,10 +436,84 @@ html:has(.tape) { scroll-padding-top: 52px; } /* the landing only: docs headings
 .code { background: var(--glass); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
 .code-head { display: flex; justify-content: space-between; align-items: center; padding: 5px 10px; border-bottom: 1px solid var(--line); color: var(--faint); font-size: 12px; }
 .code .code-head:not(:first-child) { border-top: 1px solid var(--line); }
+/* The guard's own mark: our emblem inside a shield, where the package is installed, and the link to what it does.
+   It is the one picture in this section, so it stays small and quiet: the row's height does not change. */
+.guard-head { display: inline-flex; align-items: center; gap: 7px; color: inherit; text-decoration: none; }
+.guard-head:hover, .guard-head:focus-visible { color: var(--accent-hi); }
+.guard-shield { display: block; margin: -3px 0; }
+.guard-head:hover .guard-shield, .guard-head:focus-visible .guard-shield { filter: drop-shadow(0 0 5px color-mix(in srgb, var(--accent-hi) 55%, transparent)); }
 .code pre { margin: 0; padding: 10px 14px; font: 12.5px/1.6 var(--mono); color: var(--text); overflow-x: auto; }
 /* The footer: brand and navigation on one row, the note, then rights, legal and the release. Links are quiet chips in
    the page's own style, not underlined text. */
 /* The wall of findings: the cases of the week, in the site's table style. */
+/* The one sentence that says what kind of service this is. It sits between what we check and what we flag, quiet:
+   it is a position, not a banner, and the proofs around it are what make it true (owner, 16.11). */
+.stance { max-width: 760px; margin: 28px auto 0; color: var(--dim); font: 15px/1.7 var(--sans); text-align: center; }
+.stance b { color: var(--text); font-weight: 500; }
+/* The seal block (seal.js): one card. Top: a line of our record whose answer is visibly editable, and a lock that says
+   whether the seal still fits. Bottom strip of the same card: the seal as kept beside the record as it stands now. */
+.seal { max-width: 980px; margin: 28px auto 0; }
+.seal-card { background: var(--glass); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; transition: border-color .3s; }
+.seal-card.broken { border-color: var(--bad); }
+.seal-top { padding: 22px 26px; display: flex; flex-direction: column; gap: 16px; }
+.seal-head { display: flex; justify-content: space-between; align-items: center; gap: 10px 12px; flex-wrap: wrap; }
+.seal-head h3 { margin: 0; font: 600 11px/1.3 var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--accent-hi); }
+.seal-lock { display: inline-flex; align-items: center; gap: 7px; font: 600 11px/1 var(--mono); letter-spacing: .04em; padding: 7px 10px 7px 8px; border-radius: 999px; color: var(--ok); border: 1px solid color-mix(in srgb, var(--ok) 45%, transparent); background: color-mix(in srgb, var(--ok) 9%, transparent); transition: color .3s, border-color .3s, background .3s, opacity .3s, transform .3s; }
+.seal-lock svg { width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.seal-lock .shackle { transition: transform .3s; transform-origin: 16px 10px; }
+.seal-lock.broken { color: var(--bad); border-color: color-mix(in srgb, var(--bad) 50%, transparent); background: color-mix(in srgb, var(--bad) 10%, transparent); }
+.seal-lock.broken .shackle { transform: rotate(32deg) translateY(-1.5px); }
+.seal-lock.off { opacity: 0; transform: translateY(-4px); }
+.seal-rec { display: flex; flex-direction: column; gap: 10px; }
+.seal-rec > div { transition: opacity .4s, transform .4s; }
+.seal-rec > div.off { opacity: 0; transform: translateY(6px); }
+.seal-when { font: 400 12.5px/1.6 var(--mono); color: var(--dim); }
+.seal-what { font: 700 21px/1.5 var(--sans); }
+.seal-q { color: var(--dim); font-weight: 400; }
+.seal-token b { font-weight: 700; }
+.seal-token span { color: var(--dim); font-weight: 400; margin-left: .4em; overflow-wrap: anywhere; }
+.seal-token code { font: 400 12px/1 var(--mono); color: var(--faint); margin-left: .6em; white-space: nowrap; }
+/* The editable answer: it looks like a field, says so on hover, and beckons until the first click. */
+.seal-edit { position: relative; display: inline-flex; align-items: center; gap: .35em; font: inherit; color: var(--text); cursor: pointer; padding: .08em .42em .08em .5em; border-radius: 7px; background: color-mix(in srgb, var(--accent-hi) 12%, transparent); border: 1px dashed color-mix(in srgb, var(--accent-hi) 60%, transparent); transition: background .15s, border-color .15s, transform .15s; }
+.seal-edit svg { width: .78em; height: .78em; fill: none; stroke: var(--accent-hi); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; flex: none; }
+.seal-edit:hover { background: color-mix(in srgb, var(--accent-hi) 24%, transparent); border-style: solid; transform: translateY(-1px); }
+.seal-edit:focus-visible, .seal-btn:focus-visible { outline: 2px solid var(--accent-hi); outline-offset: 2px; }
+.seal-edit s { color: var(--faint); font-weight: 400; margin-right: .35em; }
+.seal-edit.changed { color: var(--bad); background: color-mix(in srgb, var(--bad) 12%, transparent); border: 1px solid color-mix(in srgb, var(--bad) 60%, transparent); }
+.seal-edit.changed svg { stroke: var(--bad); }
+.seal-edit.beacon::after { content: ""; position: absolute; top: -5px; right: -5px; width: 10px; height: 10px; border-radius: 50%; background: var(--accent-hi); animation: seal-ping 1.5s ease-out infinite; }
+@keyframes seal-ping { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent-hi) 70%, transparent); } 100% { box-shadow: 0 0 0 12px transparent; } }
+.seal-cta { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; min-height: 36px; }
+.seal-cta p { margin: 0; color: var(--accent-hi); font: 500 14px/1.4 var(--sans); }
+.seal-cta p.done { color: var(--dim); font-weight: 400; }
+.seal-cta p:empty { display: none; }
+.seal-btn { font: 500 14px/1.2 var(--sans); cursor: pointer; background: var(--accent); color: var(--on-accent); border: 0; border-radius: 8px; padding: 9px 14px; }
+.seal-btn.ghost { background: transparent; color: var(--dim); border: 1px solid var(--line); }
+.seal-btn.ghost:hover { color: var(--text); border-color: var(--dim); }
+.seal-strip { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 16px; align-items: center; padding: 18px 26px; border-top: 1px solid var(--line); background: color-mix(in srgb, var(--ok) 7%, var(--glass-2)); transition: background .3s; }
+.seal-strip.no { background: color-mix(in srgb, var(--bad) 9%, var(--glass-2)); }
+.seal-strip.idle { background: var(--glass-2); }
+.seal-cmp { display: flex; align-items: center; gap: 8px; }
+.seal-cmp figure { margin: 0; display: flex; flex-direction: column; gap: 4px; align-items: center; }
+.seal-cmp figcaption { font: 400 10px/1.2 var(--mono); color: var(--dim); text-transform: uppercase; letter-spacing: .06em; }
+.seal-eq { font: 700 30px/1 var(--sans); color: var(--ok); width: 22px; text-align: center; margin-bottom: 14px; }
+.seal-strip.no .seal-eq { color: var(--bad); }
+.seal-mosaic { display: grid; grid-template-columns: repeat(8, 12px); gap: 2px; padding: 7px; border-radius: 9px; background: var(--glass); border: 1px solid var(--line); }
+.seal-mosaic i { width: 12px; height: 12px; border-radius: 2.5px; background: var(--line); transition: background .35s, transform .35s; }
+.seal-mosaic i.flip { transform: scale(.2) rotate(90deg); }
+.seal-strip.no #seal-now { border-color: var(--bad); }
+.seal-say strong { display: block; font: 700 16px/1.3 var(--sans); color: var(--ok); }
+.seal-strip.no .seal-say strong { color: var(--bad); }
+.seal-strip.idle .seal-say strong { color: var(--text); }
+.seal-say span { display: block; color: var(--dim); font: 400 13.5px/1.45 var(--sans); margin-top: 2px; }
+.seal-wire { padding: 16px 26px 18px; border-top: 1px solid var(--line); }
+.seal-wire-head { margin: 0 0 8px; font: 400 10.5px/1.2 var(--mono); color: var(--dim); text-transform: uppercase; letter-spacing: .08em; }
+.seal-wire code { display: block; font: 400 13px/1.5 var(--mono); color: var(--accent-hi); background: var(--glass); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; overflow-wrap: anywhere; }
+.seal-wire-say { margin: 8px 0 0; color: var(--dim); font: 400 13.5px/1.45 var(--sans); }
+.seal-wire-say a, .seal-say a, .seal-note a { color: var(--dim); border-bottom: 1px dotted currentColor; text-decoration: none; }
+.seal-note { margin: 10px 0 0; color: var(--faint); font-size: 12px; text-align: center; }
+@media (max-width: 640px) { .seal-strip { grid-template-columns: minmax(0, 1fr); } .seal-what { font-size: 18px; } .seal-wire { padding: 14px 16px 16px; } .seal-wire code { font-size: 12px; } }
+@media (prefers-reduced-motion: reduce) { .seal-edit.beacon::after { animation: none; } .seal-rec > div, .seal-lock, .seal-lock .shackle, .seal-mosaic i, .seal-edit { transition: none; } }
 .board { max-width: 980px; margin: 56px auto 0; }
 .board-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px 18px; flex-wrap: wrap; }
 .board-head h3 { font: 700 26px/1.2 var(--sans); margin: 0; }
@@ -436,7 +543,7 @@ html:has(.tape) { scroll-padding-top: 52px; } /* the landing only: docs headings
 .foot a { color: inherit; text-decoration: none; }
 .foot-top { display: flex; justify-content: space-between; align-items: center; gap: 12px 18px; flex-wrap: wrap; }
 .foot-brand { display: flex; align-items: center; gap: 10px; min-width: 0; }
-.foot-mark { width: 28px; height: 28px; flex: none; border-radius: 8px; display: block; background: #070C18 url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16'%3E%0A  %3Crect width='16' height='16' fill='%23070C18'%3E%3C/rect%3E%0A  %3Ccircle cx='8' cy='8' r='7' fill='%234B87FF'%3E%3C/circle%3E%0A  %3Cpath d='M0 8h6V6h4v2h6v1H9V7H7v2H0z' fill='%23070C18'%3E%3C/path%3E%0A%3C/svg%3E") center / cover no-repeat; box-shadow: 0 0 0 1px rgba(255, 255, 255, .08) inset, 0 6px 24px rgba(0, 82, 255, .25); }
+.foot-mark { width: 28px; height: 32px; flex: none; display: block; background: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2080%2092%22%20width%3D%2280%22%20height%3D%2292%22%20role%3D%22img%22%20aria-label%3D%22Proof%20of%20Stock%20guard%22%3E%3Ctitle%3EProof%20of%20Stock%20guard%3C%2Ftitle%3E%3Cdefs%3E%3ClinearGradient%20id%3D%22g-plate%22%20x1%3D%220%22%20y1%3D%220%22%20x2%3D%220.35%22%20y2%3D%221%22%3E%3Cstop%20offset%3D%220%22%20stop-color%3D%22%231B2742%22%2F%3E%3Cstop%20offset%3D%220.45%22%20stop-color%3D%22%230D1526%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%23070C18%22%2F%3E%3C%2FlinearGradient%3E%3ClinearGradient%20id%3D%22g-rim%22%20x1%3D%220.1%22%20y1%3D%220%22%20x2%3D%220.9%22%20y2%3D%221%22%3E%3Cstop%20offset%3D%220%22%20stop-color%3D%22%23A9C8FF%22%2F%3E%3Cstop%20offset%3D%220.35%22%20stop-color%3D%22%234B87FF%22%2F%3E%3Cstop%20offset%3D%220.75%22%20stop-color%3D%22%231E4FD8%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%2315347F%22%2F%3E%3C%2FlinearGradient%3E%3ClinearGradient%20id%3D%22g-disc%22%20x1%3D%220.2%22%20y1%3D%220%22%20x2%3D%220.8%22%20y2%3D%221%22%3E%3Cstop%20offset%3D%220%22%20stop-color%3D%22%239CC0FF%22%2F%3E%3Cstop%20offset%3D%220.4%22%20stop-color%3D%22%234B87FF%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%232A5FD8%22%2F%3E%3C%2FlinearGradient%3E%3ClinearGradient%20id%3D%22g-gloss%22%20x1%3D%220%22%20y1%3D%220%22%20x2%3D%220%22%20y2%3D%221%22%3E%3Cstop%20offset%3D%220%22%20stop-color%3D%22%23FFFFFF%22%20stop-opacity%3D%220.26%22%2F%3E%3Cstop%20offset%3D%220.55%22%20stop-color%3D%22%23FFFFFF%22%20stop-opacity%3D%220.06%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%23FFFFFF%22%20stop-opacity%3D%220%22%2F%3E%3C%2FlinearGradient%3E%3CradialGradient%20id%3D%22g-glow%22%20cx%3D%220.5%22%20cy%3D%220.42%22%20r%3D%220.6%22%3E%3Cstop%20offset%3D%220%22%20stop-color%3D%22%234B87FF%22%20stop-opacity%3D%220.35%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%234B87FF%22%20stop-opacity%3D%220%22%2F%3E%3C%2FradialGradient%3E%3Cpath%20id%3D%22g-shape%22%20d%3D%22M40%204%2072%2013v30c0%2018.5-12.8%2032.4-32%2041.6C20.8%2075.4%208%2061.5%208%2043V13z%22%2F%3E%3CclipPath%20id%3D%22g-clip%22%3E%3Cuse%20href%3D%22%23g-shape%22%2F%3E%3C%2FclipPath%3E%3Cfilter%20id%3D%22f-drop%22%20x%3D%22-30%25%22%20y%3D%22-25%25%22%20width%3D%22160%25%22%20height%3D%22160%25%22%3E%3CfeDropShadow%20dx%3D%220%22%20dy%3D%223%22%20stdDeviation%3D%223.2%22%20flood-color%3D%22%2304070F%22%20flood-opacity%3D%220.75%22%2F%3E%3C%2Ffilter%3E%3Cfilter%20id%3D%22f-emboss%22%20x%3D%22-20%25%22%20y%3D%22-20%25%22%20width%3D%22140%25%22%20height%3D%22140%25%22%3E%3CfeOffset%20in%3D%22SourceAlpha%22%20dx%3D%220%22%20dy%3D%221.4%22%20result%3D%22o%22%2F%3E%3CfeGaussianBlur%20in%3D%22o%22%20stdDeviation%3D%221.1%22%20result%3D%22b%22%2F%3E%3CfeFlood%20flood-color%3D%22%2304070F%22%20flood-opacity%3D%220.55%22%2F%3E%3CfeComposite%20in2%3D%22b%22%20operator%3D%22in%22%20result%3D%22sh%22%2F%3E%3CfeMerge%3E%3CfeMergeNode%20in%3D%22sh%22%2F%3E%3CfeMergeNode%20in%3D%22SourceGraphic%22%2F%3E%3C%2FfeMerge%3E%3C%2Ffilter%3E%3C%2Fdefs%3E%3Cg%20filter%3D%22url%28%23f-drop%29%22%3E%3Cuse%20href%3D%22%23g-shape%22%20fill%3D%22url%28%23g-plate%29%22%2F%3E%3Cg%20clip-path%3D%22url%28%23g-clip%29%22%3E%3Crect%20x%3D%220%22%20y%3D%220%22%20width%3D%2280%22%20height%3D%2292%22%20fill%3D%22url%28%23g-glow%29%22%2F%3E%3Cpath%20d%3D%22M8%2013%2040%204l32%209v16c-10%206.5-22%2010-32%2010S18%2035.5%208%2029z%22%20fill%3D%22url%28%23g-gloss%29%22%2F%3E%3Cg%20filter%3D%22url%28%23f-emboss%29%22%20transform%3D%22translate%2840%2043%29%20scale%282.55%29%20translate%28-8%20-8%29%22%3E%3Ccircle%20cx%3D%228%22%20cy%3D%228%22%20r%3D%227%22%20fill%3D%22url%28%23g-disc%29%22%2F%3E%3Cpath%20d%3D%22M-8%208h14V6h4v2h14v1H9V7H7v2H-8z%22%20fill%3D%22%230B1020%22%20fill-opacity%3D%220.92%22%2F%3E%3C%2Fg%3E%3C%2Fg%3E%3Cuse%20href%3D%22%23g-shape%22%20fill%3D%22none%22%20stroke%3D%22url%28%23g-rim%29%22%20stroke-width%3D%223%22%20stroke-linejoin%3D%22round%22%2F%3E%3Cuse%20href%3D%22%23g-shape%22%20fill%3D%22none%22%20stroke%3D%22%23FFFFFF%22%20stroke-opacity%3D%220.18%22%20stroke-width%3D%221%22%20stroke-linejoin%3D%22round%22%20transform%3D%22translate%280%201.1%29%20scale%280.985%29%20translate%280.6%200%29%22%2F%3E%3C%2Fg%3E%3C%2Fsvg%3E") center / contain no-repeat; }
 .foot-name { color: var(--text); font: 600 14px/1.2 var(--sans); }
 .foot-tag { color: var(--dim); font-size: 12.5px; }
 .foot-nav { display: flex; flex-wrap: wrap; gap: 6px; }

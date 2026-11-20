@@ -19,6 +19,14 @@ if [ "${1:-}" = "--check" ]; then
   if [ -z "${1:-}" ]; then
     DEST=$(mktemp -d); trap 'rm -rf "$DEST"' EXIT
   else
+    # The directory comes first and the revision second, so "--check HEAD" means "work in ./HEAD", and that is how two
+    # copies of the whole tree ended up in the repository root and then in a commit (16.11). A first argument that
+    # names a commit is a mistake, not a directory: say so instead of making it.
+    if [ ! -e "$1" ] && git rev-parse -q --verify "$1^{commit}" >/dev/null 2>&1; then
+      echo "refusing: $1 is a revision, and the first argument after --check is the directory to work in." >&2
+      echo "          for a check of $1, run: scripts/export-public.sh --check '' $1   (or leave both out for HEAD)" >&2
+      exit 2
+    fi
     DEST=$1
   fi
 else

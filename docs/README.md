@@ -1,5 +1,8 @@
 # Proof of Stock™ documentation
 
+Proof of Stock checks tokenized stocks, the real-world assets (RWA) that trade on-chain: whether a token is the
+issuer's own, what the issuer says it is worth, and how far the chain trades from that. Base and Robinhood Chain.
+
 ```
 Is 0x… on Base the issuer's tokenized stock?      → /verify, verify_stock_tokens
 What does the issuer say it is worth, and since?  → stock_passport: reference, reference.age_s

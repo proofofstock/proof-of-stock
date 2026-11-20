@@ -26,9 +26,11 @@ export function summarise (rows) {
   // connects, lists the tools and leaves is discovery; an agent that called a tool is use. A name list would go stale
   // the day a new crawler appears, and a crawler can call itself anything. The client name stays a label only.
   const mcpRows = [], mcpUsers = new Set()
+  const apiRows = [], apiRoutes = new Map(), apiNamed = new Map()
   const isToolCall = (r) => r.method === 'tools/call' || r.tool != null
   const actions = new Map() // action → Map(value → people who did it); a person counts once per action and value
   for (const r of rows) {
+    if (r.kind === 'api') { apiRows.push(r); inc(apiRoutes, r.route); if (r.client) inc(apiNamed, r.client); continue }
     if (r.kind === 'load') { inc(loads, r.ua_class); if (!loadVisitors.has(r.ua_class)) loadVisitors.set(r.ua_class, new Set()); loadVisitors.get(r.ua_class).add(r.visitor) }
     else if ((r.kind === 'view' || r.kind === 'hide') && r.ua_class === 'browser') {
       if (!people.has(r.visitor) && r.country) inc(countries, r.country)
@@ -73,6 +75,12 @@ export function summarise (rows) {
     mcp_clients: mcpVisitors.size, mcp_calls: top(mcpCalls, 15), mcp_client_names: top(mcpClients),
     // Counted from the rows, not from mcp_calls, which keeps only its top 15 keys and would undercount.
     mcp_requests: mcpRows.length,
+    // Programs calling the data routes (apps/stocks-analytics.mjs api): browsers and our own exam leave no row.
+    api_requests: apiRows.length,
+    api_clients: new Set(apiRows.map((r) => r.visitor)).size,
+    api_checks: apiRows.filter((r) => r.route === 'verify').reduce((a, r) => a + (Number(r.n) || 1), 0),
+    api_routes: top(apiRoutes, 10),
+    api_named_clients: top(apiNamed),
     mcp_use_requests: mcpRows.filter((r) => mcpUsers.has(r.visitor)).length,
     mcp_discovery_requests: mcpRows.filter((r) => !mcpUsers.has(r.visitor)).length,
     mcp_use_agents: mcpUsers.size,

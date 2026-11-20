@@ -1,0 +1,64 @@
+{
+  "_finding": "The seal block on the landing argues that nobody has to take our word for a record. It would undo its own argument the day it showed \"sealed\" for a mirror nobody else confirmed, for a hash other than the one the browser computed, or for a case whose day is not mirrored at all. These mutations put each of those back.",
+  "target": "apps/stocks-web/seal.js",
+  "runner": [
+    "node",
+    "apps/seal-block.test.mjs"
+  ],
+  "mutations": [
+    {
+      "name": "a mirror nobody else confirmed is shown as a seal",
+      "find": "if (!m || m.status !== 'confirmed' || m.sha256 !== hash || !TX.test(m.tx || '')) return null",
+      "replace": "if (!m || m.sha256 !== hash || !TX.test(m.tx || '')) return null",
+      "expect": "FAIL a mirror that is in a block but not witnessed is not"
+    },
+    {
+      "name": "confirmed with no witness named is enough",
+      "find": "    if (!Array.isArray(m.witnessed_by) || !m.witnessed_by.length) return null\n",
+      "replace": "",
+      "expect": "FAIL ...nor one called confirmed with nobody named as witness"
+    },
+    {
+      "name": "the mirror's hash is not compared with the one computed here",
+      "find": "if (!HEX64.test(hash || '') || !mirror || mirror.sha256 !== hash) return null",
+      "replace": "if (!HEX64.test(hash || '') || !mirror) return null",
+      "expect": "FAIL a mirror of other bytes is not a seal of these"
+    },
+    {
+      "name": "a case of a day with no mirror is offered",
+      "find": "if (!sealed.has(day) || !ADDRESS.test(e.address || '')",
+      "replace": "if (!ADDRESS.test(e.address || '')",
+      "expect": "FAIL a case of a day that is not mirrored yet is not offered"
+    },
+    {
+      "name": "the creator's text is passed on whole",
+      "find": "name: String(e.name || '').slice(0, 32)",
+      "replace": "name: String(e.name || '')",
+      "expect": "FAIL the creator's text is cut to a label"
+    },
+    {
+      "name": "a day with no Bitcoin check on file is said to have one",
+      "find": "imitates: e.imitates_symbol, checked: sealed.get(day) })",
+      "replace": "imitates: e.imitates_symbol, checked: true })",
+      "expect": "FAIL a case says whether its day has a Bitcoin check on file"
+    },
+    {
+      "name": "the line shown drifts from the one the transaction carries",
+      "find": "`proofofstock anchor ${day} sha256:${hash}`",
+      "replace": "`proofofstock ${day} ${hash}`",
+      "expect": "FAIL the line shown is, letter for letter, the one the Base transaction carries"
+    },
+    {
+      "name": "the oldest sealed day comes first",
+      "find": "[...byDay.keys()].sort().reverse()",
+      "replace": "[...byDay.keys()].sort()",
+      "expect": "FAIL the newest sealed day comes first, whatever the date, so the block shows last night's seal"
+    },
+    {
+      "name": "the whole week rotates again, so any day can be on top",
+      "find": "    const out = [...byDay.keys()].sort().reverse().flatMap((d) => { const g = byDay.get(d), i = k % g.length; return g.slice(i).concat(g.slice(0, i)) })",
+      "replace": "    const i0 = k % (real.length || 1), out = real.slice(i0).concat(real.slice(0, i0))",
+      "expect": "FAIL the newest sealed day comes first, whatever the date, so the block shows last night's seal"
+    }
+  ]
+}

@@ -4,7 +4,7 @@
 // Run: node evm/core/stocks/peg.test.mjs
 
 import fs from 'node:fs'
-import { pegReading, eligiblePools, DEXSCREENER_PAIR_CAP, PEG_REFUSALS, MAX_SOURCE_DISAGREEMENT } from './peg.mjs'
+import { pegReading, eligiblePools, DEXSCREENER_PAIR_CAP, PEG_REFUSALS, MAX_SOURCE_DISAGREEMENT, MAX_PLAUSIBLE_RATIO } from './peg.mjs'
 import { POOL_SOURCES } from '../../../schemas/v2/enums.mjs'
 import { readCoinbase, readRobinhood, COINBASE_URL, ROBINHOOD_ASSETS_URL, ROBINHOOD_PRICES_URL } from './registries.mjs'
 
@@ -66,7 +66,7 @@ console.log('peg reading')
   check('...and a look-alike symbol is not the reference asset: the address is', pegReading(T, { price_usd: 4.095 }, [pair({ quoteToken: { address: MEME, symbol: 'USDG' }, priceUsd: '4.1' })], { referenceAssets: refs }).premium_refused === 'no_eligible_pool')
   check('a quote-side pool against the stable still prices it', pegReading(T, { price_usd: 100 }, [pair({ baseToken: { address: USD, symbol: 'USDG' }, quoteToken: { address: T }, priceUsd: '1', priceNative: '0.0099', liquidity: { usd: 80_000 } })], { referenceAssets: refs }).premium_refused === null)
 
-  check('every refusal is one of the schema enum', ['no_reference', 'pairs_unavailable', 'no_pairs', 'no_eligible_pool', 'sources_disagree', 'reference_spread_wide'].every((x) => PEG_REFUSALS.includes(x)) && PEG_REFUSALS.length === 6)
+  check('every refusal is one of the schema enum', ['no_reference', 'pairs_unavailable', 'no_pairs', 'no_eligible_pool', 'sources_disagree', 'reference_spread_wide', 'implausible_vs_reference'].every((x) => PEG_REFUSALS.includes(x)) && PEG_REFUSALS.length === 7)
   {
     const schema = JSON.parse(fs.readFileSync(new URL('../../../schemas/v2/stock-peg.schema.json', import.meta.url), 'utf8'))
     const inSchema = schema.properties.premium_refused.enum.filter((x) => x !== null)
@@ -152,6 +152,35 @@ const fakeFetch = (routes) => async (url) => {
   let threw = false
   try { await readCoinbase(async () => ({ ok: true, status: 200, json: async () => ({ tokens: [] }) })) } catch (_) { threw = true }
   check('a reader without a chain id refuses rather than guessing a chain', threw)
+}
+
+console.log('a pool that cannot be this token')
+{
+  // The real one, 16.11: a pool priced a token at $341.44 while its issuer quoted $4.355, and we recorded a premium
+  // of 7740%. Every gate before this one asks whether the POOL is sound (deep enough, two sources agreeing, a sane
+  // issuer spread); a deep pool for the wrong asset passes all of them. This gate asks whether the two prices can be
+  // the same thing at all.
+  const POOL = '0x' + 'ef'.repeat(20)
+  const pool = (priceUsd) => [pair({ pairAddress: POOL, priceUsd: String(priceUsd), liquidity: { usd: 500_000 } })]
+  const ref = (price) => ({ price_usd: price })
+  const real = pegReading(T, ref(4.355), pool(341.44))
+  check('the reading that started this is refused, with both prices kept', real.premium === null && real.premium_refused === 'implausible_vs_reference' && real.dex_price_usd === 341.44, JSON.stringify({ r: real.premium_refused, p: real.dex_price_usd }))
+  // Decimals and same-symbol coins land orders of magnitude out, on either side.
+  check('...and so does a pool a hundred times under the issuer price', pegReading(T, ref(400), pool(4)).premium_refused === 'implausible_vs_reference')
+  // The bound is a ratio, and it is not a safety rail against bad news: a real depeg must still be reported.
+  const wild = pegReading(T, ref(100), pool(180))
+  check('a token trading at nearly twice the issuer price is still a premium, however alarming', wild.premium_refused === null && Math.abs(wild.premium - 0.8) < 1e-9, JSON.stringify(wild.premium))
+  const half = pegReading(T, ref(100), pool(40))
+  check('...and so is one at 40% of it', half.premium_refused === null && Math.abs(half.premium + 0.6) < 1e-9, JSON.stringify(half.premium))
+  // The edges of the bound itself, from the constant rather than from a number copied here.
+  const edgeIn = pegReading(T, ref(100), pool(100 * MAX_PLAUSIBLE_RATIO))
+  const edgeOut = pegReading(T, ref(100), pool(100 * MAX_PLAUSIBLE_RATIO * 1.000001))
+  check('exactly at the bound is still a premium; past it is not', edgeIn.premium_refused === null && edgeOut.premium_refused === 'implausible_vs_reference', JSON.stringify({ in: edgeIn.premium_refused, out: edgeOut.premium_refused }))
+  const lowIn = pegReading(T, ref(100), pool(100 / MAX_PLAUSIBLE_RATIO))
+  check('...and the same on the low side, because the bound is a ratio both ways', lowIn.premium_refused === null && pegReading(T, ref(100), pool(100 / MAX_PLAUSIBLE_RATIO / 1.000001)).premium_refused === 'implausible_vs_reference')
+  check('the bound is wide enough that no honest market move meets it', MAX_PLAUSIBLE_RATIO >= 3)
+  // The refusal is not a silence: the pool price is what lets a reader see the mismatch for themselves.
+  check('a refused reading still carries the pool price and the pool', real.dex_price_usd === 341.44 && real.dex_pool === POOL)
 }
 
 console.log(`\n${passed} passed, ${failed} failed`)

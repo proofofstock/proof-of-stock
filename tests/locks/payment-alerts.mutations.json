@@ -1,0 +1,40 @@
+{
+  "_finding": "The paid-pass alarms (selling paused, a broadcast with no receipt, a settlement wallet out of gas) went only to the stp-web journal, which nobody reads (inventory 20.11). stp-health now turns /api/status.payments into Telegram alerts. The ways it goes quiet: a pause or low gas is never flagged, an unreadable balance reads as fine, or a late settlement is never sent (or sent every hour forever).",
+  "target": "scripts/stocks/health-check.mjs",
+  "runner": [
+    "node",
+    "apps/payment-alerts.test.mjs"
+  ],
+  "mutations": [
+    {
+      "name": "a pause is never flagged",
+      "find": "  const paused = Boolean(payments.paused_until) && Date.parse(payments.paused_until) > now",
+      "replace": "  const paused = false",
+      "expect": "FAIL paused: an alert that says until when"
+    },
+    {
+      "name": "low gas is never flagged",
+      "find": "    const low = BigInt(balanceWei) < SETTLEMENT_GAS_MIN_WEI",
+      "replace": "    const low = false",
+      "expect": "FAIL gas below a day of settlements: an alert naming the wallet and the balance"
+    },
+    {
+      "name": "an unreadable balance is silence",
+      "find": "  if (balanceError) out.push({ key: 'x402:gas', bad: true,",
+      "replace": "  if (false) out.push({ key: 'x402:gas', bad: true,",
+      "expect": "FAIL a balance that cannot be read is an alert, never silence"
+    },
+    {
+      "name": "late settlements are sent every hour for a day",
+      "find": "|| !(now - Date.parse(e.at) < LATE_SETTLEMENT_WINDOW_S * 1000)) continue",
+      "replace": ") continue",
+      "expect": "FAIL ...an hour later it is not sent again, and never \"resolved\": it is a task for a person"
+    },
+    {
+      "name": "the RPC error reads as a zero balance",
+      "find": "  if (!j || typeof j.result !== 'string') throw new Error((j && j.error && j.error.message) || 'no balance in the answer')",
+      "replace": "  if (!j || typeof j.result !== 'string') return 0n",
+      "expect": "FAIL ...and an RPC error is an error, not a zero balance"
+    }
+  ]
+}

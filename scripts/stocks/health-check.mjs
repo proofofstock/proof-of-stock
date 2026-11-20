@@ -82,6 +82,46 @@ export function evaluate ({ status, siteError = null, runs = {}, prevRuns = {}, 
   return out
 }
 
+/** Below this the settlement wallet cannot pay a day's gas budget (DAILY_GAS_WEI in the x402 module): top it up. */
+export const SETTLEMENT_GAS_MIN_WEI = 3n * 10n ** 14n
+/** A late settlement is announced in the run after it is logged, once (alert() sends a key at most hourly). */
+export const LATE_SETTLEMENT_WINDOW_S = 20 * 60
+
+/**
+ * Paid passes (apps/stocks-web.mjs paymentsStatus): selling paused after failed settlements, a broadcast still without
+ * a receipt after the module's watch (refund by hand if the USDC moved), and gas on the settlement wallet. Nothing when
+ * passes are off. A late settlement is never "resolved": it is a task for a person, sent once.
+ */
+export function paymentChecks ({ payments, balanceWei = null, balanceError = null, now }) {
+  if (!payments || !payments.enabled) return []
+  const out = []
+  const paused = Boolean(payments.paused_until) && Date.parse(payments.paused_until) > now
+  out.push({ key: 'x402:paused', bad: paused, text: paused
+    ? 'paid passes are paused until ' + payments.paused_until + ': several settlements in a row failed on chain after they were sent. Look at the stp-web journal ([x402] settlement failed) before it resumes.'
+    : 'paid passes are on sale again.' })
+  for (const e of Array.isArray(payments.late_settlements) ? payments.late_settlements : []) {
+    if (!/^0x[0-9a-f]{64}$/.test(e?.transaction || '') || !(now - Date.parse(e.at) < LATE_SETTLEMENT_WINDOW_S * 1000)) continue
+    out.push({ key: 'x402:late:' + e.transaction, bad: true, text: 'a pass payment was sent and has no receipt after 10 minutes: https://basescan.org/tx/' + e.transaction + '. If the USDC moved and no pass was given, refund it by hand (the stp-web journal line [x402] settled is the record).' })
+  }
+  if (balanceError) out.push({ key: 'x402:gas', bad: true, text: 'the gas balance of the settlement wallet ' + payments.settlement_wallet + ' could not be read (' + String(balanceError).slice(0, 80) + ').' })
+  else if (balanceWei != null) {
+    const low = BigInt(balanceWei) < SETTLEMENT_GAS_MIN_WEI
+    out.push({ key: 'x402:gas', bad: low, text: low
+      ? 'the settlement wallet ' + payments.settlement_wallet + ' holds ' + (Number(BigInt(balanceWei)) / 1e18).toFixed(6) + ' ETH on Base, less than a day of gas: top it up or passes will be refused.'
+      : 'the settlement wallet has gas again.' })
+  }
+  return out
+}
+
+/** The ETH balance of an address on Base, through STP_RPC_BASE or the public node. */
+export async function baseBalance (address, { env = process.env, fetchImpl = fetch } = {}) {
+  const r = await fetchImpl(env.STP_RPC_BASE || 'https://mainnet.base.org', { method: 'POST', headers: { 'content-type': 'application/json' }, signal: AbortSignal.timeout(10_000),
+    body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'eth_getBalance', params: [address, 'latest'] }) })
+  const j = await r.json()
+  if (!j || typeof j.result !== 'string') throw new Error((j && j.error && j.error.message) || 'no balance in the answer')
+  return BigInt(j.result)
+}
+
 /**
  * The issuer's list against its factory on chain (scripts/stocks/issuer-mirror.mjs). A token on the list that the
  * factory never created is the one that matters: the list, or the mirror, is wrong, and a person should look. A mirror
@@ -250,6 +290,12 @@ if (isEntryPoint(import.meta.url)) {
   const mirrors = Object.fromEntries(Object.entries(roots).map(([c, root]) => [c, readMirror(path.join(root, 'stock-peg'), c)]))
   const checks = evaluate({ status, siteError, runs, prevRuns, mirrors, now })
   checks.push(...standaloneChecks(now))
+  const payments = status && status.payments
+  if (payments && payments.enabled) {
+    let balanceWei = null, balanceError = null
+    if (/^0x[0-9a-fA-F]{40}$/.test(payments.settlement_wallet || '')) { try { balanceWei = await baseBalance(payments.settlement_wallet) } catch (e) { balanceError = String(e && e.message || e) } }
+    checks.push(...paymentChecks({ payments, balanceWei, balanceError, now }))
+  }
   const sent = []
   for (const ch of checks) sent.push([ch.key, await alert({ key: ch.key, text: ch.text, ok: !ch.bad })])
   const bad = checks.filter((c) => c.bad).map((c) => c.key)

@@ -97,11 +97,11 @@ curl -s https://proofofstock.xyz/mcp \
 
 ## Guard a trading agent with `@proofofstock/guard`
 
-The package is in this repository at `packages/proofofstock-guard/`. It is ready to publish to npm but not published
-yet, so import it from the repository for now. It has no dependencies and needs Node 18 or later.
+Install it with `npm install @proofofstock/guard` (its source is in this repository at `packages/proofofstock-guard/`).
+It has no dependencies and needs Node 20.19 or newer.
 
 ```js
-import { createGuard } from './packages/proofofstock-guard/index.mjs'
+import { createGuard } from '@proofofstock/guard'
 
 const guard = createGuard()   // { endpoint, fetchImpl, timeoutMs: 8000, failOpen: false }
 
@@ -126,7 +126,8 @@ if (!d.allow) {
 | `wrong_stock` | `false` | the address is issuer-listed, but as a different stock from `claimedSymbol` |
 | `impostor` | `false` | not listed, and copies a listed symbol or the issuer's naming |
 | `not_listed` | `false` | not listed, no mimicry seen |
-| `unknown` | `failOpen` | the check could not be made: a 503, a 429, a timeout or a network error |
+| `unknown` | `failOpen` | the check could not be made: a 503, a 429, a timeout or a network error, or a listed answer without its issuer-list proof |
+| `invalid_input` | `false` | the chain or the address is not one the guard can check |
 
 `claimedSymbol` accepts either issuer's form: `NVDA` and `NVDAc` name the same stock. Only a Coinbase-style symbol
 (upper-case letters, digits or dots, then a lower-case `c`) loses its trailing `c`; `sndkc` stays `SNDKC`.
@@ -135,8 +136,8 @@ if (!d.allow) {
 `createGuard({ failOpen: true })` only if a missed check is acceptable to you. The `reason` then says the buy was
 allowed because `failOpen` is set.
 
-**Bad input throws.** A chain other than `base` or `robinhood`, or a malformed address, rejects the promise instead of
-returning a decision. Validate input first, or catch the error and treat it as a refusal.
+**Bad input is a refusal, not a throw.** A chain other than `base` or `robinhood`, or a malformed address, gives the
+decision `invalid_input`; `beforeBuy` never rejects on it.
 
 For Coinbase AgentKit, `packages/proofofstock-guard/agentkit.mjs` exports the same check as an action named
 `check_stock_token_before_buy`. Its answer starts with `ALLOW` or `REFUSE`. The package README shows how to register

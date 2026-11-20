@@ -76,6 +76,9 @@ const caseFields = (it) => ({ address: it.address, symbol: it.symbol ?? null, na
  * @param {number} p.chainId
  * @param {boolean} p.firstArchive  the archive of this chain is empty: what the list holds now is backfilled
  */
+/** imitated_left_list: the listed contract it imitated is not on the issuer's list any more; no_longer_matches: otherwise. */
+export const goneReason = (prev, registry) => prev && prev.registry_address && !registry.has(prev.registry_address) ? 'imitated_left_list' : 'no_longer_matches'
+
 export function caseEvents (open, list, { registry, at, chainId, firstArchive }) {
   const atIso = new Date(at).toISOString()
   const base = (event, source) => ({ _schema_version: '1.0', chain_id: chainId, event, at: atIso, source, rule_version: CASE_RULE_VERSION })
@@ -95,9 +98,12 @@ export function caseEvents (open, list, { registry, at, chainId, firstArchive })
   for (const [a, prev] of open) {
     if (now.has(a)) continue
     // Listed by the issuer: we were wrong or early, and that is kept and counted. Checked first, and whatever the
-    // list's completeness, because the registry answer stands on its own.
+    // list's completeness, because the registry answer stands on its own. A close says why, where it is decided
+    // (goneReason): the stock it imitated left the issuer's list (Coinbase pruned 303 entries on 17.11 and two dozen
+    // cases closed in one run), or the token no longer copies a listed stock. Without it the archive read as if a
+    // look-alike had mended its ways.
     if (registry.has(a)) out.push({ ...base('listed', 'observed'), ...caseFields(prev), flagged_at: prev.flagged_at ?? null })
-    else if (complete) out.push({ ...base('gone', 'observed'), ...caseFields(prev), flagged_at: prev.flagged_at ?? null })
+    else if (complete) out.push({ ...base('gone', 'observed'), ...caseFields(prev), flagged_at: prev.flagged_at ?? null, gone_reason: goneReason(prev, registry) })
   }
   return out
 }

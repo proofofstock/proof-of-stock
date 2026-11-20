@@ -26,6 +26,46 @@ const OLD = /^-?(\/var\/lib\/stp(\/|$)|\/root(\/|$))/
 // The units that read the other project's directories, and why (each says so in its own comments).
 const READERS = new Set(['stp-impostors.service', 'stp-health.service'])
 
+// The move to our own user and our own data root is written once, as a procedure, in CUTOVER.md. A unit added after
+// it was written is a unit that procedure does not stop, does not wait for and does not start again: stp-anchor-mirror
+// was missing from all three for a week (16.11). It is the one that signs, so a run of it caught by a data move is a
+// transaction in flight. Every timer there is has to be named in each of the three places, this one most of all.
+console.log('the cutover knows every unit')
+{
+  const cutover = fs.readFileSync(path.join(ROOT, 'deployment', 'CUTOVER.md'), 'utf8')
+  const timers = fs.readdirSync(UNITS_DIR).filter((f) => f.endsWith('.timer')).map((f) => f.replace(/\.timer$/, ''))
+  const stops = [...cutover.matchAll(/systemctl stop ([^\n]+)/g)].map((m) => m[1])
+  const starts = [...cutover.matchAll(/systemctl (?:start|enable --now) ([^\n#]+)/g)].map((m) => m[1]).filter((l) => l.includes('.timer'))
+  const waits = [...cutover.matchAll(/while systemctl[^\n]*do sleep[^\n]*/g)].map((m) => m[0])
+  check('there are the three places: stop the timers, wait for the runs, start the timers again', stops.length >= 2 && starts.length >= 2 && waits.length >= 2, `${stops.length} stop, ${waits.length} wait, ${starts.length} start`)
+  // The wait has to be true WHILE a run is going, and these are oneshots: mid-run they read `activating`, which is
+  // what `systemctl is-active --quiet` calls false. The loop here asked that question for a year and returned at
+  // once (measured on the host, 16.11). A wait that cannot wait is worse than none: it reads as a guarantee.
+  const blind = waits.filter((w) => /is-active/.test(w) || !/ActiveState/.test(w) || !/activating/.test(w))
+  check('...and the wait asks a question that is true while a oneshot runs', blind.length === 0, blind.join(' | ').slice(0, 120))
+  // The ones that matter in all three places are the ones that write the data being moved: their StateDirectory is
+  // our own data or the anchors. The rest (the site, the health check, the backup, the alert) are named where the
+  // procedure needs them and are not part of this rule.
+  const writes = (t) => /(^|\s)(pos\/|stp-anchors)/.test(values(units[t + '.service'] || '', 'StateDirectory').join(' '))
+  const WRITERS = timers.filter(writes)
+  check('the writers are the ones we think they are', WRITERS.length >= 5 && WRITERS.includes('stp-anchor-mirror'), WRITERS.join())
+  // Named in a command, not only in a sentence about it: prose moves nothing.
+  const commands = cutover.split('\n').filter((l) => /systemctl|journalctl/.test(l))
+  const absent = timers.filter((t) => !commands.some((l) => l.includes(t)))
+  check('no timer is a stranger to the procedure', absent.length === 0, absent.join())
+  // A line that moves one writer moves all of them: a procedure that stops four of the five and starts four again is
+  // how one gets left running over a data move. Lines about something else (the backup's own timer) are not in it.
+  const about = (lines, suffix) => lines.filter((l) => WRITERS.some((t) => l.includes(t + suffix)))
+  const missing = (lines, suffix) => WRITERS.filter((t) => !about(lines, suffix).every((l) => l.includes(t + suffix)))
+  check('every writer is stopped, in each place that stops them', about(stops, '.timer').length >= 2 && missing(stops, '.timer').length === 0, missing(stops, '.timer').join())
+  check('...and started again, in each place that starts them', about(starts, '.timer').length >= 2 && missing(starts, '.timer').length === 0, missing(starts, '.timer').join())
+  check('...and waited for before anything moves: a run in flight is the whole risk', missing(waits, '.service').length === 0, missing(waits, '.service').join())
+  // ...and the one that signs is explained where it is stopped, in the same breath as its own name: a reader who
+  // skips the paragraph is the reader who kills the run.
+  const para = cutover.split(/\n\s*\n/).find((b) => /only unit in this project that signs/.test(b.replace(/\n/g, ' ')))
+  check('and the one that signs is explained by name, not left as an item in a list', !!para && /stp-anchor-mirror/.test(para) && /nonce/.test(para.replace(/\n/g, ' ')), (para || '').slice(0, 60))
+}
+
 console.log('every unit')
 {
   check('the units are all here', ['stp-web.service', 'stp-peg.service', 'stp-impostors.service', 'stp-mirror.service', 'stp-anchor.service', 'stp-anchor-mirror.service', 'stp-health.service', 'stp-alert@.service', 'pos-backup.service'].every((u) => units[u]), Object.keys(units).join())
@@ -74,9 +114,11 @@ console.log('the units that write our data')
   check('stp-impostors: reads each chain\'s token dataset explicitly', /--root=\/var\/lib\/pos\/base --token-dataset=\/var\/lib\/stp\/base /.test(imp) && /--root=\/var\/lib\/pos\/robinhood --token-dataset=\/var\/lib\/stp\/robinhood /.test(imp))
   check('stp-peg: reads no token dataset', !/token-dataset|\/var\/lib\/stp\//.test(units['stp-peg.service'].replace(/^#.*$/gm, '')))
   check('stp-anchor: reads our data roots, writes only its own directory', values(units['stp-anchor.service'], 'Environment').filter((e) => e.startsWith('STOCKS_ROOT_')).join() === 'STOCKS_ROOT_BASE=/var/lib/pos/base,STOCKS_ROOT_ROBINHOOD=/var/lib/pos/robinhood' && words(units['stp-anchor.service'], 'ReadWritePaths').join() === '/var/lib/stp-anchors' && words(units['stp-anchor.service'], 'StateDirectory').join() === 'stp-anchors')
-  // The one key in the project (spec H4). It reaches exactly one unit, by LoadCredential, which systemd reads as root
-  // before the unit's sandbox exists: no unit can read /etc/pos itself, this one included. If a second unit ever asks
-  // for a credential, this fails, because a key that spreads is a key nobody can reason about any more.
+  // The one key in the repository's units (spec H4). It reaches exactly one unit, by LoadCredential, which systemd reads
+  // as root before the unit's sandbox exists: no unit can read /etc/pos itself, this one included. If a second unit ever
+  // asks for a credential here, this fails, because a key that spreads is a key nobody can reason about any more. The
+  // settlement key for paid passes is the one other key, and it is deliberately not in these files: it reaches stp-web
+  // by a host-only drop-in (deployment/PUBLISHING.md "Paid passes"), because a host without it must still start.
   const mirror = units['stp-anchor-mirror.service']
   const credentialed = Object.entries(units).filter(([, t]) => values(t, 'LoadCredential').length).map(([n]) => n)
   check('exactly one unit is given a key, and it is the anchor mirror', credentialed.join() === 'stp-anchor-mirror.service', credentialed.join())

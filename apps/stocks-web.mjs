@@ -58,7 +58,8 @@ import { createDocsRenderer } from './stocks-docs.mjs'
 import { stampList, listProof, listBytes } from '../evm/core/stocks/list-proof.mjs'
 import { canonicalRegistry } from '../evm/core/stocks/history.mjs'
 import { isIsoTime } from '../scripts/lib/mcp-args.mjs'
-import { statusPage } from './stocks-status.mjs'
+import { statusPage, usageOf } from './stocks-status.mjs'
+import { archiveAt } from './stocks-archive.mjs'
 import { statsPage, lastRuns, STATS_GATE } from './stocks-stats.mjs'
 import { ANCHOR_FILE_RE, anchorDays, anchorFor } from '../scripts/stocks/anchor.mjs'
 import { makeReceipt } from '../evm/core/stocks/receipt.mjs'
@@ -75,8 +76,33 @@ import { createExamCache, EXAM_CHIP_HTML } from './stocks-exam.mjs'
 let createX402 = null
 try { ({ createX402 } = await import('../evm/core/stocks/x402.mjs')) } catch (_) { createX402 = null }
 
+/**
+ * Whether this host asked for paid passes. The module being absent is the normal, quiet case: a checkout without it
+ * is the free service, which is most of the world. The case that must NOT be quiet is a host that names a payee and
+ * a settlement key and then runs a release the module never reached: that host believes it is selling passes and is
+ * serving plain 429s instead (16.11: a deploy carried no host files, and the module was gone from the release for a
+ * day without a sound).
+ */
+export function x402Missing (env = process.env, has = createX402 != null) {
+  const asked = Boolean(env.STP_X402_PAY_TO) || Boolean(env.STP_X402_KEY_FILE)
+  return asked && !has
+}
+
+/** What the site says at startup in that case. One line, because an alert nobody reads is the same as silence. */
+export const X402_MISSING_LINE = '[x402] THE HOST NAMES A PAYEE OR A KEY FILE AND THE MODULE IS NOT IN THIS RELEASE: passes are off, every refusal is a plain 429. Put evm/core/stocks/x402.mjs under the host files directory (deployment/PUBLISHING.md) so a deploy carries it.'
+
 /** How many matrix rows the MCP tool returns when no share is named. */
 export const MATRIX_MCP_TOP = 20
+
+/**
+ * The biggest /verify batch, served only with a pass (passGate): 150 addresses, 15 units. Not more, because the batch
+ * is a GET: 150 addresses are about 6.5 KB of request line, under nginx's default 8 KB buffer, and the proxy refuses
+ * any other method. 500 was the first idea; its 21 KB URL never reached the app (a 431 from Node itself, measured).
+ */
+export const PAID_VERIFY_BATCH = 150
+/** Failed purchases a client may make on passGate in PASS_FAIL_WINDOW_MS before it is refused with a 429. */
+export const PASS_FAIL_MAX = 5
+export const PASS_FAIL_WINDOW_MS = 10 * 60e3
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 const STATIC_DIR = path.join(HERE, 'stocks-web')
@@ -87,9 +113,12 @@ const STATIC = Object.freeze({
   '/docs.css': ['docs.css', 'text/css; charset=utf-8'],
   '/docs.js': ['docs.js', 'text/javascript; charset=utf-8'],
   '/beacon.js': ['beacon.js', 'text/javascript; charset=utf-8'],
+  '/seal.js': ['seal.js', 'text/javascript; charset=utf-8'],
   '/og.png': ['og.png', 'image/png'],
   '/logo.png': ['logo.png', 'image/png'],
   '/favicon.svg': ['favicon.svg', 'image/svg+xml'],
+  // The guard's shield: our emblem inside a shield, beside the install line and in the repository's own README.
+  '/shield.svg': ['shield.svg', 'image/svg+xml'],
   '/favicon.ico': ['logo.png', 'image/png'],
 })
 /** The one line the MCP registry reads at /.well-known/mcp-registry-auth: an Ed25519 public key, base64 of 32 bytes. */
@@ -144,7 +173,7 @@ export function llmsTxt (docs, origin, version, passLine = null) {
   const lineOf = (t) => (t.split('\n').find((l) => /^[A-Z][^|#`>\-*]/.test(l.trim()) && !/^v\d/.test(l.trim())) || '').trim().replace(/\s+/g, ' ').slice(0, 180)
   const sections = {}
   for (const k of pages) (sections[k.split('/').length > 1 ? k.split('/')[0] : 'more'] ||= []).push(`- [${titleOf(docs.get(k))}](${origin}/docs/${k}): ${lineOf(docs.get(k))}`)
-  const head = ['# Proof of Stock', '', `> Is a token the issuer's tokenized stock, and how far does the chain trade from the issuer's price? Base (Coinbase registry) and Robinhood Chain (Robinhood registry). Public read-only MCP server: ${origin}/mcp. Version ${version}.`, '',
+  const head = ['# Proof of Stock', '', `> Tokenized stocks, the real-world assets (RWA) that trade on-chain: is a token the issuer's tokenized stock, and how far does the chain trade from the issuer's price? Base (Coinbase registry) and Robinhood Chain (Robinhood registry). Public read-only MCP server: ${origin}/mcp. Version ${version}.`, '',
     'Contact: hello@proofofstock.xyz. Read-only: nothing here trades or signs for you. Not investment advice.', '']
   // Where an agent starts: the endpoints and the one-file copy of every page, before the page index.
   const start = [
@@ -160,6 +189,7 @@ export function llmsTxt (docs, origin, version, passLine = null) {
   // An agent that reads only this file used to learn what we answer and nothing about why it can be believed. These
   // five are built, live and were invisible here (information audit, 13.11). Each one is a thing it can check itself.
   head.push('## How to check us', '',
+    'We are a centralised service, and that is why every claim here comes with a way to check it without us. The chain is not here so that we can be trusted: it is here so that we cannot rewrite yesterday.', '',
     `- Every verdict names the issuer list it was decided against, by the SHA-256 of its sorted addresses, with the command that computes the same hash from the issuer's own API and a URL of that exact list frozen: ${origin}/api/list/<hex>.`,
     `- Add \`&receipt=1\` to ${origin}/verify and keep the answer: scripts/receipt-check.mjs in the repository rechecks it months later, after the issuer's list has changed.`,
     '- Every answer carries `issuer_factory`: whether the issuer\'s own token factory created that contract, read from the chain, with the block and transaction. A second source beside the list.',
@@ -212,6 +242,8 @@ export function createStocksWeb ({
   analytics: analyticsOpts = {}, // apps/stocks-analytics.mjs options; { enabled: false } turns the counter off
   exam: examOpts = {}, // apps/stocks-exam.mjs options; { url: null } turns the exam summary off
   x402: x402Opts = {}, // evm/core/stocks/x402.mjs options; {} with no host env is off, and then nothing changes
+  // The module itself, so a test can be a host that asked for passes and did not get it. Null is that host.
+  x402Module = createX402,
   source, // the source link: undefined = package.json decides (stp.source_public), null = none, a URL = that URL
   // The claim Glama reads to see that the connector at /mcp is ours. It belongs to the host, never to this
   // repository: the repository is exported publicly, and an ownership claim has no business being published.
@@ -256,8 +288,18 @@ export function createStocksWeb ({
   // The paid pass over the free minute (owner, 15.11): a sporadic reader never pays and sees nothing new; a client
   // the limiter refuses may buy 0.01 USDC (x402, base) for ten minutes at ten times the rate. Off unless the host
   // names a payee and a settlement key file, without them the free world is byte-identical to the day before.
-  const x402 = createX402
-    ? createX402({ ...x402Opts, fetchImpl, now, log })
+  if (x402Missing(process.env, x402Module != null)) log(X402_MISSING_LINE)
+  // The payment module's alarms reach the owner through stp-health (scripts/stocks/health-check.mjs, paymentChecks),
+  // which reads /api/status every 15 minutes: a broadcast with no receipt is the one the module can only write to the
+  // journal, so the log line is caught here and kept for a day. The module itself is unchanged (owner, 20.11).
+  const lateSettlements = []
+  const x402Log = (m) => {
+    const hit = /^\[x402\] ALERT late settlement (0x[0-9a-f]{64})/.exec(String(m))
+    if (hit) { lateSettlements.push({ transaction: hit[1], at: new Date(now()).toISOString() }); if (lateSettlements.length > 50) lateSettlements.shift() }
+    log(m)
+  }
+  const x402 = x402Module
+    ? x402Module({ ...x402Opts, fetchImpl, now, log: x402Log })
     : { enabled: false, passActive: () => false, accepts: () => null, purchase: async () => ({ ok: false, error: 'paid passes are not enabled' }) }
   const passLine = x402.enabled
     ? `- [Over the free minute](${publicOrigin + publicPath}/docs/how-to/pay-per-call.md): pay ${x402.priceUsd} USDC on base (x402) for a ${x402.passMinutes}-minute pass at ${x402.passRate} units a minute`
@@ -273,7 +315,7 @@ export function createStocksWeb ({
   // The page names its script and stylesheet by content hash, so a release reaches every visitor at once: the assets may
   // be cached, the page that names them may not.
   const version = (k) => crypto.createHash('sha256').update(static_[k].body).digest('hex').slice(0, 12)
-  static_['/'].body = Buffer.from(String(static_['/'].body).replace('href="style.css"', `href="style.css?v=${version('/style.css')}"`).replace('src="app.js"', `src="app.js?v=${version('/app.js')}"`).replace('src="beacon.js"', `src="beacon.js?v=${version('/beacon.js')}"`)
+  static_['/'].body = Buffer.from(String(static_['/'].body).replace('href="style.css"', `href="style.css?v=${version('/style.css')}"`).replace('src="app.js"', `src="app.js?v=${version('/app.js')}"`).replace('src="beacon.js"', `src="beacon.js?v=${version('/beacon.js')}"`).replace('src="seal.js"', `src="seal.js?v=${version('/seal.js')}"`)
     .replaceAll('__MCP_URL__', publicOrigin + publicPath + '/mcp').replaceAll('__VERSION__', appVersion).replaceAll('__RELEASED__', released)
     .replace('<!--source-->', sourceUrl ? sourceIcon(sourceUrl) : '').replace('<!--exam-->', sourceUrl ? EXAM_CHIP_HTML : ''))
   // What crawlers and link previews read: the preview image and logo by content hash (a new image is a new URL, so
@@ -517,6 +559,14 @@ export function createStocksWeb ({
   }
 
   /** What the server holds, per chain, with ages: the numbers behind /api/status and /status. */
+  /** Paid passes, for stp-health: whether selling is paused, settlements to reconcile by hand, the wallet that pays gas. */
+  function paymentsStatus () {
+    if (!x402.enabled) return { enabled: false }
+    const t = now(), paused = typeof x402.pausedUntil === 'function' ? x402.pausedUntil() : 0
+    return { enabled: true, settlement_wallet: x402.wallet || null, paused_until: paused > t ? new Date(paused).toISOString() : null,
+      late_settlements: lateSettlements.filter((e) => t - Date.parse(e.at) < 24 * 3600e3) }
+  }
+
   function statusNumbers () {
     return Object.fromEntries(Object.keys(CHAINS).map((c) => {
       const r = registries.get(c); const w = windows[c].get(); const imp = impostors.get(c)
@@ -668,6 +718,18 @@ export function createStocksWeb ({
   const TOO_MANY = { error: 'too many requests, try again in a minute' }
 
   /**
+   * The public URL a 402 names as its resource. The proxy maps the domain's `/` onto the app's BASE_PATH, so the app sees
+   * /stocks/verify for the public /verify; naming that path sent buyers to a 404 (20.11). Query strings are left out: the
+   * pass covers the client, not one request.
+   */
+  function resourceOf (req) {
+    let p = '/'
+    try { p = new URL(req.url, 'http://local').pathname } catch (_) { /* the plain root names the pass fine */ }
+    if (p === BASE_PATH || p.startsWith(BASE_PATH + '/')) p = p.slice(BASE_PATH.length) || '/'
+    return publicOrigin + publicPath + p
+  }
+
+  /**
    * Where the free minute ends. Without paid passes this is the plain 429 of every day before. With them, a refused
    * client is shown the 402 that names the pass (x402), and a client that answers with `X-PAYMENT` buys the pass: the
    * purchase settles on chain, this request is then served under the pass's rate, and the settle receipt rides out in
@@ -686,15 +748,15 @@ export function createStocksWeb ({
     }
     const payment = req.headers['x-payment']
     if (!payment) {
-      let resource = publicOrigin + publicPath + '/'
-      try { resource = publicOrigin + publicPath + new URL(req.url, 'http://local').pathname } catch (_) { /* the plain root names the pass fine */ }
+      const resource = resourceOf(req)
       send(res, 402, x402.accepts({ resource, error: 'the free minute is used up; ' + x402.description }), undefined, { ...headers, ...cors, ...noStore, 'access-control-expose-headers': 'x-payment-response' })
       return true
     }
     const r = await x402.purchase(String(payment), key)
     if (!r.ok) {
-      const body = mcp ? { jsonrpc: '2.0', id: null, error: { code: -32000, message: r.error } } : { error: r.error }
-      send(res, r.status || 402, body, undefined, { ...headers, ...cors, ...noStore, 'access-control-expose-headers': 'x-payment-response', ...(r.retryAfterS ? { 'retry-after': String(r.retryAfterS) } : {}) })
+      const body = mcp ? { jsonrpc: '2.0', id: null, error: { code: -32000, message: r.error } } : { error: r.error, ...(r.pending ? { pending: true } : {}) }
+      // A pending settlement carries its transaction in X-PAYMENT-RESPONSE, as x402 v2's settlement_pending does.
+      send(res, r.status || 402, body, undefined, { ...headers, ...cors, ...noStore, 'access-control-expose-headers': 'x-payment-response', ...(r.header ? { 'x-payment-response': r.header } : {}), ...(r.retryAfterS ? { 'retry-after': String(r.retryAfterS) } : {}) })
       return true
     }
     res.setHeader('x-payment-response', r.header)
@@ -702,6 +764,45 @@ export function createStocksWeb ({
     if (limited(ip, units)) { send(res, 429, mcp ? { jsonrpc: '2.0', id: null, error: { code: -32000, message: TOO_MANY.error } } : TOO_MANY, undefined, { ...headers, ...cors, ...noStore, 'retry-after': '10' }); return true }
     return false
   }
+
+  /**
+   * A route that is only served with a pass (the big batch): an active pass goes through; a client without one is shown
+   * the same 402 as the limiter's, with the reason, and one that answers with X-PAYMENT buys the pass through the same
+   * x402.purchase as limitGate, so there is one way to pay and one price. Returns true when it has answered.
+   */
+  async function passGate (req, res, { cors = {}, why }) {
+    const key = clientKey(clientIp(req))
+    if (x402.passActive(key)) return false
+    const noStore = { 'cache-control': 'no-store' }
+    const payment = req.headers['x-payment']
+    if (!payment) {
+      const resource = resourceOf(req)
+      send(res, 402, x402.accepts({ resource, error: why + '; ' + x402.description }), undefined, { ...cors, ...noStore, 'access-control-expose-headers': 'x-payment-response' })
+      return true
+    }
+    // limitGate only reaches a purchase for a client the limiter already refused; this route reaches it for anyone, so
+    // failed attempts are counted per client and capped (security review, 19.11: each bad header costs us a parse, a
+    // keccak and an ECDSA recovery). A settled purchase clears the count.
+    const fails = passFails.get(key)
+    if (fails && now() - fails.since < PASS_FAIL_WINDOW_MS && fails.n >= PASS_FAIL_MAX) {
+      send(res, 429, { error: 'too many failed payments from this client; try again in a few minutes' }, undefined, { ...cors, ...noStore, 'retry-after': String(Math.ceil((PASS_FAIL_WINDOW_MS - (now() - fails.since)) / 1000)) })
+      return true
+    }
+    const r = await x402.purchase(String(payment), key)
+    if (!r.ok) {
+      const f = fails && now() - fails.since < PASS_FAIL_WINDOW_MS ? fails : { since: now(), n: 0 }
+      f.n++
+      passFails.set(key, f)
+      if (passFails.size > 10000) for (const [k, v] of passFails) if (now() - v.since >= PASS_FAIL_WINDOW_MS) passFails.delete(k)
+      send(res, r.status || 402, { error: r.error, ...(r.pending ? { pending: true } : {}) }, undefined, { ...cors, ...noStore, 'access-control-expose-headers': 'x-payment-response', ...(r.header ? { 'x-payment-response': r.header } : {}), ...(r.retryAfterS ? { 'retry-after': String(r.retryAfterS) } : {}) })
+      return true
+    }
+    passFails.delete(key)
+    res.setHeader('x-payment-response', r.header)
+    res.setHeader('access-control-expose-headers', 'x-payment-response')
+    return false
+  }
+  const passFails = new Map() // client key -> { since, n }: failed purchases on passGate in the current window
 
   async function routeMcp (req, res) {
     if (req.method === 'OPTIONS') return send(res, 204, '', 'text/plain', MCP_HEADERS)
@@ -753,6 +854,11 @@ export function createStocksWeb ({
     if (url.pathname === BASE_PATH) return send(res, 301, { moved: BASE_PATH + '/' }, undefined, { location: BASE_PATH + '/' + url.search })
     if (!url.pathname.startsWith(BASE_PATH + '/')) return send(res, 404, { error: 'not found' })
     const sub = url.pathname.slice(BASE_PATH.length)
+    const useRoute = sub === '/verify' || sub === '/api/verify' ? 'verify' : sub === '/badge.svg' ? 'badge' : sub.startsWith('/api/history/') ? 'history' : sub.startsWith('/api/list/') ? 'list' : ({ '/api/find': 'find', '/api/passport': 'passport', '/api/overview': 'overview', '/api/impostors': 'impostors', '/api/matrix': 'matrix', '/api/archive/at': 'archive' })[sub] || null
+    if (useRoute && req.method === 'GET') {
+      const n = useRoute === 'verify' && url.searchParams.get('addresses') ? url.searchParams.get('addresses').split(',').map((s) => s.trim()).filter(Boolean).length : 1
+      res.once('finish', () => { if (res.statusCode < 400) analytics.api(clientIp(req), req.headers, useRoute, n) })
+    }
     if (sub === '/') { if (req.method === 'GET') analytics.load(clientIp(req), req.headers, '/'); return send(res, 200, pageFor(url), STATIC['/'][1], { 'cache-control': 'no-cache' }) }
     if (STATIC[sub]) { const s = static_[sub]; return send(res, 200, s.body, s.type, { 'cache-control': 'public, max-age=86400' }) }
     // The old address of the changelog: it is a docs page now.
@@ -803,18 +909,24 @@ export function createStocksWeb ({
     if (sub === '/verify' || sub === '/api/verify') {
       const cors = { 'access-control-allow-origin': '*' }
       const many = url.searchParams.get('addresses')
-      // A batch: up to MAX_VERIFY_BATCH addresses, ⌈n/10⌉ units of the limit, as MCP verify_stock_tokens charges. Bigger
-      // batches are for the paid route (owner, 12.11), not this one.
+      // A batch: up to MAX_VERIFY_BATCH addresses free, ⌈n/10⌉ units of the limit, as MCP verify_stock_tokens charges.
+      // Bigger batches, up to PAID_VERIFY_BATCH, are the paid route (owner, 12.11 and 19.11): they need an active pass,
+      // and a client without one is shown the pass's 402. The answer is the same verdict either way; only the size is
+      // paid for, never the verdict.
       if (many != null) {
         if (url.searchParams.get('address') != null) return send(res, 400, { error: 'give address or addresses, not both' }, undefined, cors)
         const list = many.split(',').map((s) => s.trim()).filter(Boolean)
         if (!list.length) return send(res, 400, { error: 'addresses needs at least one address' }, undefined, cors)
-        if (list.length > MAX_VERIFY_BATCH) return send(res, 400, { error: `addresses takes at most ${MAX_VERIFY_BATCH}` }, undefined, cors)
+        const big = list.length > MAX_VERIFY_BATCH
+        if (big && (!x402.enabled || list.length > PAID_VERIFY_BATCH)) return send(res, 400, { error: x402.enabled ? `addresses takes at most ${PAID_VERIFY_BATCH} (more than ${MAX_VERIFY_BATCH} with a pass)` : `addresses takes at most ${MAX_VERIFY_BATCH}` }, undefined, cors)
         const bad = list.findIndex((a) => !/^0x[0-9a-fA-F]{40}$/.test(a))
         if (bad >= 0) return send(res, 400, { error: `addresses[${bad}] must be 0x followed by 40 hex characters` }, undefined, cors)
-        if (await limitGate(req, res, { units: Math.ceil(list.length / 10), cors })) return
+        // Every check that can refuse the request runs before passGate: a payment is never taken for an answer that
+        // would then be a 400 (review, 19.11: chain=bogus with 51 addresses and X-PAYMENT bought a pass for nothing).
         const c = url.searchParams.get('chain')
         if (!CHAINS[c]) return send(res, 400, { error: `chain must be one of ${Object.keys(CHAINS).join(', ')}` }, undefined, cors)
+        if (big && await passGate(req, res, { cors, why: `a batch of more than ${MAX_VERIFY_BATCH} addresses needs a pass` })) return
+        if (await limitGate(req, res, { units: Math.ceil(list.length / 10), cors })) return
         // One registry snapshot for the whole batch and its one proof.
         const reg = registries.get(c)
         const results = []
@@ -825,7 +937,8 @@ export function createStocksWeb ({
         }
         const proof = proofOf(c, reg)
         const body = { chain: c, count: results.length, listed: results.filter((r) => r.listed).length, impostors: results.filter((r) => r.impostor).length, results, list_proof: proof }
-        return send(res, 200, body, undefined, { ...cors, 'cache-control': proof?.stale ? 'no-store' : 'public, max-age=60' })
+        // A paid batch is never shared by a cache: a "cache everything" rule at the edge would hand it to unpaid clients.
+        return send(res, 200, body, undefined, { ...cors, 'cache-control': big ? 'private, no-store' : proof?.stale ? 'no-store' : 'public, max-age=60' })
       }
       if (await limitGate(req, res, { cors })) return
       const c = url.searchParams.get('chain')
@@ -854,7 +967,7 @@ export function createStocksWeb ({
       try { names = dir ? fs.readdirSync(dir).filter((n) => ANCHOR_FILE_RE.test(n)).sort().reverse() : [] } catch (_) { names = [] }
       // Only a manifest names a day here: a mirror file is listed beside the day it belongs to, never read as one.
       const days = [...new Set(names.filter((n) => /^manifest-\d{4}-\d{2}-\d{2}\.json$/.test(n)).map((n) => n.slice(9, 19)))]
-      return send(res, 200, { note: 'Daily manifests of the SHA-256 of every data file, each anchored in Bitcoin through OpenTimestamps. Each proof is completed in place once Bitcoin confirms it (by the next daily run). To check one: download the manifest and a .ots proof, then run ots verify (opentimestamps-client); ots upgrade completes a proof that is still pending. Bitcoin is the root; `mirror` is the same hash written on Base and Robinhood Chain for reach, and the MCP tool verify_anchor hands all of it over in one answer.', days: days.map((d) => ({ day: d, manifest: `anchors/manifest-${d}.json`, proofs: names.filter((n) => n.startsWith(`manifest-${d}.json.`)).map((n) => `anchors/${n}`), mirror: names.includes(`mirror-${d}.json`) ? `anchors/mirror-${d}.json` : null })) }, undefined, { 'access-control-allow-origin': '*', 'cache-control': 'public, max-age=300' })
+      return send(res, 200, { note: 'Daily manifests of the SHA-256 of every data file, each anchored in Bitcoin through OpenTimestamps. Each proof is completed in place once Bitcoin confirms it (by the next daily run). To check one: download the manifest and a .ots proof, then run ots verify (opentimestamps-client); ots upgrade completes a proof that is still pending. Bitcoin is the root; `mirror` is the same hash written on Base and Robinhood Chain for reach, and the MCP tool verify_anchor hands all of it over in one answer.', days: days.map((d) => ({ day: d, manifest: `anchors/manifest-${d}.json`, proofs: names.filter((n) => n.startsWith(`manifest-${d}.json.`)).map((n) => `anchors/${n}`), mirror: names.includes(`mirror-${d}.json`) ? `anchors/mirror-${d}.json` : null, btc_check: names.includes(`btc-check-${d}.json`) ? `anchors/btc-check-${d}.json` : null })) }, undefined, { 'access-control-allow-origin': '*', 'cache-control': 'public, max-age=300' })
     }
     if (sub.startsWith('/anchors/')) {
       const name = sub.slice('/anchors/'.length)
@@ -866,7 +979,7 @@ export function createStocksWeb ({
     }
     if (sub === '/status') {
       analytics.load(clientIp(req), req.headers, '/status')
-      return send(res, 200, cachedPage('/status', () => withPageHead('/status', statusPage({ chains: statusNumbers(), now: now(), version: appVersion, assets: { css: `style.css?v=${version('/style.css')}`, docsCss: `docs.css?v=${version('/docs.css')}`, beacon: `beacon.js?v=${version('/beacon.js')}` } }), STATUS_DESCRIPTION)), 'text/html; charset=utf-8', { 'cache-control': 'no-store' })
+      return send(res, 200, cachedPage('/status', () => withPageHead('/status', statusPage({ chains: statusNumbers(), now: now(), version: appVersion, usage: usageOf(dailySummaries({ dir: analyticsOpts.dir ?? process.env.STP_ANALYTICS_DIR ?? null, days: 7, today: new Date(now()).toISOString().slice(0, 10) })), assets: { css: `style.css?v=${version('/style.css')}`, docsCss: `docs.css?v=${version('/docs.css')}`, beacon: `beacon.js?v=${version('/beacon.js')}` } }), STATUS_DESCRIPTION)), 'text/html; charset=utf-8', { 'cache-control': 'no-store' })
     }
     if (sub === '/history') {
       analytics.load(clientIp(req), req.headers, '/history')
@@ -883,7 +996,7 @@ export function createStocksWeb ({
       return send(res, 204, '', 'text/plain', { 'cache-control': 'no-store' })
     }
     if (sub === '/api/status') {
-      return send(res, 200, statusNumbers(), undefined, { 'cache-control': 'no-store' })
+      return send(res, 200, { ...statusNumbers(), payments: paymentsStatus() }, undefined, { 'cache-control': 'no-store' })
     }
     if (sub === '/api/exam') {
       const r = exam.get()
@@ -907,6 +1020,18 @@ export function createStocksWeb ({
       const opts = { since, event, limit: Math.min(BULK_MAX, Math.max(1, Number(url.searchParams.get('limit')) || BULK_MAX)) }
       const out = chains.map((c) => history.cases(c, opts))
       return send(res, 200, chain ? out[0] : { chains: Object.fromEntries(chains.map((c, i) => [c, out[i]])) }, undefined, { ...cors, 'cache-control': 'public, max-age=300' })
+    }
+    // One address on one day, from the archive, free (apps/stocks-archive.mjs). A window, not a download.
+    if (sub === '/api/archive/at') {
+      const cors = { 'access-control-allow-origin': '*' }
+      const dir = process.env.STP_ANCHOR_DIR || null
+      const anchorOf = (d) => {
+        const a = dir ? anchorFor(dir, d) : null
+        return a ? { day: a.day, sha256: a.sha256, manifest_url: `${publicOrigin}${publicPath}/anchors/${a.manifest}`, mirrors: a.mirrors } : null
+      }
+      const r = archiveAt({ history, anchorOf, origin: publicOrigin + publicPath, chains: Object.keys(CHAINS), chain, address: url.searchParams.get('address'), date: url.searchParams.get('date'), now: now() })
+      if (r.status !== 200) return send(res, r.status, { error: r.error }, undefined, cors)
+      return send(res, 200, r.body, undefined, { ...cors, 'cache-control': 'public, max-age=300' })
     }
     if (sub === '/api/matrix') {
       const m = matrixOf()

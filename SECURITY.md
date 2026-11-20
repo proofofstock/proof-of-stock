@@ -28,9 +28,17 @@ https://proofofstock.xyz/docs/explanation/threat-model.md. Read that first if yo
 ## What the service holds
 
 No accounts, no cookies, no wallets and no write path a caller can reach: the site and the MCP server only read public
-registries, public chain data and issuer prices. The project holds exactly one key, on the host, outside every unit but
-the one that writes the daily anchor mirror: it signs a transaction to its own address with zero value and nothing
-else, so the worst it can lose is its own gas. The visit counter stores no address and sets no cookie
+registries, public chain data and issuer prices. The project holds two keys, both on the host in root-only files, each
+handed to exactly one unit:
+
+- the **anchor key** writes the daily anchor mirror: it signs a transaction to its own address with zero value and
+  nothing else;
+- the **settlement key** (only where paid passes are on) pays the gas to submit a buyer's own signed USDC
+  `transferWithAuthorization` on Base. The buyer's signature fixes the payee, the amount and the nonce, so the key
+  cannot redirect or enlarge a payment, and the USDC goes to a payee wallet it does not control.
+
+Each holds gas and nothing else, so the worst either can lose is its own gas. See
+[`docs/explanation/threat-model.md`](docs/explanation/threat-model.md#what-there-is-to-take). The visit counter stores no address and sets no cookie
 (`docs/legal.md`).
 
 ## Supported versions

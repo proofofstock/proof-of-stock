@@ -37,19 +37,29 @@ export function mergeShapes (shapes) {
 }
 
 /**
+ * Paths a source puts on SOME records only, so that neither their arrival nor their disappearance is a change of format.
+ * DexScreener adds `boosts` to a pair only while the token has a paid boost: a run that happened to meet none reads the
+ * field as gone (alert of 16.11, Robinhood Chain), and the next run that meets one reads it as new. A type change on
+ * such a path is still reported.
+ */
+export const OPTIONAL_PATHS = { 'dexscreener:token-pairs': ['$[].boosts'] }
+
+const isOptional = (p, optional) => optional.some((o) => p === o || p.startsWith(o + '.') || p.startsWith(o + '[]'))
+
+/**
  * What changed from `before` to `after`, in words, or [] when nothing did. A path seen before but not now is reported
  * only when `complete` (the source answered in full), since a run that read fewer records may simply not have met it.
  * A top-level list that shrank by more than `shrink` (default 10%) is reported too: a list read short looks like a change.
  */
-export function shapeChanges (before, after, { complete = true, shrink = 0.1 } = {}) {
+export function shapeChanges (before, after, { complete = true, shrink = 0.1, optional = [] } = {}) {
   if (!before) return []
   const out = []
   for (const [p, ts] of Object.entries(after.paths)) {
     const was = before.paths[p]
-    if (!was) out.push(`new field ${p} (${ts.join('|')})`)
+    if (!was) { if (!isOptional(p, optional)) out.push(`new field ${p} (${ts.join('|')})`) }
     else if (ts.some((t) => !was.includes(t))) out.push(`${p} is now ${ts.join('|')}, was ${was.join('|')}`)
   }
-  if (complete) for (const p of Object.keys(before.paths)) if (!after.paths[p]) out.push(`field ${p} is gone`)
+  if (complete) for (const p of Object.keys(before.paths)) if (!after.paths[p] && !isOptional(p, optional)) out.push(`field ${p} is gone`)
   for (const [p, n] of Object.entries(before.sizes || {})) {
     const m = after.sizes?.[p]
     if (m != null && n > 0 && (n - m) / n > shrink) out.push(`${p} shrank from ${n} to ${m}`)

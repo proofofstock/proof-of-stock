@@ -8,7 +8,7 @@
 // chose; it goes into an HTML attribute, so it is escaped here and nowhere else.
 
 export const SITE_TITLE = 'Proof of Stock'
-export const SITE_DESCRIPTION = 'Check whether a token is the issuer\'s stock token and how far its on-chain price is from the issuer price, on Base and Robinhood Chain.'
+export const SITE_DESCRIPTION = 'Tokenized stocks (RWA): check whether a token is the issuer\'s stock token and how far its on-chain price is from the issuer price, on Base.'
 const CHAIN_LABEL = Object.freeze({ base: 'Base', robinhood: 'Robinhood Chain' })
 const ISSUER_LABEL = Object.freeze({ coinbase: 'Coinbase', robinhood: 'Robinhood' })
 
@@ -30,7 +30,7 @@ export function metaFor ({ chain, record, latest, impostor } = {}) {
     const prem = latest && typeof latest.premium === 'number' ? `${pct(latest.premium)} vs the issuer's reference` : 'issuer reference and on-chain price'
     return {
       title: `${record.symbol}${name} on ${where}: ${prem} · ${SITE_TITLE}`,
-      description: `Official ${ISSUER_LABEL[record.issuer] || record.issuer} stock token. Reference price with its age, on-chain price, premium by US market session and the same share on the other chain. Not advice.`,
+      description: `Issuer-listed ${ISSUER_LABEL[record.issuer] || record.issuer} stock token. Reference price with its age, on-chain price, premium by US market session and the same share on the other chain. Not advice.`,
     }
   }
   if (impostor) {
@@ -41,7 +41,7 @@ export function metaFor ({ chain, record, latest, impostor } = {}) {
       title: impostor.registry_symbol || impostor.ticker
         ? `${short(impostor.address)} on ${where} is not the issuer's ${impostor.registry_symbol || impostor.ticker} · ${SITE_TITLE}`
         : `${short(impostor.address)} on ${where} copies the issuer's naming but is not its token · ${SITE_TITLE}`,
-      description: `This contract is not in the issuer's registry, but its ${impostor.kind === 'registry_symbol' ? 'symbol is the same as' : 'name copies'} a listed stock token. See the official contract.`,
+      description: `This contract is not in the issuer's registry, but its ${impostor.kind === 'registry_symbol' ? 'symbol is the same as' : 'name copies'} a listed stock token. See the issuer's own contract.`,
     }
   }
   return { title: SITE_TITLE, description: SITE_DESCRIPTION }
@@ -51,7 +51,7 @@ export function metaFor ({ chain, record, latest, impostor } = {}) {
 /** The organisation, the site and the product: one name (the owner's decision, 11.11). */
 export const SITE_NAME = SITE_TITLE
 /** The link-preview image (apps/stocks-web/og.png, from scripts/og/og.html). */
-export const OG_IMAGE = Object.freeze({ width: 1200, height: 630, alt: 'Proof of Stock: is this stock token the issuer\'s? Check before you trade it. Base and Robinhood Chain.' })
+export const OG_IMAGE = Object.freeze({ width: 1200, height: 630, alt: 'Proof of Stock: is this stock token the issuer\'s? Check before you trade it. Built on Base.' })
 
 /** JSON-LD as an inline data block. A browser does not execute it (CSP script-src stays 'self'); <, > and & are
  *  escaped, so no value can close the script element. */

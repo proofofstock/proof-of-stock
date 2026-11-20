@@ -2,7 +2,8 @@
 # Robinhood Chain as well (scripts/stocks/anchor-mirror.mjs). It runs after stp-anchor.service, which makes the
 # manifest; without that manifest it exits with an error rather than inventing a day.
 #
-# THIS IS THE ONLY UNIT IN THE PROJECT THAT HAS A KEY. It arrives through LoadCredential, which systemd reads as root
+# THIS IS THE ONLY UNIT IN THIS REPOSITORY THAT HAS A KEY. (The project's second key, for settling paid passes, reaches
+# stp-web through a host-only drop-in, deployment/PUBLISHING.md "Paid passes".) It arrives through LoadCredential, which systemd reads as root
 # before this unit's sandbox exists and places in a private directory only this unit can see; /etc/pos stays
 # inaccessible to the unit itself, exactly as in every other unit. The key signs one thing: a transaction to its own
 # address with value zero, carrying the day and the hash as text. It cannot send anyone's token anywhere, and the

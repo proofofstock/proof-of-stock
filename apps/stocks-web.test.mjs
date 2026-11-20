@@ -132,7 +132,15 @@ console.log('the page')
   check('/stocks redirects to /stocks/, keeping the query', bare.status === 301 && bare.headers.get('location') === '/stocks/?chain=robinhood')
   check('the root and the old unprefixed API are not served', (await get('/')).status === 404 && (await get('/api/status')).status === 404)
   check('the page uses relative URLs, so it works under its prefix', !/(src|href)="\/(?!\/)/.test(await (await get('/stocks/')).text()) && !/api\(['`]\//.test(fs.readFileSync(new URL('./stocks-web/app.js', import.meta.url), 'utf8')))
-  check('the page script never writes HTML from data', !/innerHTML|outerHTML|insertAdjacentHTML|document\.write/.test(fs.readFileSync(new URL('./stocks-web/app.js', import.meta.url), 'utf8')))
+  {
+    const appJs = fs.readFileSync(new URL('./stocks-web/app.js', import.meta.url), 'utf8')
+    // A regex written /s+/ where /\s+/ was meant ate every "s" of a token's name on the board ("Harley-David on").
+    check('no regex in the page script matches a bare run of the letter s', !/\(\/s[+*]\//.test(appJs))
+    const pctSrc = (appJs.match(/const pct = \(x\) => \{[^\n]*\}/) || [''])[0]
+    const pct = pctSrc ? new Function('NA', pctSrc + '\nreturn pct')('n/a') : null
+    check('a premium that rounds to zero prints 0.00%, never -0.00%', pct && pct(-0.00004) === '0.00%' && pct(0.00004) === '0.00%' && pct(-0.0123) === '-1.23%' && pct(0.0123) === '+1.23%' && pct(null) === 'n/a', pctSrc.slice(0, 80))
+  }
+  check('the page script never writes HTML from data',!/innerHTML|outerHTML|insertAdjacentHTML|document\.write/.test(fs.readFileSync(new URL('./stocks-web/app.js', import.meta.url), 'utf8')))
   {
     // The terminal's status bar (owner, 12.11: it wrapped and "clear screen" fell onto its own line). The keys are one
     // group of the same chips, the clear key still clears, and each part is whole: no wrap inside a chain or a key.
@@ -300,6 +308,33 @@ console.log('rate limit')
   check('another client is not affected', (await get('/stocks/api/find?chain=base&q=nvda', { headers: { 'x-real-ip': '203.0.113.8' } })).status === 200)
 }
 
+console.log('a host that asked for paid passes and did not get the module')
+{
+  // 16.11: the module is in neither repository, so a release built from git archive has it only because the deploy
+  // carries it (scripts/host-files.sh). For a day it did not, and nothing said so, because a host without the module
+  // is a working free service. A host that names a payee or a key file has asked for passes: there, silence is the
+  // bug. This is the predicate behind the line the site logs at startup.
+  const { x402Missing, X402_MISSING_LINE } = await import('./stocks-web.mjs')
+  check('a plain checkout with no module and no settings is not missing anything', x402Missing({}, false) === false)
+  check('...and a host that has the module is not missing it either', x402Missing({ STP_X402_PAY_TO: '0xabc' }, true) === false)
+  check('a host that names a payee and has no module is missing one', x402Missing({ STP_X402_PAY_TO: '0xabc' }, false) === true)
+  check('...and so is one that names only the key file: either half means passes were asked for', x402Missing({ STP_X402_KEY_FILE: '/etc/pos/x402-key' }, false) === true)
+  // ...and the site actually says it, at startup, where an operator reading the journal after a deploy will see it.
+  // Checked by being that host: the module handed in as null is a release the deploy did not carry it into.
+  const before = process.env.STP_X402_PAY_TO
+  process.env.STP_X402_PAY_TO = '0x832554618e3c03447c50505e3d8af5ab537dd17f'
+  const said = []
+  try {
+    createStocksWeb({ roots: { base: baseRoot, robinhood: rhRoot }, fetchImpl, now: () => NOW, log: (m) => said.push(String(m)), analytics: { enabled: false }, exam: { url: null }, x402Module: null })
+  } finally {
+    if (before === undefined) delete process.env.STP_X402_PAY_TO; else process.env.STP_X402_PAY_TO = before
+  }
+  check('...and the site says so at startup, in one line, naming what to do about it', said.includes(X402_MISSING_LINE) && /host files directory/.test(X402_MISSING_LINE), said.join(' | ').slice(0, 90))
+  const quiet = []
+  createStocksWeb({ roots: { base: baseRoot, robinhood: rhRoot }, fetchImpl, now: () => NOW, log: (m) => quiet.push(String(m)), analytics: { enabled: false }, exam: { url: null }, x402Module: null })
+  check('...and says nothing of the kind on a host that never asked for passes', !quiet.some((m) => m.includes('[x402]')), quiet.join(' | ').slice(0, 80))
+}
+
 console.log('paid passes (x402)')
 // The pass module is a host file and may be absent from a checkout (it is gitignored): then there is nothing to test
 // here, and the honest thing is to say so, not to fail.
@@ -320,11 +355,13 @@ if (!x402mod) {
     if (method === 'eth_chainId') return '0x2105'
     if (method === 'eth_getTransactionCount') return '0x1'
     if (method === 'eth_getBalance') return '0xde0b6b3a7640000'
-    if (method === 'eth_getBlockByNumber') return { baseFeePerGas: '0x64' }
+    if (method === 'eth_getBlockByNumber') return { baseFeePerGas: '0x64', timestamp: '0x' + Math.floor(t / 1000).toString(16) }
+    if (method === 'eth_getCode') return '0x'
+    if (method === 'eth_call') return String(params[0].data).startsWith('0x70a08231') ? '0x' + (10n ** 9n).toString(16) : '0x0'
     if (method === 'eth_maxPriorityFeePerGas') return '0x64'
     if (method === 'eth_estimateGas') return '0x11050'
     if (method === 'eth_sendRawTransaction') return '0x' + keccak256(Buffer.from(String(params[0]).slice(2), 'hex')).toString('hex')
-    if (method === 'eth_getTransactionReceipt') return { status: '0x1', blockNumber: '0x100', logs: [{ address: '0x833589fcd6edb6e08f4c7c32d4f71b54bda02913', topics: [TRANSFER_TOPIC, '0x' + '0'.repeat(24) + payer.slice(2), '0x' + '0'.repeat(24) + payTo.slice(2)], data: '0x2710' }] }
+    if (method === 'eth_getTransactionReceipt') return { transactionHash: params[0], status: '0x1', blockNumber: '0x100', logs: [{ address: '0x833589fcd6edb6e08f4c7c32d4f71b54bda02913', topics: [TRANSFER_TOPIC, '0x' + '0'.repeat(24) + payer.slice(2), '0x' + '0'.repeat(24) + payTo.slice(2)], data: '0x2710' }] }
     throw new Error('unexpected ' + method)
   }
   const app402 = createStocksWeb({ roots: { base: baseRoot, robinhood: rhRoot }, fetchImpl, now: () => t, log: () => {}, analytics: { enabled: false }, exam: { url: null }, x402: { payTo, key: walletKey, rpcImpl } })
@@ -339,6 +376,7 @@ if (!x402mod) {
     const body = await nego.json()
     check('the 402 is x402: one exact price of 10000 atomic USDC on base, to the payee', nego.status === 402 && body.x402Version === 1 && body.accepts?.[0]?.scheme === 'exact' && body.accepts?.[0]?.network === 'base' && body.accepts?.[0]?.maxAmountRequired === '10000' && body.accepts?.[0]?.payTo?.toLowerCase() === payTo)
     check('...and it says no-store, so no cache keeps a priced refusal', /no-store/.test(nego.headers.get('cache-control') || ''))
+    check('the 402 names the public URL of the request as its resource, never the internal /stocks path', body.accepts?.[0]?.resource === 'https://proofofstock.xyz/api/status', body.accepts?.[0]?.resource)
     const { header } = buildPayment({ payerKey, payTo, valueAtomic: 10000n, now: t })
     const paid = await hit('/stocks/api/status', { headers: { ...ip, 'x-payment': header } })
     check('a settled payment serves the very request that was refused', paid.status === 200)
@@ -361,6 +399,28 @@ if (!x402mod) {
     for (let i = 0; i < 61; i++) back.push((await hit('/stocks/api/status', { headers: ip })).status)
     check('a pass that ran out leaves the client in the free minute, and the 402 returns', back.slice(0, 60).every((s) => s === 200) && back[60] === 402)
     check('another client never saw any of this', (await hit('/stocks/api/status', { headers: { 'x-real-ip': '203.0.113.43' } })).status === 200)
+    // The big batch (more than 50 addresses) is the paid route: without a pass it is the pass's 402 with its reason,
+    // with one it is served, and past 500 it is a 400 whatever the client holds.
+    const ip3 = { 'x-real-ip': '203.0.113.45' }
+    const many = (n) => Array.from({ length: n }, (_, i) => '0x' + (i + 1).toString(16).padStart(40, '0')).join(',')
+    const noPass = await hit(`/stocks/verify?chain=base&addresses=${many(51)}`, { headers: ip3 })
+    const noPassBody = await noPass.json()
+    check('a batch of 51 without a pass is the pass\'s 402, saying why, and verifies nothing', noPass.status === 402 && /more than 50 addresses needs a pass/.test(noPassBody.error || '') && !('results' in noPassBody) && noPassBody.accepts?.[0]?.resource === 'https://proofofstock.xyz/verify', JSON.stringify(noPassBody).slice(0, 160))
+    const { header: h3 } = buildPayment({ payerKey, payTo, valueAtomic: 10000n, now: t })
+    const bigPaid = await hit(`/stocks/verify?chain=base&addresses=${many(51)}`, { headers: { ...ip3, 'x-payment': h3 } })
+    const bigBody = await bigPaid.json()
+    check('...paid, the same request is served whole, with its one proof', bigPaid.status === 200 && bigBody.count === 51 && bigBody.results.length === 51 && 'list_proof' in bigBody && /^eyJ/.test(bigPaid.headers.get('x-payment-response') || ''), JSON.stringify(bigBody).slice(0, 120))
+    check('...with the pass live, 150 is served and 151 is a 400', (await hit(`/stocks/verify?chain=base&addresses=${many(150)}`, { headers: ip3 })).status === 200 && (await hit(`/stocks/verify?chain=base&addresses=${many(151)}`, { headers: ip3 })).status === 400)
+    check('...and a paid batch is never cacheable by a shared cache', /private, no-store/.test(bigPaid.headers.get('cache-control') || ''))
+    // A request that would be refused anyway is refused before any payment (code review, 19.11).
+    const { header: hBogus } = buildPayment({ payerKey, payTo, valueAtomic: 10000n, now: t })
+    const bogus = await hit(`/stocks/verify?chain=bogus&addresses=${many(51)}`, { headers: { 'x-real-ip': '203.0.113.46', 'x-payment': hBogus } })
+    check('a big batch for an unknown chain is a 400 that takes no payment', bogus.status === 400 && !bogus.headers.get('x-payment-response'))
+    // Failed purchases on the big-batch route are capped per client (security review, 19.11).
+    const ip4 = { 'x-real-ip': '203.0.113.47' }
+    const tries = []
+    for (let i = 0; i < 6; i++) tries.push((await hit(`/stocks/verify?chain=base&addresses=${many(51)}`, { headers: { ...ip4, 'x-payment': forged } })).status)
+    check('five failed payments are refused as payments; the sixth is a 429 before any verification', tries.slice(0, 5).every((s) => s === 402) && tries[5] === 429, tries.join(','))
   } finally { await app402.stop() }
 }
 }
@@ -477,7 +537,7 @@ console.log('the public MCP endpoint')
   check('...opening with the verdict, the numbers and their true ages', /^ISSUER-LISTED: NVDAc on Base is in the Coinbase registry\. Issuer reference \$180 per token, 41 h old\. Deepest on-chain price \$181, \+0\.56% against the reference, read 15 min ago\./.test(pass.result.content[0].text), pass.result.content[0].text.slice(0, 220))
   check('...and closing with what listed is not: a verdict on the price', pass.result.content[0].text.endsWith(' Listed says which contract is the issuer\'s, not that its price is fair.'), pass.result.content[0].text.slice(-120))
   const fake = await (await rpc({ jsonrpc: '2.0', id: 12, method: 'tools/call', params: { name: 'stock_passport', arguments: { chain: 'base', address: X } } })).json()
-  check('an impostor\'s passport opens with NOT and names the official contract', /^NOT an issuer token: 0x(ee){20} is not in the issuer registry on Base; its symbol or name imitates NVDAc \(official contract 0x(aa){20}\)\./.test(fake.result.content[0].text), fake.result.content[0].text.slice(0, 200))
+  check('an impostor\'s passport opens with NOT and names the issuer\'s contract', /^NOT an issuer token: 0x(ee){20} is not in the issuer registry on Base; its symbol or name imitates NVDAc \(the issuer's contract 0x(aa){20}\)\./.test(fake.result.content[0].text), fake.result.content[0].text.slice(0, 200))
   check('...and an impostor lead does not say what listed is (it is not listed)', !/Listed says/.test(fake.result.content[0].text))
   const bad = await (await rpc({ jsonrpc: '2.0', id: 6, method: 'tools/call', params: { name: 'stock_passport', arguments: { chain: 'base', address: 'nope' } } })).json()
   check('an argument that breaks the schema is a protocol error -32602', bad.error && bad.error.code === -32602 && /address has the wrong form/.test(bad.error.message), JSON.stringify(bad).slice(0, 200))
@@ -647,7 +707,7 @@ console.log('verify and badge')
   const mirror = { _schema: 'proofofstock-anchor-mirror/1', day: '2026-11-12', sha256: manifestHash, mirrors: [{ chain: 'base', chain_id: 8453, tx: '0x' + 'ab'.repeat(32), status: 'confirmed', block: 1, witnessed_by: ['base-rpc.publicnode.com'], explorer: 'https://basescan.org/tx/0x' + 'ab'.repeat(32) }] }
   fs.writeFileSync(path.join(ad, 'mirror-2026-11-12.json'), JSON.stringify(mirror))
   const idx2 = await (await get('/stocks/anchors/')).json()
-  check('/anchors/ names the mirror beside the day, and still reads only manifests as days', idx2.days.length === 1 && idx2.days[0].mirror === 'anchors/mirror-2026-11-12.json')
+  check('/anchors/ names the mirror beside the day, and still reads only manifests as days', idx2.days.length === 1 && idx2.days[0].mirror === 'anchors/mirror-2026-11-12.json' && 'btc_check' in idx2.days[0])
   const mf = await get('/stocks/anchors/mirror-2026-11-12.json')
   check('...and serves it', mf.status === 200 && (await mf.json()).sha256 === manifestHash)
   const ask = (args) => get('/stocks/mcp', { method: 'POST', headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream', 'x-real-ip': '198.51.100.7' }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'verify_anchor', arguments: args } }) })
@@ -1000,17 +1060,19 @@ console.log('search engines, AI crawlers and link previews')
   check('/og.png is a 1200×630 PNG and /logo.png a 512×512 one', og.type === 'image/png' && og.sig === 'PNG' && og.w === 1200 && og.h === 630 && logo.sig === 'PNG' && logo.w === 512 && logo.h === 512, JSON.stringify({ og, logo }))
   check('/favicon.ico answers an image instead of a JSON 404', (await g('/stocks/favicon.ico')).status === 200 && /^image\//.test((await g('/stocks/favicon.svg')).headers.get('content-type')))
   {
-    // The site's icon (owner, 11.11): the blue disc with the notched band. Every kind of page carries the same one inline,
-    // /favicon.svg is that file, and the PNG (touch icon, /favicon.ico, the organisation's logo) is its 512 px raster.
+    // The site's icon (owner, 19.11, replacing the bare disc of 11.11): the shield with the disc and its notched band
+    // inside, apps/stocks-web/shield.svg. Every kind of page carries the same one inline, /favicon.svg is that file, and
+    // the PNG (touch icon, /favicon.ico, the organisation's logo) is its 512 px raster.
+    const SHIELD = 'M40 4 72 13v30', EMBLEM = 'M-8 8h14V6h4v2h14v1H9V7H7v2H-8z'
     const icon = (await (await g('/stocks/favicon.svg')).text())
     const iconOf = (html) => (html.match(/<link rel="icon" type="image\/svg\+xml" href="data:image\/svg\+xml,([^"]+)">/) || [])[1]
     const pages = await Promise.all(['/stocks/', '/stocks/docs/', '/stocks/history', '/stocks/status'].map(async (u) => iconOf(await (await g(u, { accept: 'text/html' })).text())))
-    check('the icon is the owner\'s: a #4B87FF disc and a #070C18 notched band', /fill="#4B87FF"/.test(icon) && /M0 8h6V6h4v2h6v1H9V7H7v2H0z/.test(icon))
-    check('...and every kind of page carries that same icon', pages.every((p) => p && p === pages[0]) && decodeURIComponent(pages[0]).includes('M0 8h6V6h4v2h6v1H9V7H7v2H0z') && !pages.some((p) => p.includes('0052ff')), JSON.stringify(pages.map((p) => (p || 'none').slice(0, 30))))
+    check('the icon is the owner\'s: the shield, with the disc and its notched band inside', icon === fs.readFileSync(new URL('./stocks-web/shield.svg', import.meta.url), 'utf8') && icon.includes(SHIELD) && icon.includes(EMBLEM))
+    check('...and every kind of page carries that same icon', pages.every((p) => p && p === pages[0]) && decodeURIComponent(pages[0]).includes(SHIELD) && decodeURIComponent(pages[0]).includes(EMBLEM) && !decodeURIComponent(pages[0]).includes('M0 8h6V6h4v2h6v1H9V7H7v2H0z'), JSON.stringify(pages.map((p) => (p || 'none').slice(0, 30))))
     // The brand marks (footer, docs bar) draw the icon from the stylesheet itself: a URL to /favicon.svg is cached a day
     // by the CDN without a version, and showed the old icon for hours after 0.5.0 (12.11).
     const css = ['style.css', 'docs.css'].map((f) => fs.readFileSync(new URL('./stocks-web/' + f, import.meta.url), 'utf8'))
-    check('...and the brand marks carry it inline, never as an unversioned file', css.every((s) => !/url\("?favicon\.svg/.test(s)) && css.every((s) => [...s.matchAll(/data:image\/svg\+xml,([^"]+)"/g)].some((m) => decodeURIComponent(m[1]).includes('M0 8h6V6h4v2h6v1H9V7H7v2H0z'))))
+    check('...and the brand marks carry it inline, never as an unversioned file', css.every((s) => !/url\("?favicon\.svg/.test(s)) && css.every((s) => [...s.matchAll(/data:image\/svg\+xml,([^"]+)"/g)].some((m) => decodeURIComponent(m[1]).includes(SHIELD) && decodeURIComponent(m[1]).includes(EMBLEM))))
     const png = Buffer.from(await (await g('/stocks/logo.png')).arrayBuffer())
     check('...and its PNG is 512 px', png.readUInt32BE(16) === 512 && png.readUInt32BE(20) === 512)
   }

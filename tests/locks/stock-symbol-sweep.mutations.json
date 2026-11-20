@@ -1,0 +1,76 @@
+{
+  "_finding": "A look-alike the token dataset never saw cannot be flagged (19.11: a second SNDKc on Base with a deep pool, missed). The symbol sweep finds such tokens through the aggregators' search. Three ways it goes wrong quietly: it lists a token on a provider's text the chain never confirmed, it treats the real issuer token as a find, or it spends the keyless GeckoTerminal budget the peg recorder shares.",
+  "target": "scripts/stocks/symbol-sweep.mjs",
+  "runner": [
+    "node",
+    "scripts/stocks/symbol-sweep.test.mjs"
+  ],
+  "mutations": [
+    {
+      "name": "a provider-only find is offered to the list",
+      "find": "    if (!ADDR.test(a) || registrySet.has(a) || !t || t.text_from !== 'chain') continue",
+      "replace": "    if (!ADDR.test(a) || registrySet.has(a) || !t) continue",
+      "expect": "FAIL a find the chain never answered is not listed on a provider's word"
+    },
+    {
+      "name": "a registry token on the DexScreener side becomes a find",
+      "find": "      if (!ADDR.test(a) || registrySet.has(a) || out.has(a)) continue\n      out.set(a, { symbol: t.symbol == null",
+      "replace": "      if (!ADDR.test(a) || out.has(a)) continue\n      out.set(a, { symbol: t.symbol == null",
+      "expect": "FAIL DexScreener: every token on the chain, either side of the pair, outside the registry, lower-cased"
+    },
+    {
+      "name": "pairs of other chains are taken",
+      "find": "    if (!p || p.chainId !== slug) continue",
+      "replace": "    if (!p) continue",
+      "expect": "FAIL DexScreener: every token on the chain, either side of the pair, outside the registry, lower-cased"
+    },
+    {
+      "name": "a 429 does not end GeckoTerminal for the run",
+      "find": "if (e && e.status === 429) break;",
+      "replace": "",
+      "expect": "FAIL a 429 from GeckoTerminal ends it for the run, and the cursor stays on the symbol not answered"
+    },
+    {
+      "name": "GeckoTerminal is asked for every symbol",
+      "find": "  for (let n = 0; n < Math.min(geckoBudget, queries.length); n++) {",
+      "replace": "  for (let n = 0; n < queries.length; n++) {",
+      "expect": "FAIL GeckoTerminal only within its budget, from the cursor, wrapping around"
+    },
+    {
+      "name": "no breaker on DexScreener",
+      "find": "    if (streak >= DS_BREAKER) break",
+      "replace": "",
+      "expect": "FAIL after 5 DexScreener failures in a row it stops asking"
+    },
+    {
+      "name": "a later provider answer overwrites the chain's text",
+      "find": "    if (prev && prev.text_from === 'chain') { tokens[a] = { ...prev, last_seen_at: nowIso, sources }; continue }",
+      "replace": "",
+      "expect": "FAIL a chain answer is never replaced by a provider's text later; first seen stays, sources grow"
+    },
+    {
+      "name": "the chain is asked again about what it already answered",
+      "find": "  const ask = [...s.found.keys()].filter((a) => !(state.tokens[a] && state.tokens[a].text_from === 'chain'))",
+      "replace": "  const ask = [...s.found.keys()]",
+      "expect": "FAIL the next run does not ask the chain again about what it answered"
+    },
+    {
+      "name": "the off switch is ignored",
+      "find": "  if (env.POS_SYMBOL_SWEEP === '0') return { chain, skipped: 'POS_SYMBOL_SWEEP=0' }",
+      "replace": "",
+      "expect": "FAIL POS_SYMBOL_SWEEP=0 turns it off without a request"
+    },
+    {
+      "name": "requests are not paced",
+      "find": "    if (i && dsPaceMs > 0) await sleep(dsPaceMs)",
+      "replace": "",
+      "expect": "FAIL requests are paced: DexScreener between symbols, GeckoTerminal before each"
+    },
+    {
+      "name": "the DexScreener budget is ignored",
+      "find": "  for (let i = 0; i < Math.min(dsBudget, queries.length); i++) {",
+      "replace": "  for (let i = 0; i < queries.length; i++) {",
+      "expect": "FAIL a registry longer than the DexScreener budget is walked in rotation, from the cursor"
+    }
+  ]
+}

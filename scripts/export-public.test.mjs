@@ -149,6 +149,23 @@ try {
     const r = spawnSync('bash', ['scripts/export-public.sh', '--check', dest], { cwd: repo, env: ENV, encoding: 'utf8' })
     check('is refused', r.status === 2)
   }
+
+  // 16.11: "--check HEAD" reads as "work in ./HEAD", so it made a directory of that name holding the whole tree, in
+  // the repository root, where the next "git add -A" committed it. The directory comes first and the revision second;
+  // a first argument that names a commit is a mistake rather than a place to work.
+  console.log('a revision where the directory goes')
+  {
+    const run = (...args) => spawnSync('bash', ['scripts/export-public.sh', ...args], { cwd: repo, env: ENV, encoding: 'utf8' })
+    const r = run('--check', 'HEAD')
+    check('is refused, and nothing of that name is made', r.status === 2 && !fs.existsSync(path.join(repo, 'HEAD')), String(r.status))
+    check('...and the refusal says how to ask for that revision instead', /first argument after --check is the directory/.test(r.stderr) && /--check '' HEAD/.test(r.stderr), (r.stderr || '').slice(0, 120))
+    const ok = run('--check', '', base)
+    check('...which is a way that works, and leaves nothing behind', ok.status === 0 && !fs.existsSync(path.join(repo, base)), ok.stderr.slice(-200))
+    // A directory that exists is a directory, whatever it is called: the refusal must not get in the way of one.
+    fs.mkdirSync(path.join(tmp, 'HEAD'))
+    const named = spawnSync('bash', ['scripts/export-public.sh', '--check', path.join(tmp, 'HEAD')], { cwd: repo, env: ENV, encoding: 'utf8' })
+    check('...and a directory that already exists is still allowed to be the one, whatever its name', named.status === 0, named.stderr.slice(-200))
+  }
 } catch (e) {
   failed++; failures.push('  FAIL ' + e.message); console.log('  FAIL ' + e.message)
 }

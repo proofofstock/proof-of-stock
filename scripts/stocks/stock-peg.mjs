@@ -45,7 +45,7 @@ import { GECKO_PACE_MS, GECKO_BUDGET, readTopups, writeTopups, schedule, startLa
 import { prepareOnchain, readTokenOnchain, mergeOnchain, learn, evidenceOf, saveOnchain, ONCHAIN } from './onchain-pools.mjs'
 import { snapshotOf, openRawStore } from './raw-store.mjs'
 import { recordRegistry } from '../../evm/core/stocks/history.mjs'
-import { shapeOf, mergeShapes, shapeChanges } from '../../evm/core/stocks/shape.mjs'
+import { shapeOf, mergeShapes, shapeChanges, OPTIONAL_PATHS } from '../../evm/core/stocks/shape.mjs'
 
 // Which issuer publishes for which chain, and that chain's DexScreener and GeckoTerminal names. The chain id comes from
 // the descriptor.
@@ -305,7 +305,7 @@ export function recordShapes (outDir, shapes, { complete = true } = {}) {
   for (const [src, list] of Object.entries(shapes)) {
     const now = mergeShapes(list)
     if (src.startsWith('dexscreener')) now.sizes = {}
-    const c = shapeChanges(kept[src], now, { complete })
+    const c = shapeChanges(kept[src], now, { complete, optional: OPTIONAL_PATHS[src] || [] })
     if (c.length) changes[src] = c.slice(0, 20)
     kept[src] = now
   }

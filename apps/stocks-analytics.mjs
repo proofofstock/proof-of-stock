@@ -68,7 +68,12 @@ export const uaClass = (ua) => !ua ? 'tool' : BOT_UA.test(ua) ? 'bot' : /mozilla
 export const DEFAULT_IGNORE = Object.freeze(['127.0.0.0/8', '::1/128'])
 // Our own checks, which do not come from a fixed address: the CI canary (scripts/canary.mjs) names itself in every
 // request. The health check talks to 127.0.0.1, so loopback covers it.
-export const IGNORE_UA = /proofofstock-canary/i
+// Our own programs: the outside canary and the daily public exam (scripts/exam.mjs asks about some 340 tokens a day).
+// Counted, they would be most of the API use the site reports, all of it ours.
+export const IGNORE_UA = /proofofstock-(canary|exam)/i
+// The clients we ship, named so the use they bring can be told apart: the npm guard and the Bankr skill.
+export const API_CLIENT = (ua) => /^proofofstock-guard\//i.test(ua) ? 'guard' : /^bankr-skill-proof-of-stock\//i.test(ua) ? 'bankr-skill' : null
+const API_ROUTES = new Set(['verify', 'find', 'passport', 'overview', 'impostors', 'matrix', 'history', 'list', 'badge', 'archive'])
 // The day the counter started leaving our own visits out, shown on /stats so the days before it are read for what
 // they are: they still hold ours. A date, not a guess from the files, which cannot tell whose a row was.
 export const IGNORING_SINCE = '2026-11-13'
@@ -318,6 +323,17 @@ export function createAnalytics ({ dir = process.env.STP_ANALYTICS_DIR || null, 
       const raw_client = method === 'initialize' && typeof x.params?.clientInfo?.name === 'string' ? x.params.clientInfo.name : null
       const client = raw_client && CLIENT.test(raw_client) ? raw_client : raw_client ? 'other' : null
       write({ kind: 'mcp', ...base(ip, headers), method, tool, client })
+    },
+    /**
+     * A data route answered a program (/verify, /api/find, ...). A browser is the site itself or a person on it, already
+     * counted as people, so it leaves no row here. Only the route name and how many addresses were checked are kept,
+     * never the addresses or the query.
+     */
+    api (ip, headers, route, n = 1) {
+      if (off || !API_ROUTES.has(route)) return
+      const ua = String(headers['user-agent'] || '')
+      if (ignored(ip, ua) || uaClass(ua) === 'browser') return
+      write({ kind: 'api', ...base(ip, headers), route, n: Math.max(1, Math.min(50, Number(n) || 1)), client: API_CLIENT(ua) })
     },
     get disabled () { return off },
     /** Whether this requester leaves no row. Exported for the tests and for a check on the host. */

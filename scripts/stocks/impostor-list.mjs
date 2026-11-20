@@ -29,6 +29,7 @@ import { recordCases, pendingCaseAddresses } from '../../evm/core/stocks/history
 import { readTextEvidence } from './text-evidence.mjs'
 import { validateV2 } from '../../schemas/v2/validate.mjs'
 import { dataRoot, tokenDataset as tokenDatasetOf } from './data-roots.mjs'
+import { runSweep, readSweep, sweptForList } from './symbol-sweep.mjs'
 
 export const STRONG_KINDS = Object.freeze(['registry_symbol', 'issuer_name_suffix', 'registry_name'])
 // A safety cap on the file, not a display limit: the site's verify lookup is built from every item (the API pages them).
@@ -38,7 +39,7 @@ export const MAX_NAMES = 100_000
 export const INTERNAL_FILE = 'impostor-signals.internal.json'
 export const MAX_INTERNAL_CANDIDATES = 5_000
 
-export async function buildImpostorList ({ chain, tokenDataset, fetchImpl = fetch, now = () => Date.now() }) {
+export async function buildImpostorList ({ chain, tokenDataset, fetchImpl = fetch, now = () => Date.now(), sweepState = null }) {
   const C = CHAINS[chain]
   if (!C) throw new Error(`unknown chain ${chain}`)
   if (!tokenDataset) throw new Error('tokenDataset is required: the directory of the token streams this list is built from')
@@ -72,6 +73,14 @@ export async function buildImpostorList ({ chain, tokenDataset, fetchImpl = fetc
         if (t && t.deployer == null && o.deployer) t.deployer = String(o.deployer).toLowerCase()
       })
     } catch (_) { tornFiles++ }
+  }
+  // The symbol sweep (symbol-sweep.mjs): tokens the market lists under an issuer symbol that the dataset never saw, with
+  // the text their contract returned on chain. They go through exactly the same rule below; nothing else changes.
+  const sweptOnly = new Set()
+  for (const [a, t] of sweptForList(sweepState, regSet)) {
+    if (tok.has(a)) continue
+    tok.set(a, { symbol: t.symbol, name: t.name, first: t.first, deployer: null })
+    sweptOnly.add(a)
   }
   const counts = Object.fromEntries(RESEMBLANCE_KINDS.map((k) => [k, 0]))
   const items = []
@@ -116,6 +125,8 @@ export async function buildImpostorList ({ chain, tokenDataset, fetchImpl = fetc
       note: 'INTERNAL. Address-level radar signals, not published until their precision is measured (docs/stocks-truth-layer-tz.md §W2c).',
       prefix_check: prefixCheck, signal_counts: signalCounts, item_signals: itemSignals,
       candidates: candidates.length, truncated: candidates.length > MAX_INTERNAL_CANDIDATES,
+      // Coverage of the token dataset: what only the sweep found. A strong look-alike here is one the collector missed.
+      sweep: { tokens_only_swept: sweptOnly.size, listed_only_swept: items.filter((it) => sweptOnly.has(it.address)).map((it) => it.address).sort() },
       internal_candidates: candidates.slice(0, MAX_INTERNAL_CANDIDATES),
     },
   }
@@ -153,7 +164,11 @@ if (isEntryPoint(import.meta.url)) {
   const root = path.resolve(dataRoot(chain, { arg: arg('root') }) || '.')
   const dataset = path.resolve(tokenDatasetOf(chain, { arg: arg('token-dataset') }) || '.')
   const at = Date.now()
-  const { names, internal, registry_addresses: registryAddresses, ...list } = await buildImpostorList({ chain, tokenDataset: dataset, now: () => at })
+  // The symbol sweep first; a failed sweep withholds nothing: the list is built from the dataset and the earlier finds.
+  const pegDir = path.join(root, 'stock-peg')
+  try { console.log('[stock-impostors] sweep ' + JSON.stringify(await runSweep({ chain, chainCfg: CHAINS[chain], dir: pegDir }))) } catch (e) { console.error('[stock-impostors] WARN symbol sweep failed: ' + String(e && e.message || e).slice(0, 200)) }
+  const { names, internal, registry_addresses: registryAddresses, ...list } = await buildImpostorList({ chain, tokenDataset: dataset, now: () => at, sweepState: readSweep(pegDir) })
+  if (internal.sweep.listed_only_swept.length) console.log('[stock-impostors] coverage ' + JSON.stringify({ chain, listed_only_by_sweep: internal.sweep.listed_only_swept.length, tokens_only_swept: internal.sweep.tokens_only_swept }))
   writeAtomically(path.join(root, 'stock-peg', 'impostors.json'), list)
   writeAtomically(path.join(root, 'stock-peg', 'stock-names.json'), namesFile({ ...list, names }))
   writeAtomically(path.join(root, 'stock-peg', INTERNAL_FILE), internal)

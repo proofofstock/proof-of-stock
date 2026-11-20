@@ -7,7 +7,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { alert } from '../lib/alert.mjs'
 import { evaluate, lastRun, THRESHOLDS } from './health-check.mjs'
-import { shapeOf, mergeShapes, shapeChanges } from '../../evm/core/stocks/shape.mjs'
+import { shapeOf, mergeShapes, shapeChanges, OPTIONAL_PATHS } from '../../evm/core/stocks/shape.mjs'
 import { recordShapes } from './stock-peg.mjs'
 
 let passed = 0, failed = 0
@@ -74,6 +74,14 @@ console.log('a change of format')
   check('a field that is gone is seen, and a type that changed', shapeChanges(s1, shapeOf({ tokens: [{ contract_address: '0x1', symbol: 1 }, { contract_address: '0x2', symbol: 'B' }], next_page_token: '' })).some((c) => /tokens\[\]\.nav_price is gone/.test(c)) && shapeChanges(s1, shapeOf({ tokens: [{ contract_address: '0x1', symbol: 1 }] })).some((c) => /tokens\[\]\.symbol is now number\|string, was string/.test(c) || /symbol is now/.test(c)))
   check('a list that shrank by more than 10% is seen', shapeChanges({ paths: {}, sizes: { tokens: 338 } }, { paths: {}, sizes: { tokens: 300 } }).some((c) => /shrank from 338 to 300/.test(c)))
   check('a run that read part of a source does not call missing fields gone', shapeChanges(s1, shapeOf({ tokens: [{ contract_address: '0x1' }] }), { complete: false }).every((c) => !/is gone/.test(c)))
+  // A field a source puts on some records only (a paid boost on a DexScreener pair) is not a change when it comes or goes.
+  const opt = OPTIONAL_PATHS['dexscreener:token-pairs']
+  const plain = [{ priceUsd: '1', baseToken: { address: '0x1' } }], boosted = [{ priceUsd: '1', baseToken: { address: '0x1' }, boosts: { active: 30 } }]
+  check('a boost that disappears from the answer is not a format change', shapeChanges(shapeOf(boosted), shapeOf(plain), { optional: opt }).length === 0)
+  check('...nor is one that appears', shapeChanges(shapeOf(plain), shapeOf(boosted), { optional: opt }).length === 0)
+  check('...but the same disappearance of a field that matters is still seen', shapeChanges(shapeOf(boosted), shapeOf([{ baseToken: { address: '0x1' } }]), { optional: opt }).some((c) => /field \$\[\]\.priceUsd is gone/.test(c)))
+  check('...and without the allowance the alert of 16.11 is what comes back', shapeChanges(shapeOf(boosted), shapeOf(plain)).some((c) => /field \$\[\]\.boosts\.active is gone/.test(c)))
+  check('a boost that changes type is still seen', shapeChanges(shapeOf(boosted), shapeOf([{ priceUsd: '1', baseToken: { address: '0x1' }, boosts: 'yes' }]), { optional: opt }).some((c) => /boosts is now string/.test(c)))
   check('shapes of pages merge into one', mergeShapes([shapeOf({ a: [1] }), shapeOf({ a: ['x'] })]).paths['a[]'].join() === 'number,string')
   // The recorder keeps the last shape and returns only what changed.
   const out = path.join(tmp, 'peg'); fs.mkdirSync(out)
