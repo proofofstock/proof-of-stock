@@ -1,21 +1,21 @@
-# Proof of Stock exam, 2026-11-20
+# Proof of Stock exam, 2026-11-21
 
-Asked https://proofofstock.xyz about 653 tokens whose right answer comes from the issuers, not from us. Set SHA-256 `49bb25e9f499c31b74cb07a9e7a1c4d7c5f03e595c4fa0ebf522de9fc5b909e4`; rerun with `node scripts/exam.mjs`.
+Asked https://proofofstock.xyz about 704 tokens whose right answer comes from the issuers, not from us. Set SHA-256 `a094bfa28d8eb91b628d423d7289f635317a5867e04f541b992c355a3481e0a3`; rerun with `node scripts/exam.mjs`.
 
 | Check | Result | Target |
 |---|---|---|
 | False "listed" (look-alikes, strangers, wrong chain) | 0 | 0 |
 | False "not listed" (tokens on the issuer list) | 0 | 0 |
 | A real token called a fake | 0 | 0 |
-| Look-alikes of the week flagged | 24 of 24 | all |
+| Look-alikes of the week flagged | 38 of 38 | all |
 | Coinbase "minted" agrees with total_supply | all | all |
 | Refused ("registry unavailable") | 0 | honest when it happens |
 | Base list_proof equals the hash of Coinbase's list | yes | yes |
 | Robinhood list_proof equals the hash of Robinhood's list | yes | yes |
 | Price evidence replayed on chain, same bytes | 7 of 7 on-chain (0 aggregator-only) | all on-chain |
-| /verify batch latency p50 / p95 | 421 / 1113 ms | reported as is |
+| /verify batch latency p50 / p95 | 238 / 613 ms | reported as is |
 
-Set: A 583 issuer-listed, B 24 look-alikes flagged this week, C 26 strangers, D 20 asked on the other chain.
+Set: A 620 issuer-listed, B 38 look-alikes flagged this week, C 26 strangers, D 20 asked on the other chain.
 
 No failures.
 
