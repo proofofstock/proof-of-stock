@@ -98,6 +98,20 @@ the matching location (`deployment/nginx/proofofstock.xyz.conf`), which is the t
 without it nginx answers 404 before the app is reached. `ship.sh` installs neither units nor nginx config, so both
 have to be copied by hand after a release that changes them.
 
+### 402index.io domain claim
+
+[402index.io](https://402index.io/verify) verifies that the domain is ours by reading the SHA-256 hash of a token it
+issues at `https://proofofstock.xyz/.well-known/402index-verify.txt`. The token is the credential for editing the
+listing: it stays with the owner (a password manager), never on the host and never in git. Only its hash goes on the
+host, in the same `/etc/pos/web.env`, as `STP_402INDEX_HASH`; the app serves it as plain text and answers 404 without
+it. The vhost has the matching exact location, a fourth dot-path.
+
+1. `POST https://402index.io/api/v1/claim` with `{"domain": "proofofstock.xyz"}`: the answer holds `verification_token`
+   and `verification_hash`. Keep the token; the claim expires after 72 hours if not verified.
+2. On the host, append `STP_402INDEX_HASH=<verification_hash>` to `/etc/pos/web.env` (as above: root, 0600), copy the
+   vhost, `nginx -t && systemctl reload nginx`, `systemctl restart stp-web`, and check the path answers the hash.
+3. `POST https://402index.io/api/v1/claim/verify` with `{"domain": "proofofstock.xyz"}`: the answer says `verified`.
+
 ## Opening the source
 
 This repository stays private. The public one, `proofofstock/proof-of-stock`, is a copy built by

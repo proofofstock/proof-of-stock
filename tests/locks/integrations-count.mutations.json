@@ -1,0 +1,28 @@
+{
+  "_finding": "Owner, 22.11: show how many agents and programs really use the service, and who. The count comes from names clients send about themselves, over seven days; a name we do not recognise is counted and never printed, because a client may call itself anything and a stranger's word must not reach our page.",
+  "target": "apps/stocks-status.mjs",
+  "runner": [
+    "node",
+    "apps/status-usage.test.mjs"
+  ],
+  "mutations": [
+    {
+      "name": "any name a client sends is printed",
+      "find": "for (const [x, k] of daysByName) if (KNOWN_APPS[x]) known.set(KNOWN_APPS[x], Math.max(known.get(KNOWN_APPS[x]) || 0, k))",
+      "replace": "for (const [x, k] of daysByName) known.set(x, k)",
+      "expect": "FAIL ...and never prints a name it does not recognise"
+    },
+    {
+      "name": "one day counts as coming back",
+      "find": "filter((k) => k >= 2).length",
+      "replace": "filter((k) => k >= 1).length",
+      "expect": "FAIL ...back on two days or more counts a name seen on two days"
+    },
+    {
+      "name": "no name and other count as apps",
+      "find": ".filter((x) => !NOT_A_NAME.has(x))",
+      "replace": "",
+      "expect": "FAIL apps are the distinct names over the window, never \"(no name)\" or \"other\", case folded"
+    }
+  ]
+}

@@ -1,0 +1,22 @@
+{
+  "_finding": "402index.io verifies the domain by reading the hash of its claim token at /.well-known/402index-verify.txt (22.11). The path serves the host's hash as bare plain text, and nothing that is not a hash.",
+  "target": "apps/stocks-web.mjs",
+  "runner": [
+    "node",
+    "apps/stocks-web.test.mjs"
+  ],
+  "mutations": [
+    {
+      "name": "any value on the host is served",
+      "find": "return INDEX402_HASH_RE.test(String(index402Hash || '').trim()) ?",
+      "replace": "return index402Hash ?",
+      "expect": "FAIL ...a malformed hash is a 404, never served; only 64 hex characters pass"
+    },
+    {
+      "name": "the hash is served as it was set, untrimmed",
+      "find": "send(res, 200, String(index402Hash).trim().toLowerCase(),",
+      "replace": "send(res, 200, String(index402Hash),",
+      "expect": "FAIL ...a hash from the host is served as the bare hash, plain text, trimmed and lower case, under 1 KB"
+    }
+  ]
+}

@@ -8,8 +8,8 @@
   "mutations": [
     {
       "name": "the landing is served without the board",
-      "find": "}), landingBoard()))",
-      "replace": "}), null))",
+      "find": "}), landingBoard()), landingApps()))",
+      "replace": "}), null), landingApps()))",
       "expect": "FAIL the landing arrives with the week's cases written in, not \"Loading\""
     },
     {

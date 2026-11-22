@@ -11,7 +11,7 @@ import path from 'node:path'
 import zlib from 'node:zlib'
 import crypto from 'node:crypto'
 import { fileURLToPath, pathToFileURL } from 'node:url'
-import { createStocksWeb, SECURITY_HEADERS, PAGE_CACHE_MS, MCP_REGISTRY_AUTH_RE, GLAMA_CLAIM_RE, GLAMA_CLAIM_PATH } from './stocks-web.mjs'
+import { createStocksWeb, SECURITY_HEADERS, PAGE_CACHE_MS, MCP_REGISTRY_AUTH_RE, GLAMA_CLAIM_RE, GLAMA_CLAIM_PATH, INDEX402_PATH, INDEX402_HASH_RE } from './stocks-web.mjs'
 import { statsPage } from './stocks-stats.mjs'
 import { COINBASE_URL, ROBINHOOD_ASSETS_URL, ROBINHOOD_PRICES_URL } from '../evm/core/stocks/registries.mjs'
 import { loadWindow, readingsOf } from '../evm/core/stocks/readings-window.mjs'
@@ -563,6 +563,22 @@ console.log('x402 v2 on the wire, and the pass as a route')
   check('a server without paid passes has no /api/pass and no /openapi.json', (await get('/stocks/api/pass')).status === 404 && (await get('/stocks/openapi.json')).status === 404)
 }
 
+// Who calls it, on the landing (owner, 22.11): an agent app that named itself and called a tool today shows under "Ask
+// it from your agent"; with no such app the placeholder stays hidden.
+console.log('the landing says which apps called it')
+{
+  const adir = fs.mkdtempSync(path.join(os.tmpdir(), 'stp-apps-'))
+  const today = new Date().toISOString().slice(0, 10)
+  const row = (o) => JSON.stringify({ kind: 'mcp', at: new Date().toISOString(), visitor: 'v-apps-1', ua_class: 'tool', country: null, tool: null, client: null, ...o })
+  fs.writeFileSync(path.join(adir, `hits-${today}.jsonl`), [row({ method: 'initialize', client: 'cursor' }), row({ method: 'tools/call', tool: 'find_stock_token' })].join('\n') + '\n')
+  const appA = createStocksWeb({ roots: { base: baseRoot, robinhood: rhRoot }, fetchImpl, log: () => {}, analytics: { enabled: false, dir: adir }, exam: { url: null } })
+  const { port: pa } = await appA.start(0, '127.0.0.1')
+  let land = ''
+  try { land = await (await fetch(`http://127.0.0.1:${pa}/stocks/`)).text() } finally { await appA.stop(); fs.rmSync(adir, { recursive: true, force: true }) }
+  check('an app that named itself and called a tool is named on the landing, with a link to how it is counted', /<p class="agent-apps faint" id="agent-apps">In the last 7 days, 1 agent app or integration called it by name, among them Cursor\. <a class="inline-link" href="status">How we count<\/a><\/p>/.test(land), (land.match(/<p class="agent-apps[^]*?<\/p>/) || [''])[0])
+  check('...and without a counter file the placeholder stays hidden', (await (await get('/stocks/')).text()).includes('<p class="agent-apps faint" id="agent-apps" hidden></p>'))
+}
+
 console.log('passes off, the world of the day before')
 {
   let last = 0
@@ -615,6 +631,20 @@ console.log('the public MCP endpoint')
     const r2 = await fetch(`http://127.0.0.1:${pb}/stocks${GLAMA_CLAIM_PATH}`)
     check('a malformed claim is refused at the door: 404, not a half-claim', r2.status === 404, String(r2.status))
     await withClaim.stop(); await bad.stop()
+    // 402index.io's domain claim (22.11): the hash of its token, plain text, at a fixed path; a 404 without one.
+    check('402index: with no hash set the path is a plain 404', (await get('/stocks' + INDEX402_PATH)).status === 404)
+    const H = 'ab'.repeat(32)
+    const withHash = createStocksWeb({ roots: { base: baseRoot, robinhood: rhRoot }, fetchImpl, now: () => NOW, log: () => {}, index402Hash: ' ' + H.toUpperCase() + '\n', analytics: { enabled: false } })
+    const { port: ph } = await withHash.start(0, '127.0.0.1')
+    const rh = await fetch(`http://127.0.0.1:${ph}/stocks${INDEX402_PATH}`)
+    const th = await rh.text()
+    check('...a hash from the host is served as the bare hash, plain text, trimmed and lower case, under 1 KB', rh.status === 200 && th === H && /^text\/plain/.test(rh.headers.get('content-type')) && !rh.redirected, th.slice(0, 80))
+    check('...a read path: POST is refused', (await fetch(`http://127.0.0.1:${ph}/stocks${INDEX402_PATH}`, { method: 'POST' })).status === 405)
+    await withHash.stop()
+    const badHash = createStocksWeb({ roots: { base: baseRoot, robinhood: rhRoot }, fetchImpl, now: () => NOW, log: () => {}, index402Hash: 'not-a-hash', analytics: { enabled: false } })
+    const { port: pbh } = await badHash.start(0, '127.0.0.1')
+    check('...a malformed hash is a 404, never served; only 64 hex characters pass', (await fetch(`http://127.0.0.1:${pbh}/stocks${INDEX402_PATH}`)).status === 404 && INDEX402_HASH_RE.test(H) && !INDEX402_HASH_RE.test(H + 'a') && !INDEX402_HASH_RE.test(H.slice(1) + 'g'))
+    await badHash.stop()
     check('the claim format admits a Glama claim and nothing else', GLAMA_CLAIM_RE.test(CLAIM) && !GLAMA_CLAIM_RE.test('glama_claim_short') && !GLAMA_CLAIM_RE.test('') && !GLAMA_CLAIM_RE.test(CLAIM + '\n<script>'))
     const unit = fs.readFileSync(new URL('../deployment/systemd/stp-web.service', import.meta.url), 'utf8')
     check('the unit takes the claim from the host, from a file that may be absent', /^EnvironmentFile=-\/etc\/pos\/web\.env$/m.test(unit) && !/STP_GLAMA_CLAIM=/.test(unit))
@@ -1331,6 +1361,7 @@ console.log('deployment')
   }
   check('security.txt is served though dot-paths are refused: an exact location, before the rule', vhost.indexOf('location = /.well-known/security.txt') > 0 && vhost.indexOf('location = /.well-known/security.txt') < vhost.indexOf('location ~ /\\. { return 404; }') && /proxy_pass http:\/\/127\.0\.0\.1:3005\/stocks\/\.well-known\/security\.txt;/.test(vhost))
   check('...and so is the MCP registry proof, the same way: GET only, before the rule', vhost.indexOf('location = /.well-known/mcp-registry-auth') > 0 && vhost.indexOf('location = /.well-known/mcp-registry-auth') < vhost.indexOf('location ~ /\\. { return 404; }') && /proxy_pass http:\/\/127\.0\.0\.1:3005\/stocks\/\.well-known\/mcp-registry-auth;/.test(vhost))
+  check('...and so is the 402index claim, GET only, before the rule', vhost.indexOf('location = /.well-known/402index-verify.txt') > 0 && vhost.indexOf('location = /.well-known/402index-verify.txt') < vhost.indexOf('location ~ /\\. { return 404; }') && /location = \/\.well-known\/402index-verify\.txt \{\n\s+limit_except GET HEAD \{ deny all; \}/.test(vhost) && /proxy_pass http:\/\/127\.0\.0\.1:3005\/stocks\/\.well-known\/402index-verify\.txt;/.test(vhost))
   check('...and so is the Glama claim beside /mcp, GET only, before the rule and before /mcp itself', vhost.indexOf('location = /mcp/.well-known/glama.json') > 0 && vhost.indexOf('location = /mcp/.well-known/glama.json') < vhost.indexOf('location ~ /\\. { return 404; }') && /location = \/mcp\/\.well-known\/glama\.json \{\n\s+limit_except GET HEAD \{ deny all; \}/.test(vhost) && /proxy_pass http:\/\/127\.0\.0\.1:3005\/stocks\/mcp\/\.well-known\/glama\.json;/.test(vhost) && !/auth_basic[^\n]*\n[^}]*glama\.json/.test(vhost))
   {
     const sj = JSON.parse(fs.readFileSync(new URL('../server.json', import.meta.url), 'utf8'))

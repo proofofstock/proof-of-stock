@@ -32,12 +32,48 @@ export function statusOf (chains) {
  * summed per day, never deduplicated across days, and the page says so. Tool calls come from the summary's top keys,
  * so they can only undercount. Null when the counter has no file for any of the days.
  */
+/**
+ * Apps we name on the page when they name themselves (owner, 22.11: show who uses it). A client may send any name, so a
+ * name is printed only when it is on this list; every other name is counted and never printed: a stranger's word does
+ * not reach our page. Keys are lowercase; the MCP clientInfo name, or our own packages' user agent (API_CLIENT).
+ */
+export const KNOWN_APPS = Object.freeze(Object.assign(Object.create(null), {
+  'claude-code': 'Claude Code', 'claude-ai': 'Claude', claude: 'Claude', 'claude desktop': 'Claude', cursor: 'Cursor',
+  'cursor-vscode': 'Cursor', windsurf: 'Windsurf', 'visual studio code': 'VS Code', vscode: 'VS Code', cline: 'Cline',
+  'roo-code': 'Roo Code', goose: 'Goose', zed: 'Zed', continue: 'Continue', 'openai-mcp': 'ChatGPT', chatgpt: 'ChatGPT',
+  codex: 'Codex', 'codex-mcp-client': 'Codex', 'gemini-cli-mcp-client': 'Gemini CLI', librechat: 'LibreChat',
+  guard: 'Proof of Stock guard (npm)', 'bankr-skill': 'Bankr skill',
+}))
+const NOT_A_NAME = new Set(['(no name)', 'other', ''])
+
+/**
+ * The apps that named themselves over the window: MCP clients that called a tool (checkers left out upstream) and
+ * programs using our own packages. A name is a kind of app, not a person: many people run "claude-code". `returning`
+ * counts names seen on two days or more, which a daily pseudonym cannot show for a person (it changes every day).
+ */
+export function appsOf (real) {
+  const daysByName = new Map()
+  for (const d of real) {
+    const names = new Set([...(d.summary.mcp_agent_names || []), ...(d.summary.api_named_clients || [])]
+      .map((e) => String(Array.isArray(e) ? e[0] : '').trim().toLowerCase()).filter((x) => !NOT_A_NAME.has(x)))
+    for (const x of names) daysByName.set(x, (daysByName.get(x) || 0) + 1)
+  }
+  const known = new Map()
+  for (const [x, k] of daysByName) if (KNOWN_APPS[x]) known.set(KNOWN_APPS[x], Math.max(known.get(KNOWN_APPS[x]) || 0, k))
+  return {
+    apps: daysByName.size,
+    apps_returning: [...daysByName.values()].filter((k) => k >= 2).length,
+    apps_known: [...known.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).map(([name]) => name),
+  }
+}
+
 export function usageOf (days) {
   const real = (Array.isArray(days) ? days : []).filter((d) => d && d.summary)
   if (!real.length) return null
   const n = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0)
   const calls = (s) => (s.mcp_calls || []).filter(([k]) => /^tools\/call /.test(k)).reduce((a, [, v]) => a + n(v), 0)
   return {
+    ...appsOf(real),
     days: days.length,
     days_with_data: real.length,
     agent_days: real.reduce((a, d) => a + n(d.summary.mcp_use_agents), 0),
@@ -49,10 +85,44 @@ export function usageOf (days) {
   }
 }
 
+/** The names known apps, as a phrase: "Claude Code, Cursor and Bankr skill". */
+export function namesPhrase (names, max = 4) {
+  const shown = names.slice(0, max), more = names.length - shown.length
+  const list = more > 0 ? [...shown, `${more} more`] : shown
+  return list.length <= 1 ? list.join('') : `${list.slice(0, -1).join(', ')} and ${list[list.length - 1]}`
+}
+
+/**
+ * The apps that named themselves, above the tiles: how many, how many came back, and the known ones by name. Nothing
+ * while none named itself. A name is what a program says about itself, so the sentence says so.
+ */
+function appsLine (u) {
+  if (!u || !u.apps) return ''
+  const tile = (v, k) => `<div class="st-use-tile"><b>${esc(v)}</b><span>${esc(k)}</span></div>`
+  const seen = u.apps_known && u.apps_known.length ? ` Among them: ${esc(namesPhrase(u.apps_known))}.` : ''
+  return `<div class="st-use-row">${tile(u.apps, u.apps === 1 ? 'agent app or integration that named itself' : 'agent apps and integrations that named themselves')}${tile(u.apps_returning, 'of them came back on two days or more')}</div><p class="st-detail">An app is the name a client sends about itself: an MCP client that called a tool, or a program using our npm guard or the Bankr skill. A name is a kind of app, not a person, and a client may call itself anything, so only names we recognise are shown.${seen}</p>`
+}
+
+/**
+ * The landing's line under "Ask it from your agent" (owner, 22.11): the same count as /status, one sentence, with a
+ * link to how it is counted. HTML, escaped here; null while no app named itself, and the page then shows nothing.
+ */
+export function appsSentenceHtml (u) {
+  if (!u || !u.apps) return null
+  const known = u.apps_known && u.apps_known.length ? `, among them ${esc(namesPhrase(u.apps_known))}` : ''
+  return `In the last ${esc(u.days)} days, ${esc(u.apps)} agent ${u.apps === 1 ? 'app or integration' : 'apps and integrations'} called it by name${known}. <a class="inline-link" href="status">How we count</a>`
+}
+
+/** Write the sentence into the landing's placeholder; the page is unchanged without one. */
+export function withApps (html, sentenceHtml) {
+  if (!sentenceHtml) return html
+  return String(html).replace('<p class="agent-apps faint" id="agent-apps" hidden></p>', `<p class="agent-apps faint" id="agent-apps">${sentenceHtml}</p>`)
+}
+
 function usageSection (u) {
   if (!u) return ''
   const tile = (v, k) => `<div class="st-use-tile"><b>${esc(v)}</b><span>${esc(k)}</span></div>`
-  return `<section class="st-use"><h2>Used in the last ${esc(u.days)} days</h2><div class="st-use-row">${tile(u.agent_days, 'agents that called an MCP tool (once a day)')}${tile(u.tool_calls, 'MCP tool calls')}${tile(u.api_client_days, 'programs that called the API (once a day)')}${tile(u.api_requests, 'API calls by programs')}${tile(u.api_checks, 'addresses checked through /verify')}${tile(u.people_days, 'people on the site (once a day)')}</div><p class="st-detail">From our own server's counter. An MCP agent counts on a day it called a tool; catalogues and health checks that only list the tools are left out. API calls are the data routes (/verify, /api/find, /api/passport and the rest) answered to a program: a browser is the site itself and counts as people, and our own daily exam and canary are not counted. Clients are pseudonyms that change every day, so they are counted once a day, not once ever. These are our numbers, not verified onchain.${u.days_with_data < u.days ? ` ${esc(u.days - u.days_with_data)} of the days have no counter file.` : ''}</p></section>`
+  return `<section class="st-use"><h2>Used in the last ${esc(u.days)} days</h2>${appsLine(u)}<div class="st-use-row">${tile(u.agent_days, 'agents that called an MCP tool (once a day)')}${tile(u.tool_calls, 'MCP tool calls')}${tile(u.api_client_days, 'programs that called the API (once a day)')}${tile(u.api_requests, 'API calls by programs')}${tile(u.api_checks, 'addresses checked through /verify')}${tile(u.people_days, 'people on the site (once a day)')}</div><p class="st-detail">From our own server's counter. An MCP agent counts on a day it called a tool; catalogues and health checks that only list the tools are left out. API calls are the data routes (/verify, /api/find, /api/passport and the rest) answered to a program: a browser is the site itself and counts as people, and our own daily exam and canary are not counted. Clients are pseudonyms that change every day, so they are counted once a day, not once ever. These are our numbers, not verified onchain.${u.days_with_data < u.days ? ` ${esc(u.days - u.days_with_data)} of the days have no counter file.` : ''}</p></section>`
 }
 
 /**

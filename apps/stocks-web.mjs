@@ -58,7 +58,7 @@ import { createDocsRenderer } from './stocks-docs.mjs'
 import { stampList, listProof, listBytes } from '../evm/core/stocks/list-proof.mjs'
 import { canonicalRegistry } from '../evm/core/stocks/history.mjs'
 import { isIsoTime } from '../scripts/lib/mcp-args.mjs'
-import { statusPage, usageOf } from './stocks-status.mjs'
+import { statusPage, usageOf, appsSentenceHtml, withApps } from './stocks-status.mjs'
 import { archiveAt } from './stocks-archive.mjs'
 import { statsPage, lastRuns, STATS_GATE } from './stocks-stats.mjs'
 import { ANCHOR_FILE_RE, anchorDays, anchorFor } from '../scripts/stocks/anchor.mjs'
@@ -139,6 +139,9 @@ export const MCP_REGISTRY_AUTH_RE = /^v=MCPv1; k=ed25519; p=[A-Za-z0-9+/]{43}=$/
 /** The claim Glama reads at /mcp/.well-known/glama.json to prove this endpoint is ours (deployment/glama-claim). */
 export const GLAMA_CLAIM_RE = /^glama_claim_[A-Za-z0-9_-]{16,96}$/
 export const GLAMA_CLAIM_PATH = '/mcp/.well-known/glama.json'
+/** 402index.io's domain claim: the SHA-256 hex of the token it issued, at this path (https://402index.io/verify). */
+export const INDEX402_PATH = '/.well-known/402index-verify.txt'
+export const INDEX402_HASH_RE = /^[0-9a-fA-F]{64}$/
 
 export const SECURITY_HEADERS = Object.freeze({
   'content-security-policy': "default-src 'none'; script-src 'self'; style-src 'self'; font-src 'self'; img-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
@@ -265,6 +268,9 @@ export function createStocksWeb ({
   // repository: the repository is exported publicly, and an ownership claim has no business being published.
   // Set on the host in /etc/pos/web.env (deployment/PUBLISHING.md); without it the path is a plain 404.
   glamaClaim = process.env.STP_GLAMA_CLAIM || null,
+  // 402index.io's domain claim (22.11): the SHA-256 hash of the token it issues, which it reads at
+  // /.well-known/402index-verify.txt. The hash only, never the token; on the host, like the Glama claim, never in git.
+  index402Hash = process.env.STP_402INDEX_HASH || null,
 } = {}) {
   const registries = new Map() // chain → { records, at, error }
   // Addresses that were listed and have left the registry, since this process started: chain → Map(address → { at, symbol }).
@@ -436,6 +442,18 @@ export function createStocksWeb ({
     return board
   }
 
+  // Who calls it, as one sentence under 'Ask it from your agent' (owner, 22.11): the apps that named themselves in the
+  // last 7 days, from the same counter as /status. Read from the day files at most every APPS_CACHE_MS.
+  const APPS_CACHE_MS = 5 * 60e3
+  let appsCache = { at: -Infinity, html: null }
+  function landingApps () {
+    if (now() - appsCache.at < APPS_CACHE_MS) return appsCache.html
+    let html = null
+    try { html = appsSentenceHtml(usageOf(dailySummaries({ dir: analyticsOpts.dir ?? process.env.STP_ANALYTICS_DIR ?? null, days: 7, today: new Date(now()).toISOString().slice(0, 10) }))) } catch (e) { log(`[apps] ${e.message}`) }
+    appsCache = { at: now(), html }
+    return html
+  }
+
   // The page, with a link preview for the token the link names, built only from what is held in memory.
   function pageFor (url) {
     let c = url.searchParams.get('chain'), a = String(url.searchParams.get('address') || '').toLowerCase()
@@ -460,7 +478,7 @@ export function createStocksWeb ({
     // A listed token and a listed impostor are pages worth a search result; any other address is the empty passport
     // of a contract nobody indexed, one per address that exists: not indexed.
     const jsonLd = named ? pageJsonLd({ site, url: canonical, title: meta.title, description: meta.description, logo: seo.logo }) : homeJsonLd({ site, version: appVersion, ...seo })
-    return Buffer.from(withBoard(injectMeta(static_['/'].body, meta, canonical, { ...seo, jsonLd, robots: named && !record && !impostor ? 'noindex' : undefined }), landingBoard()))
+    return Buffer.from(withApps(withBoard(injectMeta(static_['/'].body, meta, canonical, { ...seo, jsonLd, robots: named && !record && !impostor ? 'noindex' : undefined }), landingBoard()), landingApps()))
   }
 
   // A docs page with its canonical link, preview and JSON-LD. The docs are fixed at start, so each page is built once.
@@ -905,6 +923,12 @@ export function createStocksWeb ({
       return claim
         ? send(res, 200, { $schema: 'https://glama.ai/mcp/schemas/connector.json', claim }, undefined, { 'cache-control': 'public, max-age=60' })
         : send(res, 404, { error: 'not found' })
+    }
+    // 402index.io reads the hash of its claim token here, plain text, no redirect (its /verify page). A malformed hash
+    // on the host is a 404, never served.
+    if (url.pathname === BASE_PATH + INDEX402_PATH) {
+      if (req.method !== 'GET' && req.method !== 'HEAD') return send(res, 405, { error: 'method not allowed' }, undefined, { allow: 'GET, HEAD' })
+      return INDEX402_HASH_RE.test(String(index402Hash || '').trim()) ? send(res, 200, String(index402Hash).trim().toLowerCase(), 'text/plain; charset=utf-8', { 'cache-control': 'public, max-age=60' }) : send(res, 404, { error: 'not found' })
     }
     if (url.pathname === BASE_PATH + '/mcp') return routeMcp(req, res)
     if (req.method !== 'GET' && req.method !== 'HEAD') return send(res, 405, { error: 'method not allowed' }, undefined, { allow: 'GET, HEAD' })

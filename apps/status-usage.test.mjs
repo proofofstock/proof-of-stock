@@ -7,7 +7,7 @@
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { usageOf, statusPage } from './stocks-status.mjs'
+import { usageOf, statusPage, appsSentenceHtml, withApps, namesPhrase } from './stocks-status.mjs'
 import { createAnalytics, IGNORE_UA, API_CLIENT } from './stocks-analytics.mjs'
 import { summarise } from '../scripts/stocks/analytics-report.mjs'
 
@@ -55,6 +55,31 @@ const chains = { base: { registry_records: 89, registry_age_s: 10, readings_toke
 const page = statusPage({ chains, now: Date.parse('2026-11-19T12:00:00Z'), version: '0', assets: { css: 'a', docsCss: 'b' }, usage: u })
 check('the page shows each number with what it is', /Used in the last 3 days/.test(page) && page.includes('<b>7</b><span>agents that called an MCP tool (once a day)') && page.includes('<b>50</b><span>addresses checked through /verify') && page.includes('<b>4</b><span>people on the site'))
 check('...and says what it leaves out and that these are our numbers, not onchain', page.includes('a browser is the site itself') && page.includes('our own daily exam and canary are not counted') && page.includes('not verified onchain') && page.includes('1 of the days have no counter file'))
+// The apps that named themselves (owner, 22.11): counted over the window, back on two days or more, and only names we
+// recognise are printed: a client may send any name, and a stranger's word never reaches our page.
+console.log('apps that named themselves')
+{
+  const day = (mcp, api = []) => ({ people: 0, mcp_use_agents: 1, mcp_calls: [], mcp_agent_names: mcp, api_named_clients: api })
+  const w = usageOf([
+    { day: '2026-11-20', summary: day([['claude-code', 2], ['(no name)', 3], ['spam-site.example', 1]]) },
+    { day: '2026-11-21', summary: day([['Claude-Code', 1], ['cursor', 1], ['other', 2]], [['bankr-skill', 1]]) },
+    { day: '2026-11-22', summary: null },
+  ])
+  check('apps are the distinct names over the window, never "(no name)" or "other", case folded', w.apps === 4, JSON.stringify(w))
+  check('...back on two days or more counts a name seen on two days', w.apps_returning === 1)
+  check('...the known ones by name, most days first, an unknown name counted and never named', JSON.stringify(w.apps_known) === JSON.stringify(['Claude Code', 'Bankr skill', 'Cursor']))
+  const p = statusPage({ chains, now: 0, version: '0', assets: { css: 'a', docsCss: 'b' }, usage: w })
+  check('/status shows both counts and the known names, and says a name is what a client says about itself', p.includes('<b>4</b><span>agent apps and integrations that named themselves') && p.includes('<b>1</b><span>of them came back on two days or more') && p.includes('Among them: Claude Code, Bankr skill and Cursor.') && p.includes('a client may call itself anything'))
+  check('...and never prints a name it does not recognise', !p.includes('spam-site'))
+  const sentence = appsSentenceHtml(w)
+  check('the landing sentence: the window, the count, the known names, and a link to how it is counted', sentence === 'In the last 3 days, 4 agent apps and integrations called it by name, among them Claude Code, Bankr skill and Cursor. <a class="inline-link" href="status">How we count</a>', sentence)
+  const page = '<h3>Ask it from your agent</h3>\n      <p class="agent-apps faint" id="agent-apps" hidden></p>'
+  check('...written into the placeholder, which is no longer hidden', withApps(page, sentence).includes(`<p class="agent-apps faint" id="agent-apps">${sentence}</p>`))
+  const none = usageOf([{ day: 'x', summary: day([['(no name)', 2]]) }])
+  check('no app named itself: no sentence, the placeholder stays hidden, and /status shows no apps row', none.apps === 0 && appsSentenceHtml(none) === null && withApps(page, appsSentenceHtml(none)) === page && !statusPage({ chains, now: 0, version: '0', assets: { css: 'a', docsCss: 'b' }, usage: none }).includes('named themselves'))
+  check('a long list ends with how many more', namesPhrase(['A', 'B', 'C', 'D', 'E', 'F']) === 'A, B, C, D and 2 more' && namesPhrase(['A']) === 'A' && namesPhrase(['A', 'B']) === 'A and B')
+}
+
 check('with no usage the block is not on the page', !/st-use/.test(statusPage({ chains, now: 0, version: '0', assets: { css: 'a', docsCss: 'b' } })))
 
 // Paid passes (outside review, 21.11): the proof that passes are sold is the settling wallet's own transactions on

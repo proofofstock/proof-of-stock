@@ -1,0 +1,16 @@
+{
+  "_finding": "Owner, 22.11: the landing says which agent apps called the service, under 'Ask it from your agent', from the same counter as /status.",
+  "target": "apps/stocks-web.mjs",
+  "runner": [
+    "node",
+    "apps/stocks-web.test.mjs"
+  ],
+  "mutations": [
+    {
+      "name": "the landing leaves the apps sentence out",
+      "find": "landingBoard()), landingApps()))",
+      "replace": "landingBoard()), null))",
+      "expect": "FAIL an app that named itself and called a tool is named on the landing, with a link to how it is counted"
+    }
+  ]
+}
