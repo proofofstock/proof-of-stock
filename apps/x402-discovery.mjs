@@ -68,14 +68,16 @@ export function openApiOf ({ origin, priceUsd, passMinutes, passRate, version })
       version: String(version || '0'),
       // x402scan reads the contact email to verify ownership and to let users reach the provider (22.11).
       contact: { name: 'Proof of Stock', email: CONTACT_EMAIL, url: origin },
-      description: `Proof of Stock checks tokenized stocks on Base against the issuer's own list, free within 60 units a minute. A pass lifts that to ${passRate} units a minute for ${passMinutes} minutes, for ${priceUsd} USDC on Base over x402. The free API is at ${origin}/docs/reference/http-api.md.`,
+      description: `Tokenized stock (RWA) verification. Proof of Stock checks tokenized stocks on Base and Robinhood Chain against the issuer's own list (Coinbase, Robinhood), flags look-alikes, and shows how far the on-chain price is from the issuer's; free within 60 units a minute. A pass lifts that to ${passRate} units a minute for ${passMinutes} minutes, for ${priceUsd} USDC on Base over x402. The free API is at ${origin}/docs/reference/http-api.md.`,
     },
     servers: [{ url: origin }],
+    tags: [{ name: 'RWA', description: 'Tokenized real-world assets: stock tokens' }, { name: 'Verification', description: "Is this token the issuer's own, or a look-alike?" }],
     paths: {
       '/api/pass': {
         get: {
           operationId: 'buyPass',
-          summary: `Buy a ${passMinutes}-minute pass at ${passRate} units a minute`,
+          summary: `Tokenized stock (RWA) verification: a ${passMinutes}-minute pass at ${passRate} units a minute`,
+          tags: ['RWA', 'Verification'],
           description: 'Without a live pass this answers 402 with the x402 offer (v2 in the PAYMENT-REQUIRED header and the body; pay with PAYMENT-SIGNATURE, or X-PAYMENT for v1). Paid, the pass is bound to the calling client and the answer says until when it runs.',
           'x-payment-info': { protocols: ['x402'], price: { mode: 'fixed', currency: 'USD', amount: String(priceUsd) } },
           responses: {

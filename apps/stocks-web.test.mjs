@@ -552,6 +552,7 @@ console.log('x402 v2 on the wire, and the pass as a route')
     const op = api.paths?.['/api/pass']?.get
     check('/openapi.json lists the paid route with its price over x402 and its 402, at the public origin', api.openapi?.startsWith('3.') && api.servers?.[0]?.url === 'https://proofofstock.xyz' && op?.['x-payment-info']?.protocols?.includes('x402') && op['x-payment-info'].price?.amount === '0.01' && op['x-payment-info'].price.currency === 'USD' && op.responses?.['402'] && op.responses?.['200'])
     check('...and only that route: every route it names answers 402 to a stranger', Object.keys(api.paths || {}).length === 1)
+    check('...and says what the route is about, for catalogues that tag by reading it: tokenized stock (RWA) verification', /^Tokenized stock \(RWA\) verification/.test(op?.summary || '') && /^Tokenized stock \(RWA\) verification/.test(api.info?.description || '') && (op?.tags || []).includes('RWA') && (api.tags || []).some((t) => t.name === 'RWA'))
     check('...with our public contact email, which x402scan reads to verify ownership', api.info?.contact?.email === 'hello@proofofstock.xyz' && api.info.contact.url === 'https://proofofstock.xyz')
     const landing = await (await P('/')).text()
     const metaDesc = [...landing.matchAll(/<meta (?:name|property)="(?:description|og:description|twitter:description)" content="([^"]*)"/g)].map((m) => m[1])

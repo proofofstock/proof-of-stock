@@ -23,6 +23,12 @@
       "find": "      contact: { name: 'Proof of Stock', email: CONTACT_EMAIL, url: origin },\n",
       "replace": "",
       "expect": "FAIL ...with our public contact email, which x402scan reads to verify ownership"
+    },
+    {
+      "name": "the route says nothing of what it is about",
+      "find": "          summary: `Tokenized stock (RWA) verification: a ${passMinutes}-minute pass at ${passRate} units a minute`,",
+      "replace": "          summary: `Buy a ${passMinutes}-minute pass at ${passRate} units a minute`,",
+      "expect": "FAIL ...and says what the route is about, for catalogues that tag by reading it: tokenized stock (RWA) verification"
     }
   ]
 }
