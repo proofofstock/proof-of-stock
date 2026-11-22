@@ -52,7 +52,7 @@ import { createWindowCache, readingsOf, seriesPoints } from '../evm/core/stocks/
 import { metaFor, injectMeta, withHead, headOf } from '../evm/core/stocks/page-meta.mjs'
 import { robotsTxt, securityTxt, sitemapXml, sitemapUrls, docUrl, homeJsonLd, docJsonLd, pageJsonLd } from './stocks-seo.mjs'
 import { createMcpHttp, SUPPORTED_VERSIONS, MAX_VERIFY_BATCH } from './stocks-mcp-http.mjs'
-import { verifyToken, badgeSvg, badgeState } from '../evm/core/stocks/verify.mjs'
+import { verifyToken, badgeSvg, badgeState, issuerPrefixOf, ISSUER_LABEL as VERIFY_ISSUER_LABEL } from '../evm/core/stocks/verify.mjs'
 import { mintedOf } from '../evm/core/stocks/registries.mjs'
 import { createDocsRenderer } from './stocks-docs.mjs'
 import { stampList, listProof, listBytes } from '../evm/core/stocks/list-proof.mjs'
@@ -606,7 +606,7 @@ export function createStocksWeb ({
     }
     const sources = { ...SOURCES[chain], dex: 'the pools on the chain itself, read at one block, with DexScreener token-pairs (completed from GeckoTerminal when DexScreener lists 30); where both see a pool, the price and liquidity read from the chain are used', recorded_every_s: RECORDER_CADENCE_S,
       pools_counted: { min_liquidity_usd: MIN_POOL_LIQUIDITY_USD, paired_with_addresses: [...(C.referenceAssets || [])], rule: 'a pool prices the token only against the chain\'s dollar stablecoins or wrapped ETH, matched by address; the deepest one is used' } }
-    return { status: 200, body: { ...p, chain, links, sources, issuer_factory: factoryFact(chain, addr), list_proof: proofOf(chain, reg), same_stock_elsewhere: elsewhere, series_points: points, impostor_listing: listed ? { first_seen_at: listed.first_seen_at, same_deployer_impostors: listed.same_deployer_impostors ?? null } : null, case: caseSummary(chain, addr), readings_loaded: Boolean(w.window), registry_age_s: Math.round((now() - reg.at) / 1000) } }
+    return { status: 200, body: { ...p, chain, links, sources, issuer_factory: factoryFact(chain, addr), issuer_like_address: inRegistry ? null : issuerLike(chain, addr, reg.records), list_proof: proofOf(chain, reg), same_stock_elsewhere: elsewhere, series_points: points, impostor_listing: listed ? { first_seen_at: listed.first_seen_at, same_deployer_impostors: listed.same_deployer_impostors ?? null } : null, case: caseSummary(chain, addr), readings_loaded: Boolean(w.window), registry_age_s: Math.round((now() - reg.at) / 1000) } }
   }
 
   /** What the server holds, per chain, with ages: the numbers behind /api/status and /status. */
@@ -677,6 +677,14 @@ export function createStocksWeb ({
   /** The one-bit answer for an address (evm/core/stocks/verify.mjs), from memory only. */
   // `reg`: the registry snapshot to decide against; the caller passes the same one to proofOf, so a verdict and its
   // list_proof can never come from two different reads.
+  /** An address outside the list that starts like the listed ones (evm/core/stocks/verify.mjs issuerPrefixOf), as the passport says it. */
+  function issuerLike (chain, addr, records) {
+    const prefix = issuerPrefixOf(records)
+    if (!prefix || !addr.startsWith(prefix)) return null
+    const who = VERIFY_ISSUER_LABEL[CHAINS[chain]?.issuer] || 'the issuer'
+    return { prefix, note: `This address starts like the addresses on ${who}'s list, but this contract is not on it: it is not ${who}'s stock token. The start of an address proves nothing.` }
+  }
+
   function verifyOf (chain, address, reg = registries.get(chain)) {
     const addr = String(address || '').toLowerCase()
     const imp = impostors.get(chain)

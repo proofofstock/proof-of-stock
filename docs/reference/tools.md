@@ -401,6 +401,7 @@ Each result:
 | `minted` | boolean or null | not listed, or Robinhood (its API reports no supply) |
 | `listed_on_other_chain` | object or null | `{ chain, symbol }` when the address is not listed here but is on the other chain's registry |
 | `impostor` | object or null | `{ kinds, imitates_symbol, listed_address }`, set only when not listed and the impostor list names it with kind `registry_symbol`, `issuer_name_suffix` or `registry_name` |
+| `issuer_like_address` | object or null | `{ prefix, note }` when the address is not listed but starts like every address on the issuer's list (Coinbase's all start `0xb2` and twenty zeros): it is still not the issuer's token, and never an impostor for that alone. The start is read from the list, so a list without a long shared start (Robinhood) never sets it |
 | `delisted_at` | string or null | set when this address was listed and left the registry since the server started |
 | `registry_age_s` | integer | seconds since the registry was read |
 | `passport` | string | the page for this token |

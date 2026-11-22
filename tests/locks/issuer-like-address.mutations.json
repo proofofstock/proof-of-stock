@@ -1,0 +1,28 @@
+{
+  "_finding": "22.11, $BINT on Base: a memecoin at 0xb2000000000000000000…, the start every Coinbase stock token has, paired with ANTc and read by people as a Coinbase token. A contract outside the list with the issuer's start is said in words not to be the issuer's, and is never called an impostor for its address alone.",
+  "target": "evm/core/stocks/verify.mjs",
+  "runner": [
+    "node",
+    "evm/core/stocks/verify.test.mjs"
+  ],
+  "mutations": [
+    {
+      "name": "a listed address also gets the note",
+      "find": "const prefix = rec ? null : issuerPrefixOf(records)",
+      "replace": "const prefix = issuerPrefixOf(records)",
+      "expect": "FAIL a listed address carries no such note"
+    },
+    {
+      "name": "a short shared start counts as the issuer's",
+      "find": "const out = p.length - 2 >= ISSUER_PREFIX_MIN_HEX ? p : null",
+      "replace": "const out = p.length - 2 >= 0 ? p : null",
+      "expect": "FAIL ...and a list whose addresses share little has none, so the note never shows there"
+    },
+    {
+      "name": "an address outside the list with the start is not told",
+      "find": "const looksLike = prefix && addr.startsWith(prefix)",
+      "replace": "const looksLike = false",
+      "expect": "FAIL a contract outside the list that starts like it: not listed, and the answer says the start proves nothing"
+    }
+  ]
+}

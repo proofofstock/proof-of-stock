@@ -19,6 +19,25 @@ export const ISSUER_LABEL = Object.freeze({ coinbase: 'Coinbase', robinhood: 'Ro
 
 const ADDRESS = /^0x[0-9a-f]{40}$/
 
+// An address that starts like the issuer's own (22.11, $BINT on Base: a memecoin at 0xb2000000000000000000…, paired with
+// ANTc, read by people as a Coinbase token). Every listed Coinbase stock token shares a long run of leading characters;
+// a contract outside the list with the same start is said to be not on the list, in so many words, and never called an
+// impostor for it: the start of an address is how tokens are made on that chain, not a claim about a stock.
+// The run is read from the list itself, so it follows the issuer; one too short to mean anything is no run.
+export const ISSUER_PREFIX_MIN_HEX = 12
+const prefixCache = new WeakMap()
+/** The leading characters every listed address shares ('0x' + hex), or null when they share fewer than ISSUER_PREFIX_MIN_HEX. */
+export function issuerPrefixOf (records) {
+  if (!Array.isArray(records) || records.length < 2) return null
+  if (prefixCache.has(records)) return prefixCache.get(records)
+  const addrs = records.map((r) => String(r && r.address || '').toLowerCase()).filter((a) => ADDRESS.test(a))
+  let p = addrs.length >= 2 ? addrs[0] : ''
+  for (const a of addrs) { let i = 0; while (i < p.length && p[i] === a[i]) i++; p = p.slice(0, i) }
+  const out = p.length - 2 >= ISSUER_PREFIX_MIN_HEX ? p : null
+  prefixCache.set(records, out)
+  return out
+}
+
 /**
  * @param {object} p
  * @param {string} p.chain            'base' | 'robinhood'
@@ -43,6 +62,8 @@ export function verifyToken ({ chain, issuer, address, records, registryAt, now,
   const rec = records.find((r) => r.address === addr) || null
   const elsewhere = rec ? null : (otherChains.map((o) => ({ chain: o.chain, r: (o.records || []).find((r) => r.address === addr) })).find((x) => x.r) || null)
   const strong = !rec && impostor && IMPOSTOR_KINDS.includes(impostor.kind)
+  const prefix = rec ? null : issuerPrefixOf(records)
+  const looksLike = prefix && addr.startsWith(prefix)
   return {
     status: 'ok',
     body: {
@@ -59,6 +80,10 @@ export function verifyToken ({ chain, issuer, address, records, registryAt, now,
       listed_on_other_chain: elsewhere ? { chain: elsewhere.chain, symbol: elsewhere.r.symbol } : null,
       impostor: strong ? { kinds: [impostor.kind], imitates_symbol: impostor.registry_symbol ?? null, listed_address: impostor.registry_address ?? null } : null,
       delisted_at: !rec && delisted ? new Date(delisted.at).toISOString() : null,
+      issuer_like_address: looksLike ? {
+        prefix,
+        note: `This address starts like the addresses on ${ISSUER_LABEL[issuer] || issuer}'s list, but this contract is not on it: it is not ${ISSUER_LABEL[issuer] || issuer}'s stock token. The start of an address proves nothing.`,
+      } : null,
       registry_age_s: ageS,
       checked_at: new Date(now).toISOString(),
     },

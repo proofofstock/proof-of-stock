@@ -3,7 +3,7 @@
 //
 // Run: node evm/core/stocks/verify.test.mjs
 
-import { verifyToken, badgeSvg, badgeState, REGISTRY_FRESH_S } from './verify.mjs'
+import { verifyToken, badgeSvg, badgeState, REGISTRY_FRESH_S, issuerPrefixOf } from './verify.mjs'
 
 let passed = 0, failed = 0
 const failures = []
@@ -40,6 +40,22 @@ console.log('the answer')
   const gone = verifyToken({ ...base, records: [], address: LISTED, delisted: { at: NOW - 3600e3, symbol: 'SNDKc' } })
   check('a delisted address says when it left', gone.body.listed === false && gone.body.delisted_at === '2026-11-10T11:00:00.000Z')
   check('a junk address is refused', verifyToken({ ...base, address: 'nvda' }).status === 'bad_address')
+}
+
+// An address that starts like the issuer's own (22.11, $BINT on Base: a memecoin at 0xb2000000000000000000…). The start
+// is read from the list; a contract outside it with that start is said to be not the issuer's, and is not an impostor.
+console.log('an address that starts like the issuer\'s')
+{
+  const B = (tail) => '0xb2' + '0'.repeat(20) + tail // 0xb2, twenty zeros, then 18 hex: the shape of Coinbase's addresses
+  const list = [{ issuer: 'coinbase', address: B('397293cb8cda9a10c5'), symbol: 'SNDKc' }, { issuer: 'coinbase', address: B('16e38fd364d271ba28'), symbol: 'ANTc' }, { issuer: 'coinbase', address: B('78ee7ce2fe4908108c'), symbol: 'NVDAc' }]
+  check('the shared start is read from the list itself', issuerPrefixOf(list) === '0xb2' + '0'.repeat(20))
+  check('...and a list whose addresses share little has none, so the note never shows there', issuerPrefixOf([{ address: '0x' + 'ab'.repeat(20) }, { address: '0x' + 'cd'.repeat(20) }]) === null && issuerPrefixOf([{ address: B('397293cb8cda9a10c5') }]) === null && issuerPrefixOf(null) === null)
+  const b = { chain: 'base', issuer: 'coinbase', records: list, registryAt: NOW - 120e3, now: NOW }
+  const bint = verifyToken({ ...b, address: B('231734d0c898f56201') })
+  check('a contract outside the list that starts like it: not listed, and the answer says the start proves nothing', bint.body.listed === false && bint.body.issuer_like_address?.prefix === '0xb2' + '0'.repeat(20) && /starts like the addresses on Coinbase's list, but this contract is not on it/.test(bint.body.issuer_like_address.note) && /proves nothing/.test(bint.body.issuer_like_address.note))
+  check('...and it is not called an impostor for its address alone', bint.body.impostor === null && badgeState(bint) === 'not_listed')
+  check('a listed address carries no such note', verifyToken({ ...b, address: B('16e38fd364d271ba28') }).body.issuer_like_address === null)
+  check('an address that does not start like the list carries no note', verifyToken({ ...b, address: FAKE }).body.issuer_like_address === null)
 }
 
 console.log('a registry we could not read')

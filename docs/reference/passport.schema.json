@@ -290,6 +290,13 @@
         "same_deployer_impostors": { "type": ["integer", "null"], "minimum": 0 }
       }
     },
+    "issuer_like_address": {
+      "description": "Set only for an address outside the list that starts like every address on it (Coinbase: 0xb2 and twenty zeros). It is still not the issuer’s token, and never an impostor for that alone. The shared start is read from the list.",
+      "oneOf": [
+        { "type": "null" },
+        { "type": "object", "additionalProperties": false, "required": ["prefix", "note"], "properties": { "prefix": { "type": "string", "pattern": "^0x[0-9a-f]{12,40}$" }, "note": { "type": "string", "minLength": 1 } } }
+      ]
+    },
     "issuer_factory": {
       "description": "Did the issuer's own token factory create this contract? Read from the factory's events on chain (scripts/stocks/issuer-mirror.mjs): a second source beside the issuer's list, never the list itself. null while the chain mirror has not caught up or is not built.",
       "oneOf": [
@@ -336,6 +343,7 @@
         "sources": { "$ref": "#/definitions/sources" },
         "list_proof": { "$ref": "#/definitions/list_proof" },
         "issuer_factory": { "$ref": "#/definitions/issuer_factory" },
+        "issuer_like_address": { "type": "null" },
         "same_stock_elsewhere": { "type": "array", "items": { "$ref": "#/definitions/elsewhere" } },
         "series_points": { "description": "Only with series=1 on /api/passport, or include_series in MCP.", "type": "array", "maxItems": 401, "items": { "$ref": "#/definitions/series_point" } },
         "impostor_listing": { "type": "null" },
@@ -376,6 +384,7 @@
         "sources": { "$ref": "#/definitions/sources" },
         "list_proof": { "$ref": "#/definitions/list_proof" },
         "issuer_factory": { "$ref": "#/definitions/issuer_factory" },
+        "issuer_like_address": { "$ref": "#/definitions/issuer_like_address" },
         "same_stock_elsewhere": { "type": "array", "maxItems": 0 },
         "series_points": { "type": "array", "maxItems": 0 },
         "impostor_listing": { "$ref": "#/definitions/impostor_listing" },

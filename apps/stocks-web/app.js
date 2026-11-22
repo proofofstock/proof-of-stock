@@ -522,6 +522,7 @@
             : "This is not the issuer's token. Its name copies the way Robinhood names its stock tokens, but Robinhood lists no such asset and the contract is not in its registry.")
           : r ? `Not the issuer's token. Its ticker matches ${r.ticker}. Many tokens reuse tickers, and this one is not the issuer's ${r.registry_symbol}.`
             : 'This contract is not in the issuer\'s registry for this chain, so it is not that issuer\'s stock token.'),
+        p.issuer_like_address && p.issuer_like_address.note ? line(p.issuer_like_address.note) : null,
         p.issuer_factory && p.issuer_factory.created === false ? line('A second source agrees: ' + (FACTORY_OF[p.chain] || "the issuer's") + ' token factory never created this contract (checked on chain to block ' + Number(p.issuer_factory.checked_to_block).toLocaleString('en-US') + ').', 'faint') : null,
         p.impostor_listing ? line('On our look-alike list since ' + String(p.impostor_listing.first_seen_at).slice(0, 10) + '.', 'faint') : null,
         caseLine(p.case),

@@ -93,6 +93,10 @@ the order given, all decided against one read of the list, and one `list_proof` 
 The fields are documented under [`verify_stock_tokens`](./tools.md#tool-verify_stock_tokens). `listed: false` means
 "not in this issuer's registry", never "fake".
 
+An address that starts like the issuer's own (every Coinbase stock token starts `0xb2` and twenty zeros, and so can
+other tokens on Base) carries `issuer_like_address`: a note that it is not on the list all the same. The start of an
+address proves nothing.
+
 Every answer also carries `list_proof` (left out of the example above): the issuer list the verdict was decided against,
 its SHA-256 and a command that computes the same digest from the issuer, so you can check the verdict without trusting
 us. See [`list_proof`](./passport.md#field-list_proof).

@@ -579,6 +579,31 @@ console.log('the landing says which apps called it')
   check('...and without a counter file the placeholder stays hidden', (await (await get('/stocks/')).text()).includes('<p class="agent-apps faint" id="agent-apps" hidden></p>'))
 }
 
+// An address that starts like Coinbase's own (22.11, $BINT): /verify, the passport and MCP all say it is not the
+// issuer's, by address, and none calls it an impostor for that.
+console.log('an address that starts like the issuer\'s, end to end')
+{
+  const b2 = (t) => '0xb2' + '0'.repeat(20) + t
+  const tokens = [['397293cb8cda9a10c5', 'SNDKc'], ['16e38fd364d271ba28', 'ANTc'], ['78ee7ce2fe4908108c', 'NVDAc']].map(([t, symbol]) => ({ contract_address: b2(t), symbol, name: symbol, isin: 'US67066G1040', multiplier: '1', nav_price: '180', nav_price_updated_at: '2026-11-06T21:00:00Z', total_supply: '5' }))
+  const fetchB2 = async (u) => (String(u).startsWith(COINBASE_URL) ? { ok: true, status: 200, json: async () => ({ tokens }) } : fetchImpl(u))
+  const appB = createStocksWeb({ roots: { base: baseRoot, robinhood: rhRoot }, fetchImpl: fetchB2, now: () => NOW, log: () => {}, analytics: { enabled: false }, exam: { url: null } })
+  const { port: pb2 } = await appB.start(0, '127.0.0.1')
+  const BINT = b2('231734d0c898f56201')
+  try {
+    const v = await (await fetch(`http://127.0.0.1:${pb2}/stocks/verify?chain=base&address=${BINT}`)).json()
+    check('/verify: not listed, the note says the start of the address proves nothing, and no impostor', v.listed === false && /starts like the addresses on Coinbase's list/.test(v.issuer_like_address?.note || '') && v.impostor === null, JSON.stringify(v).slice(0, 200))
+    const pp = await (await fetch(`http://127.0.0.1:${pb2}/stocks/api/passport?chain=base&address=${BINT}`)).json()
+    check('the passport carries the same note', pp.in_registry === false && /proves nothing/.test(pp.issuer_like_address?.note || ''))
+    const listed = await (await fetch(`http://127.0.0.1:${pb2}/stocks/api/passport?chain=base&address=${b2('16e38fd364d271ba28')}`)).json()
+    check('...and a listed token carries none', listed.in_registry === true && listed.issuer_like_address == null)
+    const m = await (await fetch(`http://127.0.0.1:${pb2}/stocks/mcp`, { method: 'POST', headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream' }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'verify_stock_tokens', arguments: { chain: 'base', addresses: [BINT] } } }) })).json()
+    const said = (m.result?.content || []).map((c) => c.text || '').join(' ')
+    check('MCP says it to the agent in words: starts like the issuer\'s list, not on it, not the issuer\'s stock token', new RegExp(`${BINT} starts like the addresses on the issuer's list but is not on it: not the issuer's stock token`).test(said), said.slice(0, 240))
+  } finally { await appB.stop() }
+  const appJs = fs.readFileSync(new URL('./stocks-web/app.js', import.meta.url), 'utf8')
+  check('the page shows the note on a token outside the list, as text', /p\.issuer_like_address && p\.issuer_like_address\.note \? line\(p\.issuer_like_address\.note\)/.test(appJs))
+}
+
 console.log('passes off, the world of the day before')
 {
   let last = 0

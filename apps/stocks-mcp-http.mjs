@@ -244,6 +244,9 @@ export function createMcpHttp (data) {
         const parts = [`${listed.length} of ${results.length} address${results.length === 1 ? '' : 'es'} ${listed.length === 1 ? 'is' : 'are'} issuer-listed on ${chain}${listed.length ? ' (' + listed.map((r) => r.symbol).join(', ') + ')' : ''}.`]
         if (imp.length) parts.push(`${imp.length} imitate${imp.length === 1 ? 's' : ''} a listed token: ` + imp.map((r) => `${r.address} ${r.impostor.imitates_symbol ? 'imitates ' + r.impostor.imitates_symbol + ', listed ' + r.impostor.listed_address : 'copies the issuer\'s naming'}`).join('; ') + '.')
         if (rest) parts.push(`${rest} ${rest === 1 ? 'is' : 'are'} not in the ${r0issuer(results)} registry (not necessarily fake: another issuer's token would be too).`)
+        // An address that starts like the issuer's own is said to be not the issuer's, by address (22.11, $BINT).
+        const alike = results.filter((r) => !r.listed && r.issuer_like_address)
+        if (alike.length) parts.push(`${alike.map((r) => r.address).join(', ')} ${alike.length === 1 ? 'starts' : 'start'} like the addresses on the issuer's list but ${alike.length === 1 ? 'is' : 'are'} not on it: not the issuer's stock token${alike.length === 1 ? '' : 's'}. The start of an address proves nothing.`)
         return text({ chain: args.chain, count: results.length, listed: listed.length, impostors: imp.length, results, list_proof: data.listProof ? data.listProof(args.chain, reg) : null }, parts.join(' '))
       }
       if (name === 'recent_impostors') {
