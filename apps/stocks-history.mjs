@@ -8,6 +8,7 @@
 // ⚠ A BACKFILLED FACT IS SHOWN AS ONE. A case archived from the collector's older history says "first seen by our
 //   collector", never "flagged by us", and carries no flag time.
 
+import { siteBar } from './stocks-nav.mjs'
 import { symbolLabel, nameLabel, UNTRUSTED_TEXT_NOTE } from '../evm/core/stocks/untrusted-text.mjs'
 import fs from 'node:fs'
 import path from 'node:path'
@@ -163,12 +164,7 @@ export function historyPage ({ store, chains, now, version, assets, explorers = 
   ${assets.beacon ? `<script src="${assets.beacon}" defer></script>` : ''}
 </head>
 <body class="dx">
-  <header class="dx-bar">
-    <a class="dx-brand" href="./"><span class="dx-logo" aria-hidden="true"></span><span>Proof of Stock</span><span class="dx-docs">History</span></a>
-    <span></span>
-    <nav class="dx-links"><a href="./"><span class="ic ic-terminal" aria-hidden="true"></span>Terminal</a><a href="status"><span class="ic ic-pulse" aria-hidden="true"></span>Status</a><a href="docs/"><span class="ic ic-doc" aria-hidden="true"></span>Docs</a></nav>
-    <a class="dx-cta" href="docs/tutorials/connect-an-agent.md"><span aria-hidden="true">+</span> Connect an agent</a>
-  </header>
+  ${siteBar({ current: 'history' })}
   <main class="hs-main">
     <h1>History</h1>
     <p class="hs-lede">What each issuer listed, and which contracts used its tokens' names, with dates. Every row is appended and never rewritten. A case from before the archive began is marked as coming from our collector's history.</p>

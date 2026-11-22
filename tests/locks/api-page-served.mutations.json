@@ -1,0 +1,22 @@
+{
+  "_finding": "The server hands /api its numbers: the pass terms from the payment module that sells the pass, the limiter's own constants, and nothing where no pass is sold (a page must not promise a payment path the server lacks, as the landing's pay block does not).",
+  "target": "apps/stocks-web.mjs",
+  "runner": [
+    "node",
+    "apps/api-page.test.mjs"
+  ],
+  "mutations": [
+    {
+      "name": "the page offers a pass on a server that sells none",
+      "find": "pass: x402.enabled ? { priceUsd: x402.priceUsd, passMinutes: x402.passMinutes, passRate: x402.passRate } : null,",
+      "replace": "pass: { priceUsd: 0.01, passMinutes: 10, passRate: 600 },",
+      "expect": "FAIL served with passes off, it sells nothing"
+    },
+    {
+      "name": "the passport's price on the page is not the limiter's",
+      "find": "limits: { perMinute: RATE.perMinute, passportUnits: PASSPORT_UNITS,",
+      "replace": "limits: { perMinute: RATE.perMinute, passportUnits: 1,",
+      "expect": "FAIL served, the passport is priced at the limiter's 3 units"
+    }
+  ]
+}

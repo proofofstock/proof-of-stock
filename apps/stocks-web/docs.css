@@ -257,6 +257,78 @@ body.dx a { text-decoration: none; }
 .hs-empty, .hs-more { color: var(--faint); font: 13px/1.5 var(--sans); padding: 7px 0; }
 @media (max-width: 760px) { .hs-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } .hs-row { grid-template-columns: 1fr; gap: 2px; } }
 
+/* /api: every call with its price (apps/stocks-api-page.mjs). A hero with the three tiers, then one card per call:
+   the method, the path, the price as a chip, what it answers, a copyable example. Chip colours carry the price: green
+   outside the limit, blue one unit, amber heavier, solid blue paid. */
+.ap-main { max-width: 1080px; margin: 0 auto; padding: 44px 24px 24px; }
+.ap-hero { position: relative; padding: 8px 0 8px; }
+.ap-kicker { margin: 0 0 14px; color: var(--accent-hi); font: 600 12px/1 var(--mono); letter-spacing: .12em; text-transform: uppercase; }
+.ap-hero h1 { margin: 0 0 16px; font: 700 clamp(32px, 5vw, 52px)/1.06 var(--sans); letter-spacing: -.025em; }
+.ap-hero h1 em { font-style: normal; color: var(--accent-hi); }
+.ap-lede { max-width: 66ch; margin: 0 0 28px; color: var(--soft); font: 17px/1.65 var(--sans); }
+.ap-tiers { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+.ap-tier { position: relative; display: flex; flex-direction: column; gap: 8px; padding: 18px 20px 20px; border: 1px solid var(--hair); border-radius: 16px; background: var(--panel); overflow: hidden; }
+.ap-tier::before { content: ''; position: absolute; inset: 0 0 auto; height: 3px; background: var(--ok); }
+.ap-tier.pass { background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 14%, var(--panel)), var(--panel)); border-color: color-mix(in srgb, var(--accent-hi) 40%, var(--hair)); }
+.ap-tier.pass::before { background: var(--accent); }
+.ap-tier.mcp::before { background: var(--accent-hi); }
+.ap-tier-k { color: var(--faint); font: 600 11px/1 var(--mono); letter-spacing: .1em; text-transform: uppercase; }
+.ap-tier b { color: var(--text); font: 700 30px/1.05 var(--sans); letter-spacing: -.02em; }
+.ap-tier > span:last-child { color: var(--soft); font: 14px/1.5 var(--sans); }
+.ap-tier code, .ap-sec-lede code, .ap-buy code { font: 12.5px/1.4 var(--mono); color: #c9d8ff; overflow-wrap: anywhere; }
+.ap-jump { display: flex; flex-wrap: wrap; gap: 8px; margin: 22px 0 0; }
+.ap-jump a { padding: 7px 13px; border: 1px solid var(--hair); border-radius: 999px; color: var(--soft); font: 500 13px/1 var(--sans); transition: color .15s, border-color .15s; }
+.ap-jump a:hover { color: var(--text); border-color: var(--accent-hi); }
+.ap-sec { margin: 56px 0 0; scroll-margin-top: 80px; }
+.ap-sec-head { display: flex; align-items: center; gap: 12px; margin: 0 0 8px; }
+.ap-sec-head h2 { margin: 0; font: 650 26px/1.2 var(--sans); letter-spacing: -.015em; }
+.ap-badge { padding: 5px 10px; border-radius: 999px; font: 600 11px/1 var(--mono); letter-spacing: .08em; text-transform: uppercase; }
+.ap-badge.free { color: var(--ok); background: color-mix(in srgb, var(--ok) 12%, transparent); border: 1px solid color-mix(in srgb, var(--ok) 40%, transparent); }
+.ap-badge.paid { color: #fff; background: var(--accent); }
+.ap-badge.off { color: var(--faint); border: 1px solid var(--hair); }
+.ap-sec-lede { max-width: 76ch; margin: 0 0 18px; color: var(--soft); font: 15px/1.65 var(--sans); }
+.ap-sec-lede a, .ap-params a { color: var(--accent-hi); }
+.ap-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.ap-route { display: flex; flex-direction: column; gap: 10px; min-width: 0; padding: 16px 18px; border: 1px solid var(--hair); border-radius: 14px; background: var(--panel); scroll-margin-top: 80px; transition: border-color .15s; }
+.ap-route:hover { border-color: color-mix(in srgb, var(--accent-hi) 40%, var(--hair)); }
+.ap-route.ap-wide { grid-column: 1 / -1; }
+.ap-route.ap-paid { background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 9%, var(--panel)), var(--panel)); border-color: color-mix(in srgb, var(--accent-hi) 30%, var(--hair)); }
+.ap-route-head { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.ap-m { padding: 5px 7px; border-radius: 6px; color: var(--ok); background: color-mix(in srgb, var(--ok) 12%, transparent); border: 1px solid color-mix(in srgb, var(--ok) 35%, transparent); font: 600 10.5px/1 var(--mono); letter-spacing: .08em; }
+.ap-m.tool { color: #fff; background: var(--accent); border-color: var(--accent); }
+.ap-m.any { color: var(--warn); background: color-mix(in srgb, var(--warn) 12%, transparent); border-color: color-mix(in srgb, var(--warn) 35%, transparent); }
+.ap-path { color: var(--text); font: 600 14.5px/1.3 var(--mono); overflow-wrap: anywhere; }
+.ap-variant { color: var(--faint); font: 500 12px/1 var(--sans); }
+.ap-cost { margin-left: auto; padding: 5px 10px; border-radius: 999px; font: 600 11.5px/1 var(--mono); white-space: nowrap; border: 1px solid transparent; }
+.ap-cost.zero { color: var(--ok); background: color-mix(in srgb, var(--ok) 10%, transparent); border-color: color-mix(in srgb, var(--ok) 30%, transparent); }
+.ap-cost.one { color: var(--accent-hi); background: color-mix(in srgb, var(--accent-hi) 10%, transparent); border-color: color-mix(in srgb, var(--accent-hi) 32%, transparent); }
+.ap-cost.batch, .ap-cost.heavy { color: var(--warn); background: color-mix(in srgb, var(--warn) 10%, transparent); border-color: color-mix(in srgb, var(--warn) 32%, transparent); }
+.ap-cost.paid { color: #fff; background: var(--accent); }
+.ap-ask { margin: 0; color: var(--soft); font: 14.5px/1.55 var(--sans); }
+.ap-params { margin: 0; color: var(--faint); font: 12.5px/1.6 var(--sans); }
+.ap-params > span:first-child { margin-right: 4px; color: var(--faint); font: 600 10.5px/1 var(--mono); letter-spacing: .08em; text-transform: uppercase; }
+.ap-params code { font: 12px/1.4 var(--mono); color: #c9d8ff; background: var(--panel-2); border: 1px solid var(--hair); border-radius: 5px; padding: 1px 5px; }
+.ap-ex { position: relative; margin-top: auto; border: 1px solid var(--hair); border-radius: 10px; background: #07080b; }
+.ap-ex pre { margin: 0; padding: 12px 14px; overflow-x: auto; color: #c9d8ff; font: 12px/1.6 var(--mono); white-space: pre; }
+.ap-ex pre:has(+ .ap-copy:not([hidden])) { padding-right: 70px; }
+.ap-copy { position: absolute; top: 8px; right: 8px; padding: 5px 9px; border: 1px solid var(--hair); border-radius: 7px; background: var(--panel-2); color: var(--soft); font: 600 11px/1 var(--sans); transition: color .15s, border-color .15s; }
+.ap-copy:hover { color: var(--text); border-color: var(--accent-hi); }
+.ap-doc { align-self: flex-start; display: inline-flex; align-items: center; gap: 6px; color: var(--accent-hi); font: 500 13px/1 var(--sans); }
+.ap-doc .i { width: 12px; height: 12px; transition: transform .15s; }
+.ap-doc:hover .i { transform: translateX(2px); }
+.ap-buys { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; margin: 6px 0 16px; }
+.ap-buy { display: flex; flex-direction: column; gap: 6px; padding: 18px 20px; border: 1px solid var(--hair); border-radius: 14px; background: var(--panel); }
+.ap-buy b { color: var(--text); font: 700 34px/1 var(--sans); letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+.ap-buy span { color: var(--soft); font: 14px/1.5 var(--sans); }
+.ap .st-note { margin-top: 40px; }
+@media (max-width: 900px) { .ap-list, .ap-tiers, .ap-buys { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 760px) { .ap-main { padding: 28px 16px 20px; } .ap-lede { font-size: 15.5px; } .ap-tier b { font-size: 26px; } .ap-sec { margin-top: 44px; } .ap-sec-head h2 { font-size: 22px; } .ap-cost { margin-left: 0; } }
+@media (prefers-reduced-motion: reduce) { .ap-route, .ap-jump a, .ap-copy, .ap-doc .i { transition: none; } .ap-doc:hover .i { transform: none; } }
+
+/* The docs between a tablet and a phone: the site bar is two rows there (the search beside the brand, the tabs under
+   them), so the sticky sidebar starts below it. */
+@media (max-width: 1000px) and (min-width: 761px) { .dx-side { top: 98px; height: calc(100vh - 98px); } }
+
 /* /stats: the owner's private dashboard (apps/stocks-stats.mjs). One screen on a desktop: a title line, six tiles,
    tabs (radio inputs, no script) and one panel that takes the rest of the height. On a phone it is one column and
    scrolls. Dark like the site; light when the system asks for it. */

@@ -98,6 +98,13 @@ const odd = pay({ enabled: true, settlement_wallet: '"><script>x</script>', paus
 check('...a wallet that is not an address is not linked or printed', !/basescan|<script>x/.test(odd) && odd.includes('buys a 10-minute pass'))
 check('...and without a payments state the block is not on the page', !/Paid passes/.test(pay(null)))
 
+// Who settles v2 (22.11): with Coinbase's facilitator the page says those sales are not in the wallet's count, and where.
+{
+  const cdpPage = pay({ enabled: true, settlement_wallet: W, paused_until: null, late_settlements: [], settles_v2: 'cdp' })
+  check('v2 settled by Coinbase\'s facilitator: the page says so and links our x402scan page for those sales', cdpPage.includes("Payments in x402 v2 are settled by Coinbase's x402 facilitator, so they are not in the wallet's count") && cdpPage.includes('href="https://www.x402scan.com/server/eb34ec2c-49f1-4b37-bee5-b3c86f0f79f1"'))
+  check('...and says nothing of it while we settle v2 ourselves', !/facilitator/.test(pay({ enabled: true, settlement_wallet: W, paused_until: null, late_settlements: [], settles_v2: 'self' })) && !/facilitator/.test(pay({ enabled: true, settlement_wallet: W, paused_until: null, late_settlements: [] })))
+}
+
 // The sales as the chain has them (outside review, 21.11): the wallet's own count and its latest settlement, linked,
 // with who paid. A purchase of our own says so; a stranger's is linked by address; nothing before the first read.
 console.log('sales read from Base')

@@ -237,3 +237,34 @@ The price, the pass length, the cooldown and the queue cap live in `evm/core/sto
 them is a code change and a release, so that the price a buyer was shown in a 402 and the price settled can never
 disagree. After enabling, watch the journal for `[x402] settled <tx> payer <address>` on the first live purchase, and run the how-to's
 own two-step curl against the live site.
+
+### x402 v2 payments through Coinbase's facilitator (CDP)
+
+Since 22.11 an x402 v2 payment (`PAYMENT-SIGNATURE`) is settled by Coinbase's x402 facilitator, not by the settlement
+wallet: the module still verifies the payment itself first (payee, amount, window, signature, replay), then asks CDP to
+verify and settle it. Catalogues such as x402scan and the Bazaar count settlements they see through a facilitator they
+know, and the gas is Coinbase's. v1 payments (`X-PAYMENT`) keep the settlement wallet above, which therefore stays.
+
+The facilitator needs a CDP **secret API key** (portal.cdp.coinbase.com, API Keys, Secret API Keys, Ed25519), made by
+the owner and kept in their password manager. Its **IP allowlist** names this server's outbound addresses: **on a move
+to another server, add the new addresses to the key's allowlist before traffic moves**, or v2 payments are refused
+(the module then answers that the payment was not taken; nothing moves). On the host the key lives in
+`/etc/pos/x402-cdp.env` (`CDP_API_KEY_ID=` and `CDP_API_KEY_SECRET=`, root:root 0600), typed in by the owner with
+`read -rs` so it never passes through a chat or a log. It reaches the unit like the settlement key, through a second
+host-only drop-in:
+
+```ini
+# /etc/systemd/system/stp-web.service.d/x402-cdp.conf
+[Service]
+LoadCredential=x402-cdp:/etc/pos/x402-cdp.env
+```
+
+then `systemctl daemon-reload && systemctl restart stp-web`. The module reads `$CREDENTIALS_DIRECTORY/x402-cdp`;
+`/api/status/payments` says `settles_v2: "cdp"`. **To fall back** to our own settlement for v2 too, remove the drop-in
+and restart: without the key every payment settles through the wallet, as before 22.11. A key file that does not read
+does the same and logs why, never the key.
+
+A settle whose answer is lost may still have landed on chain: the module never settles it a second time. The payer is
+told to send the same payment again, and that retry asks the chain (the USDC `AuthorizationUsed` log) before anything
+else. Sales settled by CDP do not come from the settlement wallet, so the wallet's count on `/status` covers v1 only;
+the v2 ones are on x402scan.

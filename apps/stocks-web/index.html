@@ -17,11 +17,7 @@
      again everywhere on the page; deployment/restore/robinhood-landing/README.md has the rest. -->
 <body class="no-rh">
   <div class="bg" aria-hidden="true"><div class="bg-grid"></div><div class="bg-glow a"></div><div class="bg-glow b"></div><div class="bg-scan"></div></div>
-
-  <div class="tape" aria-label="Live: where on-chain prices sit against the issuer">
-    <span class="tape-label" title="How far each token's on-chain price sits from the issuer's own price">on-chain vs issuer</span>
-    <div class="tape-track"><div id="tape" class="tape-run"></div></div>
-  </div>
+  <!--site-bar-->
 
   <header class="hero">
     <p class="kicker">Built on Base · RWA: tokenized stocks <span class="kicker-also wide-only">· covers Base (Coinbase)<span class="rh-only"> and Robinhood Chain (Robinhood)</span></span></p>
@@ -80,6 +76,11 @@
       <span class="hint"><button type="button" class="key" data-hist title="The last command again (or press the up arrow)"><kbd>↑↓</kbd> history</button><button type="button" class="key" data-run="help"><kbd>help</kbd> commands</button><button type="button" class="key" data-win="clear"><kbd>clear</kbd> screen</button></span>
     </footer>
   </main>
+
+  <div class="tape" aria-label="Live: where on-chain prices sit against the issuer">
+    <span class="tape-label" title="How far each token's on-chain price sits from the issuer's own price">on-chain vs issuer</span>
+    <div class="tape-track"><div id="tape" class="tape-run"></div></div>
+  </div>
 
   <section class="checks" aria-label="What it checks">
     <article class="check">
@@ -261,6 +262,7 @@
       <nav class="foot-nav" aria-label="Documentation and status">
         <a class="foot-link" href="docs/">Docs</a>
         <a class="foot-link" href="docs/explanation/methodology.md">Methodology</a>
+        <a class="foot-link" href="api">API and prices</a>
         <a class="foot-link" href="docs/reference/tools.md">MCP tools</a>
         <a class="foot-link" href="history">History</a>
         <a class="foot-link" href="llms.txt">llms.txt</a>

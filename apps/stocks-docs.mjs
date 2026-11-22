@@ -8,12 +8,15 @@
 
 import { Marked } from 'marked'
 import { PROFILES } from './stocks-seo.mjs'
+import { siteBar, tabOfDoc } from './stocks-nav.mjs'
 
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))
 export const slug = (s) => String(s).toLowerCase().replace(/<[^>]+>/g, '').replace(/&[a-z]+;/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
 const titleOf = (md) => (String(md).match(/^#\s+(.+)$/m) || [])[1] || 'Untitled'
 const plainTitle = (md) => titleOf(md).replace(/`/g, '')
 const leadOf = (md) => (String(md).split('\n').find((l) => /^[A-Z][^|#`>\-*]/.test(l.trim()) && !/^v\d/.test(l.trim())) || '').trim().replace(/\s+/g, ' ').replace(/[*`]/g, '').slice(0, 160)
+// The search box (docs.js), in the site bar's slot beside the tabs.
+const SEARCH_BOX = '<label class="dx-search"><span class="ic ic-search" aria-hidden="true"></span><input id="dx-q" type="search" placeholder="Search" autocomplete="off" spellcheck="false" aria-label="Search the docs"><kbd>⌘K</kbd><div id="dx-res" class="dx-res" hidden></div></label>'
 const HTTP = /^(GET|POST|PUT|DELETE|PATCH)\s+(\S+)$/
 
 // The catalogs, in reading order, and the icon of each page (docs.css .ic-*). A page not listed falls back to "doc".
@@ -143,17 +146,7 @@ export function createDocsRenderer ({ docs, version, released, assets, sourceUrl
   ${assets.beacon ? `<script src="${site}${assets.beacon}" defer></script>` : ''}
 </head>
 <body class="dx" id="top">
-  <header class="dx-bar">
-    <a class="dx-brand" href="${toRoot}"><span class="dx-logo" aria-hidden="true"></span><span>Proof of Stock</span><span class="dx-docs">Docs</span></a>
-    <label class="dx-search"><span class="ic ic-search" aria-hidden="true"></span><input id="dx-q" type="search" placeholder="Search" autocomplete="off" spellcheck="false" aria-label="Search the docs"><kbd>⌘K</kbd><div id="dx-res" class="dx-res" hidden></div></label>
-    <nav class="dx-links">
-      <a href="${site}"><span class="ic ic-terminal" aria-hidden="true"></span>Terminal</a>
-      <a href="${site}status"><span class="ic ic-pulse" aria-hidden="true"></span>Status</a>
-      <a href="${toRoot}reference/tools.md"><span class="ic ic-code" aria-hidden="true"></span>MCP</a>
-      ${sourceUrl ? `<a href="${esc(sourceUrl)}" target="_blank" rel="noopener noreferrer"><span class="ic ic-gh" aria-hidden="true"></span>GitHub</a>` : ''}
-    </nav>
-    <a class="dx-cta" href="${toRoot}tutorials/connect-an-agent.md"><span aria-hidden="true">+</span> Connect an agent</a>
-  </header>
+  ${siteBar({ current: tabOfDoc(rel), root: site, extra: SEARCH_BOX })}
   <div class="dx-shell">
     <aside class="dx-side" aria-label="Documentation">${side}</aside>
     <main class="dx-main">

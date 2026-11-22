@@ -180,17 +180,19 @@ console.log('the passport fits a phone')
   check('on a phone a passport value wraps instead of pushing the card off the screen', /\.field \.v, \.field \.v small \{ white-space: normal; overflow-wrap: anywhere; \}/.test(phone) && /\.field \.v \{ margin-left: auto; min-width: 0; max-width: 100%; \}/.test(phone))
 }
 
-console.log('a jump to a section stops below the ticker')
+console.log('a jump to a section stops below the sticky bar')
 {
   const css = fs.readFileSync(new URL('./stocks-web/style.css', import.meta.url), 'utf8')
-  // Owner, 12.11: "Ask it from your agent" landed under the sticky ticker. The page keeps a scroll padding taller than
-  // the ticker, and the terminal's own margin adds to it rather than doubling it.
-  const tape = Number((css.match(/\.tape \{[^}]*height: (\d+)px/) || [])[1])
-  // Scoped to a page that has the ticker: the docs and history pages load the same sheet and keep their own offsets.
+  // Owner, 12.11: "Ask it from your agent" landed under the sticky ticker. Since 22.11 the sticky thing at the top is
+  // the site bar with the tabs, and the ticker sits under the terminal and scrolls with the page. The page keeps a scroll
+  // padding taller than the bar, and the terminal's own margin adds to it rather than doubling it.
+  const bar = Number((css.match(/^\.site-bar \{[^}]*height: (\d+)px/m) || [])[1])
+  check('the site bar is sticky and the ticker no longer is', /^\.site-bar \{[^}]*position: sticky; top: 0;/m.test(css) && !/^\.tape \{[^}]*position: sticky/m.test(css))
+  // Scoped to the landing (the page with the ticker): the docs and history pages load the same sheet and keep their own offsets.
   const pad = Number((css.match(/^html:has\(\.tape\) \{ scroll-padding-top: (\d+)px; \}/m) || [])[1])
   const termMargin = Number((css.match(/\.term \{[^}]*scroll-margin-top: (\d+)px/) || [])[1])
-  check('the scroll padding clears the sticky ticker with room to spare', tape > 0 && pad >= tape + 12, `tape ${tape}, padding ${pad}`)
-  check('...and the terminal still lands where it did (padding plus its margin, 60px)', pad + termMargin === 60, `${pad} + ${termMargin}`)
+  check('the scroll padding clears the sticky site bar with room to spare', bar > 0 && pad >= bar + 12, `bar ${bar}, padding ${pad}`)
+  check('...and the terminal lands 20px under the bar (padding plus its margin, 80px)', pad + termMargin === 80, `${pad} + ${termMargin}`)
 }
 
 console.log('the guard has a mark, and it is a door')

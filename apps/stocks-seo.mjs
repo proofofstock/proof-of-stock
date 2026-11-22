@@ -87,7 +87,7 @@ export const docUrl = (site, rel) => rel === 'README.md' ? `${site}/docs/` : `${
 
 /**
  * Every page worth a search result: the home, the docs (markdown pages; the JSON schema is a file, not a page),
- * /status, /history, and one passport per issuer-listed token by its short link (?base=NVDAc). The listed symbols
+ * /api, /status, /history, and one passport per issuer-listed token by its short link (?base=NVDAc). The listed symbols
  * come from the registries already in memory; an unlisted address is not a page of its own.
  * @param {object} p
  * @param {string} p.site
@@ -100,6 +100,7 @@ export function sitemapUrls ({ site, docs, released = null, symbols = {} }) {
   return [
     { loc: `${site}/`, lastmod: released },
     ...pages.map((k) => ({ loc: docUrl(site, k), lastmod: released })),
+    { loc: `${site}/api` },
     { loc: `${site}/status` },
     { loc: `${site}/history` },
     ...Object.entries(symbols).flatMap(([chain, list]) => [...new Set(list)].sort().map((s) => ({ loc: `${site}/?${chain}=${encodeURIComponent(s)}` }))),

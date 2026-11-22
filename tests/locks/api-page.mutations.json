@@ -1,0 +1,34 @@
+{
+  "_finding": "Owner, 22.11: one page with every call and its price. A price page that is wrong is worse than none: an agent that budgets 1 unit for a passport is refused a third of the way through its minute. Every price on /api is the server's own (the limiter's constants, the payment module's terms, the MCP server's tool list), and the page is read without a script, so a dead copy button must not appear there.",
+  "target": "apps/stocks-api-page.mjs",
+  "runner": [
+    "node",
+    "apps/api-page.test.mjs"
+  ],
+  "mutations": [
+    {
+      "name": "a passport is priced as a plain 1-unit read",
+      "find": "const n = cost === 'passport' ? passportUnits : cost",
+      "replace": "const n = cost === 'passport' ? 1 : cost",
+      "expect": "FAIL the passport costs 3 units, over HTTP and over MCP"
+    },
+    {
+      "name": "a route outside the limit is priced like any other",
+      "find": "if (cost === 0) return 'outside the limit'",
+      "replace": "if (cost === 0) return '1 unit'",
+      "expect": "FAIL the routes outside the limit say so: the badge, /anchors/, /api/status/payments"
+    },
+    {
+      "name": "the copy buttons show before the script can make them work",
+      "find": "data-copy=\"${id}\" hidden>Copy</button>",
+      "replace": "data-copy=\"${id}\">Copy</button>",
+      "expect": "FAIL the copy buttons are hidden until the script shows them: no dead button without it"
+    },
+    {
+      "name": "what a minute buys forgets that a batch costs a tenth",
+      "find": "const batchMinute = Math.floor(perMinute / Math.ceil(freeBatch / 10)) * freeBatch",
+      "replace": "const batchMinute = perMinute * freeBatch",
+      "expect": "FAIL what a minute buys is the limiter's arithmetic"
+    }
+  ]
+}

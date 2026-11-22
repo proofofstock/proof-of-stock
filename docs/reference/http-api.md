@@ -3,6 +3,8 @@
 Read-only JSON routes on `https://proofofstock.xyz`. No key, no account, no cookies. (`GET /api/hit` is the site's
 own visit counter, [What we count](../legal.md#what-we-count); it answers 204 and is not for integrations.)
 
+Every call with its price, the MCP tools and the paid pass on one page: [proofofstock.xyz/api](https://proofofstock.xyz/api).
+
 ```bash
 curl -s 'https://proofofstock.xyz/verify?chain=base&address=0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
 ```
@@ -512,7 +514,7 @@ curl -s 'https://proofofstock.xyz/api/status'
 }
 ```
 
-The state of paid passes is its own route, `GET /api/status/payments`: `{ "enabled": false }` where paid passes are off. Otherwise: `settlement_wallet` is the address that sends the settlement transactions and pays their gas (the sender of every one on chain); `paused_until` is set while selling is paused after failed settlements; `late_settlements` lists, for 24 hours, the transactions that were sent and had no receipt after 10 minutes (`{ transaction, at }`). Our own health check alerts on these (`deployment/PUBLISHING.md`). This route costs no unit of the rate limit, so a monitor past its free minute still reads the state. `sales` is what the settlement wallet has done, read from Base every 10 minutes, or null before the first read: `settlement_transactions` is the wallet's own transaction count (one per pass sold, the number BaseScan shows), and `latest` its newest settlement: `transaction`, `at` (the block time), `settled` (false when it reverted and paid nothing out), `payer`, and `ours`, true when the payer is our own test wallet.
+The state of paid passes is its own route, `GET /api/status/payments`: `{ "enabled": false }` where paid passes are off. Otherwise: `settlement_wallet` is the address that sends the settlement transactions and pays their gas (the sender of every one on chain); `paused_until` is set while selling is paused after failed settlements; `late_settlements` lists, for 24 hours, the transactions that were sent and had no receipt after 10 minutes (`{ transaction, at }`). Our own health check alerts on these (`deployment/PUBLISHING.md`). This route costs no unit of the rate limit, so a monitor past its free minute still reads the state. `settles_v2` is `"cdp"` when x402 v2 payments are settled by Coinbase's x402 facilitator and `"self"` when our settlement wallet settles them; v1 payments always settle through the wallet, so `sales` counts those only. `sales` is what the settlement wallet has done, read from Base every 10 minutes, or null before the first read: `settlement_transactions` is the wallet's own transaction count (one per pass sold, the number BaseScan shows), and `latest` its newest settlement: `transaction`, `at` (the block time), `settled` (false when it reverted and paid nothing out), `payer`, and `ours`, true when the payer is our own test wallet.
 
 | Field | Type | Unit | Null means |
 |---|---|---|---|

@@ -1,0 +1,16 @@
+{
+  "_finding": "22.11: the payment state says who settles x402 v2 payments, Coinbase's facilitator or our wallet, so /status and the monitor read it from one place.",
+  "target": "apps/stocks-web.mjs",
+  "runner": [
+    "node",
+    "apps/stocks-web.test.mjs"
+  ],
+  "mutations": [
+    {
+      "name": "the payment state always says self",
+      "find": "settles_v2: x402.settlesV2 === 'cdp' ? 'cdp' : 'self' }",
+      "replace": "settles_v2: 'self' }",
+      "expect": "FAIL a module that settles v2 through Coinbase says so in the payment state"
+    }
+  ]
+}

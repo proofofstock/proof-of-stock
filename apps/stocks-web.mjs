@@ -8,6 +8,7 @@
 //   GET /stocks/api/impostors          per chain, tokens claiming to be an issuer token they are not (scripts/stocks/impostor-list.mjs)
 //   GET /stocks/api/passport?chain&address[&hours]   with the same share (same ISIN) on the other chain
 //   GET /stocks/api/matrix             every share (ISIN) listed on both Base and Robinhood: each venue's premium, the gap
+//   GET /stocks/api                    every call with its price, for people (apps/stocks-api-page.mjs)
 //   GET /stocks/api/status             what the server holds: registry and readings age per chain
 //   GET /stocks/api/exam               the latest public exam, summarized (apps/stocks-exam.mjs); 503 when none from the last 36 h
 //   GET /stocks/history                the dated, append-only archive: registry snapshots and impostor cases (apps/stocks-history.mjs)
@@ -51,7 +52,9 @@ import { usEquitySession } from '../evm/core/stocks/market-session.mjs'
 import { createWindowCache, readingsOf, seriesPoints } from '../evm/core/stocks/readings-window.mjs'
 import { metaFor, injectMeta, withHead, headOf } from '../evm/core/stocks/page-meta.mjs'
 import { robotsTxt, securityTxt, sitemapXml, sitemapUrls, docUrl, homeJsonLd, docJsonLd, pageJsonLd } from './stocks-seo.mjs'
-import { createMcpHttp, SUPPORTED_VERSIONS, MAX_VERIFY_BATCH } from './stocks-mcp-http.mjs'
+import { createMcpHttp, SUPPORTED_VERSIONS, MAX_VERIFY_BATCH, toolsFor } from './stocks-mcp-http.mjs'
+import { siteBar } from './stocks-nav.mjs'
+import { apiPage } from './stocks-api-page.mjs'
 import { verifyToken, badgeSvg, badgeState, issuerPrefixOf, ISSUER_LABEL as VERIFY_ISSUER_LABEL } from '../evm/core/stocks/verify.mjs'
 import { mintedOf } from '../evm/core/stocks/registries.mjs'
 import { createDocsRenderer } from './stocks-docs.mjs'
@@ -120,6 +123,7 @@ const STATIC = Object.freeze({
   '/docs.js': ['docs.js', 'text/javascript; charset=utf-8'],
   '/beacon.js': ['beacon.js', 'text/javascript; charset=utf-8'],
   '/seal.js': ['seal.js', 'text/javascript; charset=utf-8'],
+  '/api.js': ['api.js', 'text/javascript; charset=utf-8'],
   '/og.png': ['og.png', 'image/png'],
   '/logo.png': ['logo.png', 'image/png'],
   '/favicon.svg': ['favicon.svg', 'image/svg+xml'],
@@ -343,6 +347,8 @@ export function createStocksWeb ({
   static_['/'].body = Buffer.from(String(static_['/'].body).replace('href="style.css"', `href="style.css?v=${version('/style.css')}"`).replace('src="app.js"', `src="app.js?v=${version('/app.js')}"`).replace('src="beacon.js"', `src="beacon.js?v=${version('/beacon.js')}"`).replace('src="seal.js"', `src="seal.js?v=${version('/seal.js')}"`)
     .replaceAll('__MCP_URL__', publicOrigin + publicPath + '/mcp').replaceAll('__VERSION__', appVersion).replaceAll('__RELEASED__', released)
     .replace('<!--source-->', sourceUrl ? sourceIcon(sourceUrl) : '').replace('<!--exam-->', sourceUrl ? EXAM_CHIP_HTML : '')
+    // The site's tabs (apps/stocks-nav.mjs), the same bar every other page has.
+    .replace('<!--site-bar-->', () => siteBar({ current: 'home' }))
     // The paid-pass block promises a payment path: a server without one (passes off, a local copy) never shows it.
     .replace(PAY_SECTION_RE, (block) => (x402.enabled ? block : '\n')))
   // What crawlers and link previews read: the preview image and logo by content hash (a new image is a new URL, so
@@ -621,7 +627,9 @@ export function createStocksWeb ({
     if (!x402.enabled) return { enabled: false }
     const t = now(), paused = typeof x402.pausedUntil === 'function' ? x402.pausedUntil() : 0
     return { enabled: true, settlement_wallet: x402.wallet || null, paused_until: paused > t ? new Date(paused).toISOString() : null,
-      late_settlements: lateSettlements.filter((e) => t - Date.parse(e.at) < 24 * 3600e3), sales: passSales.snapshot() }
+      late_settlements: lateSettlements.filter((e) => t - Date.parse(e.at) < 24 * 3600e3), sales: passSales.snapshot(),
+      // Who settles an x402 v2 payment: Coinbase's facilitator ('cdp') or our settlement wallet ('self'), 22.11.
+      settles_v2: x402.settlesV2 === 'cdp' ? 'cdp' : 'self' }
   }
 
   function statusNumbers () {
@@ -742,6 +750,9 @@ export function createStocksWeb ({
   // The list a verdict was decided against, stamped so anyone can check it again (evm/core/stocks/list-proof.mjs).
   const proofOf = (c, r = registries.get(c)) => listProof(r?.stamp, { readAt: r?.at, stale: Boolean(r?.error), ledgerUrl: `${publicOrigin}${publicPath}/api/history/registry?chain=${c}`, listBase: `${publicOrigin}${publicPath}/api/list` })
   const sourceOf = (c) => { const r = registries.get(c); return { generated_at: new Date(now()).toISOString(), source: `${CHAINS[c].issuer} issuer registry`, registry_age_s: r?.at ? Math.round((now() - r.at) / 1000) : null } }
+  // The tools as the MCP server lists them, for /api: one list, so the page cannot name a tool the server lacks.
+  const mcpTools = toolsFor(Math.min(PUBLIC_HOURS, windowH))
+  let apiHtml = null
   const mcp = createMcpHttp({
     chains: Object.keys(CHAINS),
     log,
@@ -1086,6 +1097,14 @@ export function createStocksWeb ({
       analytics.load(clientIp(req), req.headers, '/history')
       return send(res, 200, cachedPage('/history', () => withPageHead('/history', historyPage({ store: history, chains: Object.keys(CHAINS), explorers: Object.fromEntries(Object.entries(CHAINS).map(([c, v]) => [c, v.explorer])), now: now(), version: appVersion, assets: { css: `style.css?v=${version('/style.css')}`, docsCss: `docs.css?v=${version('/docs.css')}`, beacon: `beacon.js?v=${version('/beacon.js')}` } }))), 'text/html; charset=utf-8', { 'cache-control': 'public, max-age=300' })
     }
+    // Every call with its price (owner, 22.11). Fixed at start like the docs: built once, on first request.
+    if (sub === '/api') {
+      analytics.load(clientIp(req), req.headers, '/api')
+      apiHtml ??= withPageHead('/api', apiPage({ origin: site, version: appVersion, tools: mcpTools, pass: x402.enabled ? { priceUsd: x402.priceUsd, passMinutes: x402.passMinutes, passRate: x402.passRate } : null,
+        limits: { perMinute: RATE.perMinute, passportUnits: PASSPORT_UNITS, freeBatch: MAX_VERIFY_BATCH, paidBatch: PAID_VERIFY_BATCH },
+        assets: { css: `style.css?v=${version('/style.css')}`, docsCss: `docs.css?v=${version('/docs.css')}`, apiJs: `api.js?v=${version('/api.js')}`, beacon: `beacon.js?v=${version('/beacon.js')}` } }))
+      return send(res, 200, apiHtml, 'text/html; charset=utf-8', { 'cache-control': 'public, max-age=300' })
+    }
     if (!sub.startsWith('/api/')) return send(res, 404, { error: 'not found' })
 
     // The payment state is for monitoring: stp-health reads it every 15 minutes, and a monitor that met the free
@@ -1111,7 +1130,7 @@ export function createStocksWeb ({
 
     const chain = url.searchParams.get('chain')
     if (sub === '/api/hit') {
-      const hit = parseHit(url.searchParams, Object.keys(CHAINS), (p) => p === '/' || p === '/history' || p === '/status' || (p.startsWith('/docs/') && docs.has(p.slice(6))))
+      const hit = parseHit(url.searchParams, Object.keys(CHAINS), (p) => p === '/' || p === '/history' || p === '/status' || p === '/api' || (p.startsWith('/docs/') && docs.has(p.slice(6))))
       if (hit) analytics.hit(clientIp(req), req.headers, hit)
       return send(res, 204, '', 'text/plain', { 'cache-control': 'no-store' })
     }

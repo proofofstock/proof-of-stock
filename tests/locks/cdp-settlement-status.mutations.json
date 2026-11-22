@@ -1,0 +1,16 @@
+{
+  "_finding": "22.11: x402 v2 payments move to Coinbase's x402 facilitator. Those sales no longer come from our settlement wallet, so the wallet's count on /status covers v1 only: the payment state says who settles v2, and the page says where the v2 sales are counted instead of letting the wallet's count look complete.",
+  "target": "apps/stocks-status.mjs",
+  "runner": [
+    "node",
+    "apps/status-usage.test.mjs"
+  ],
+  "mutations": [
+    {
+      "name": "the page keeps quiet about who settles v2",
+      "find": "const viaCdp = p.settles_v2 === 'cdp' ?",
+      "replace": "const viaCdp = false ?",
+      "expect": "FAIL v2 settled by Coinbase's facilitator: the page says so and links our x402scan page for those sales"
+    }
+  ]
+}

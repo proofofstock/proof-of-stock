@@ -1,0 +1,34 @@
+{
+  "_finding": "Owner, 22.11: the site should read like a product, with tabs at the top of every page (Home, Methodology, Proofs, API, Status, History, Docs) and the current one marked. One function writes the bar for every page kind, so a slip in it is a slip on every page: the current tab unmarked, a tab pointing at the wrong page, a docs page under the wrong tab, or links that only work from the root.",
+  "target": "apps/stocks-nav.mjs",
+  "runner": [
+    "node",
+    "apps/site-tabs.test.mjs"
+  ],
+  "mutations": [
+    {
+      "name": "no tab is marked as the current page",
+      "find": "${t.id === current ? ' aria-current=\"page\"' : ''}",
+      "replace": "",
+      "expect": "FAIL with home current, exactly that one tab is marked"
+    },
+    {
+      "name": "Proofs opens the JSON listing instead of the page a person can follow",
+      "find": "href: 'docs/how-to/verify-an-anchor.md' })",
+      "replace": "href: 'anchors/' })",
+      "expect": "FAIL Methodology opens the methodology, Proofs the how-to on checking a day's anchor"
+    },
+    {
+      "name": "the methodology page is not under its tab",
+      "find": "  'explanation/methodology.md': 'methodology',\n",
+      "replace": "",
+      "expect": "FAIL /stocks/docs/explanation/methodology.md: methodology is the current tab, and only it"
+    },
+    {
+      "name": "tab links ignore where the page sits, so they break two folders down in the docs",
+      "find": "href=\"${esc(root + t.href)}\"",
+      "replace": "href=\"${esc(t.href)}\"",
+      "expect": "FAIL every href is relative to the root it is handed"
+    }
+  ]
+}

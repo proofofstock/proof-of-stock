@@ -2,6 +2,8 @@
 // colours. It reads the same numbers as /api/status (which stays for code) and judges them against the cadence each
 // part is meant to keep. Pure: handed the numbers and the time, it returns HTML.
 
+import { siteBar } from './stocks-nav.mjs'
+
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))
 const ago = (s) => (s == null ? 'never' : s < 90 ? `${s} s ago` : s < 5400 ? `${Math.round(s / 60)} min ago` : s < 172800 ? `${Math.round(s / 3600)} h ago` : `${Math.round(s / 86400)} days ago`)
 const CHAIN = { base: 'Base', robinhood: 'Robinhood Chain' }
@@ -137,9 +139,14 @@ function paymentsSection (p, now) {
   const paused = p.paused_until && Date.parse(p.paused_until) > now
   const state = paused ? `Selling is paused until ${esc(String(p.paused_until).slice(0, 16).replace('T', ' '))} UTC after failed settlements; the free tier answers as usual.` : 'On: 0.01 USDC on Base buys a 10-minute pass at ten times the free rate, paid over x402.'
   const proof = w ? ` We settle every pass ourselves from one wallet, so each sale is a public transaction: <a href="https://basescan.org/address/${esc(w)}">${esc(w.slice(0, 6))}…${esc(w.slice(-4))} on BaseScan</a>. That wallet also pays the gas of those settlements; it holds no one else's funds.` : ''
-  return `<section class="st-use st-pay"><h2>Paid passes</h2>${salesOf(p.sales)}<p class="st-detail">${state}${proof} <a href="docs/how-to/pay-per-call.md">How to pay</a>.</p></section>`
+  // Since 22.11 an x402 v2 payment is settled by Coinbase's facilitator, not by the wallet above: those sales are not in
+  // the wallet's count, and the page says where they are instead of leaving the count to look complete.
+  const viaCdp = p.settles_v2 === 'cdp' ? ` Payments in x402 v2 are settled by Coinbase's x402 facilitator, so they are not in the wallet's count: <a href="${X402SCAN_SERVER}">see them on x402scan</a>.` : ''
+  return `<section class="st-use st-pay"><h2>Paid passes</h2>${salesOf(p.sales)}<p class="st-detail">${state}${proof}${viaCdp} <a href="docs/how-to/pay-per-call.md">How to pay</a>.</p></section>`
 }
 
+/** Our server's page on x402scan, where the sales settled by a facilitator it knows are counted. */
+export const X402SCAN_SERVER = 'https://www.x402scan.com/server/eb34ec2c-49f1-4b37-bee5-b3c86f0f79f1'
 const HASH_RE = /^0x[0-9a-f]{64}$/
 const short = (s) => `${s.slice(0, 6)}…${s.slice(-4)}`
 const dayOf = (iso) => new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' })
@@ -185,12 +192,7 @@ export function statusPage ({ chains, now, version, assets, usage = null, paymen
   ${assets.beacon ? `<script src="${assets.beacon}" defer></script>` : ''}
 </head>
 <body class="dx">
-  <header class="dx-bar">
-    <a class="dx-brand" href="./"><span class="dx-logo" aria-hidden="true"></span><span>Proof of Stock</span><span class="dx-docs">Status</span></a>
-    <span></span>
-    <nav class="dx-links"><a href="./"><span class="ic ic-terminal" aria-hidden="true"></span>Terminal</a><a href="docs/"><span class="ic ic-doc" aria-hidden="true"></span>Docs</a></nav>
-    <a class="dx-cta" href="docs/tutorials/connect-an-agent.md"><span aria-hidden="true">+</span> Connect an agent</a>
-  </header>
+  ${siteBar({ current: 'status' })}
   <main class="st-main">
     <div class="st-hero ${overall}"><span class="st-dot big" aria-hidden="true"></span><div><h1>${esc(headline)}</h1><p>${esc(sub)}</p></div></div>
     <div class="st-grid">${byChain}</div>

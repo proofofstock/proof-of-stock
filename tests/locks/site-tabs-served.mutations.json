@@ -1,0 +1,22 @@
+{
+  "_finding": "The landing is a static file with a placeholder for the site bar; the server writes the bar in at start, so a crawler or an AI judge that runs no script reads the same tabs as everyone. If the server stops writing it, the landing alone has no tabs while every other page does.",
+  "target": "apps/stocks-web.mjs",
+  "runner": [
+    "node",
+    "apps/site-tabs.test.mjs"
+  ],
+  "mutations": [
+    {
+      "name": "the landing is served with its placeholder and no bar",
+      "find": ".replace('<!--site-bar-->', () => siteBar({ current: 'home' }))",
+      "replace": ".replace('<!--site-bar-->', () => '<!--site-bar-->')",
+      "expect": "FAIL /stocks/: 200, with the seven tabs in order"
+    },
+    {
+      "name": "the landing marks the wrong tab",
+      "find": ".replace('<!--site-bar-->', () => siteBar({ current: 'home' }))",
+      "replace": ".replace('<!--site-bar-->', () => siteBar({ current: 'docs' }))",
+      "expect": "FAIL /stocks/: home is the current tab, and only it"
+    }
+  ]
+}

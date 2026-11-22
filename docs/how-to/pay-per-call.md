@@ -19,6 +19,9 @@ payment is asked while the pass is live.
 Every 402 carries both: the v1 body and the v2 header. It is one offer in two wrappers: the same price, payee, asset
 and EIP-3009 authorization for USDC on Base. Pay in either; the receipt comes back in the version you paid in.
 
+A v2 payment is settled by Coinbase's x402 facilitator; a v1 payment by our own settlement wallet. Either way we
+check the payment ourselves first, and the USDC goes to the same payee named in the 402.
+
 ## Buying a pass up front: `GET /api/pass`
 
 To buy before you need it, ask `https://proofofstock.xyz/api/pass`. Without a live pass it always answers the 402,

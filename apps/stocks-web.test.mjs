@@ -493,11 +493,16 @@ console.log('the payment state carries the sales read from Base')
   const { port: ps } = await appS.start(0, '127.0.0.1')
   try {
     const state = async () => (await fetch(`http://127.0.0.1:${ps}/stocks/api/status/payments`)).json()
-    check('before the first read from Base the payment state has no sales, and asking starts the read', (await state()).sales === null)
+    const first = await state()
+    check('before the first read from Base the payment state has no sales, and asking starts the read', first.sales === null)
+    check('a module that does not say who settles v2 is our own settlement', first.settles_v2 === 'self')
     let withSales
     for (let i = 0; i < 50 && !(withSales = await state()).sales?.latest; i++) await new Promise((r) => setTimeout(r, 20))
     check('the payment state carries the sales as Base has them: the count of the wallet and its latest settlement', withSales.sales?.settlement_transactions === 1 && withSales.sales.latest?.transaction === '0x' + 'c1'.repeat(32) && withSales.sales.latest.payer === '0x' + 'ab'.repeat(20) && withSales.sales.latest.ours === false, JSON.stringify(withSales.sales))
   } finally { await appS.stop() }
+  const appC = createStocksWeb({ roots: { base: baseRoot, robinhood: rhRoot }, fetchImpl, log: () => {}, analytics: { enabled: false }, exam: { url: null }, x402: { payTo: PAYEE }, x402Module: () => ({ ...stand(), settlesV2: 'cdp' }), baseCall: saleChain })
+  const { port: pcd } = await appC.start(0, '127.0.0.1')
+  try { check('a module that settles v2 through Coinbase says so in the payment state', (await (await fetch(`http://127.0.0.1:${pcd}/stocks/api/status/payments`)).json()).settles_v2 === 'cdp') } finally { await appC.stop() }
   const offCalls = []
   const appOff = createStocksWeb({ roots: { base: baseRoot, robinhood: rhRoot }, fetchImpl, log: () => {}, analytics: { enabled: false }, exam: { url: null }, x402: {}, x402Module: () => ({ enabled: false, passActive: () => false, accepts: () => null, purchase: async () => ({ ok: false }) }), baseCall: async (m) => { offCalls.push(m); return '0x0' } })
   const { port: po } = await appOff.start(0, '127.0.0.1')
