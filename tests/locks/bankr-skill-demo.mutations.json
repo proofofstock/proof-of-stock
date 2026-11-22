@@ -1,0 +1,16 @@
+{
+  "_finding": "Final audit of the Bankr skill (22.11): the catalog demo, the first thing a reviewer reads, named the calibration look-alike 0x35b7…f703 as Coinbase's own SNDKc. The skill's own example contradicted the skill. Whatever the demo calls the issuer's own is the listed contract.",
+  "target": "packages/bankr-skill/proof-of-stock/catalog.json",
+  "runner": [
+    "node",
+    "packages/bankr-skill/bankr-skill.test.mjs"
+  ],
+  "mutations": [
+    {
+      "name": "the demo calls the look-alike Coinbase's own SNDKc again",
+      "find": "Coinbase's own SNDKc is 0xb200…10c5.",
+      "replace": "Coinbase's own SNDKc is 0x35b7…f703.",
+      "expect": "FAIL the catalog demo calls only the issuer's listed contract \"own\", never a known look-alike"
+    }
+  ]
+}

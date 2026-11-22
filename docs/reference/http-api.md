@@ -618,8 +618,7 @@ they do not count against the per-client rate limit. Both carry `Access-Control-
 
 A sporadic reader never pays: the free minute in [Basics](#basics) is the whole product for them. A client that needs
 more than the free minute can buy a **pass**: 0.01 USDC on Base for 10 minutes at 600 units a minute (ten times the
-free rate), bound to its client key on the server. No account, no key, no separate paid endpoint: every route above
-works the same under a pass, and `/mcp` is under the same limit and the same pass. The payment is
+free rate), bound to its client key on the server. No account and no key: every route above works the same under a pass, and `/mcp` is under the same limit and the same pass. The payment is
 [x402](https://www.x402.org) over HTTP, settled on chain by the server itself; the how-to with client code is
 [how to pay per call](../how-to/pay-per-call.md).
 
@@ -630,20 +629,36 @@ A refused request answers **402** with the offer:
   "x402Version": 1,
   "error": "the free minute is used up; pay 0.01 USDC on base for a 10-minute pass at 600 units a minute",
   "accepts": [ { "scheme": "exact", "network": "base", "maxAmountRequired": "10000",
-    "resource": "https://proofofstock.xyz/stocks/api/passport", "payTo": "0x…",
+    "resource": "https://proofofstock.xyz/api/passport", "payTo": "0x…",
     "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", "extra": { "name": "USD Coin", "version": "2" } } ]
 }
 ```
 
-Retrying the same request with an `X-PAYMENT` header (the signed EIP-3009 `transferWithAuthorization`) settles it: that
-request is served, and the settlement receipt rides out in `X-PAYMENT-RESPONSE` (base64 JSON: `success`,
+The same 402 carries the offer as x402 v2 in the `PAYMENT-REQUIRED` header: base64 JSON with `x402Version: 2`, a
+`resource` object (`url`), and `accepts` with `network: "eip155:8453"` and `amount: "10000"`. One offer, two wrappers.
+
+Retrying the same request with the payment settles it: `X-PAYMENT` (v1) or `PAYMENT-SIGNATURE` (v2, the offer echoed
+as `accepted`), each carrying the signed EIP-3009 `transferWithAuthorization`. That request is served, and the
+settlement receipt rides out in the version paid: `X-PAYMENT-RESPONSE` or `PAYMENT-RESPONSE` (base64 JSON: `success`,
 `transaction`, `network`, `payer`). From then until the pass ends the limiter measures that client against 600 units a
 minute and asks for nothing more.
+
+<a id="route-pass"></a>
+### `GET /api/pass`
+
+The pass on its own, for a client that buys before it needs one. Without a live pass it always answers the 402, whatever
+is left of the free minute, with the v2 offer in the body too and an x402 Bazaar extension (`extensions.bazaar`)
+describing the route. Paid, or with a pass already live: `200`, `{ "pass": { "active": true, "until", "minutes",
+"units_per_minute" } }`. It costs no unit. Failed payments here are capped per client, as on the big batch of
+[`/verify`](#route-verify). `404` where paid passes are off.
+
+`GET /openapi.json` describes this route for x402 catalogues: OpenAPI 3.1, its price in `x-payment-info`, its 402.
+Only the paid route is in it; the free API is this page.
 
 | | |
 |---|---|
 | Exact price | the 402's own `maxAmountRequired` is the only amount accepted: 10000 atomic USDC (6 decimals) is 0.01 |
-| Replay | an authorization is settled once; a repeated `X-PAYMENT` is refused without touching the chain |
+| Replay | an authorization is settled once; the same payment again is refused without touching the chain |
 | Pacing | one settled purchase per client per 5 minutes; a faster one is refused with `Retry-After` and nothing is taken |
 | Failure | 402 `it has not been taken`: the signature verified but no transaction was broadcast |
 | Over the pass | a client over even 600 units a minute gets the plain 429, `Retry-After: 5`; a pass is never sold to whoever has one |

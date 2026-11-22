@@ -71,6 +71,7 @@ import { symbolLabel, nameLabel, UNTRUSTED_TEXT_NOTE } from '../evm/core/stocks/
 import { createExamCache, EXAM_CHIP_HTML } from './stocks-exam.mjs'
 import { boardOf, withBoard, BOARD_LIMIT } from './stocks-board.mjs'
 import { createPassSales, rpcCaller } from './pass-sales.mjs'
+import { passBazaar, openApiOf } from './x402-discovery.mjs'
 
 // The paid-pass module is a host file, never a tracked one (owner, 15.11): this repository is exported to a public
 // one, and the money path is not for export. A checkout without the file is the free service exactly; the import is
@@ -316,8 +317,11 @@ export function createStocksWeb ({
   const x402 = x402Module
     ? x402Module({ ...x402Opts, fetchImpl, now, log: x402Log })
     : { enabled: false, passActive: () => false, accepts: () => null, purchase: async () => ({ ok: false, error: 'paid passes are not enabled' }) }
+  // The one paid route, as catalogues read it (apps/x402-discovery.mjs): the Bazaar extension in its 402, and /openapi.json.
+  const PASS_BAZAAR = x402.enabled ? passBazaar(x402) : null
+  const openApi = x402.enabled ? openApiOf({ origin: publicOrigin + publicPath, priceUsd: x402.priceUsd, passMinutes: x402.passMinutes, passRate: x402.passRate, version: appVersion }) : null
   const passLine = x402.enabled
-    ? `- [Over the free minute](${publicOrigin + publicPath}/docs/how-to/pay-per-call.md): pay ${x402.priceUsd} USDC on base (x402) for a ${x402.passMinutes}-minute pass at ${x402.passRate} units a minute`
+    ? `- [Over the free minute](${publicOrigin + publicPath}/docs/how-to/pay-per-call.md): pay ${x402.priceUsd} USDC on base (x402 v1 or v2) for a ${x402.passMinutes}-minute pass at ${x402.passRate} units a minute; buy one up front at ${publicOrigin + publicPath}/api/pass`
     : null
   const llms = llmsTxt(docs, publicOrigin + publicPath, appVersion, passLine)
   // One file holds every page, so a relative link would resolve against /llms-full.txt and 404: each is made absolute
@@ -771,6 +775,20 @@ export function createStocksWeb ({
     return publicOrigin + publicPath + p
   }
 
+  // x402 v1 and v2 side by side (22.11): v2 is what catalogues such as x402scan register. A client pays in either; the
+  // receipt answers in the wrapper it paid in. A payment module that speaks v1 only leaves every answer as it was.
+  /** The payment a client sent: x402 v2's PAYMENT-SIGNATURE, or v1's X-PAYMENT. */
+  const paymentOf = (req) => req.headers['payment-signature'] ? { header: String(req.headers['payment-signature']), version: 2 }
+    : req.headers['x-payment'] ? { header: String(req.headers['x-payment']), version: 1 } : null
+  const PAY_EXPOSE = Object.freeze({ 'access-control-expose-headers': 'payment-required, payment-response, x-payment-response' })
+  const b64json = (o) => Buffer.from(JSON.stringify(o), 'utf8').toString('base64')
+  /** The 402 as x402 v2 PaymentRequired, or null where the module speaks v1 only. */
+  const offerV2 = (o) => (typeof x402.acceptsV2 === 'function' ? x402.acceptsV2(o) : null)
+  /** Headers of a 402: the v2 offer in PAYMENT-REQUIRED (base64 JSON, the v2 spec's canonical place) beside the v1 body. */
+  function offerHeaders (o) { const v2 = offerV2(o); return { ...PAY_EXPOSE, ...(v2 ? { 'payment-required': b64json(v2) } : {}) } }
+  /** The settlement receipt in the wrapper the client paid in: PAYMENT-RESPONSE for v2, X-PAYMENT-RESPONSE for v1. */
+  const receiptHeaders = (r, version) => (version === 2 ? (r.headerV2 ? { 'payment-response': r.headerV2 } : {}) : (r.header ? { 'x-payment-response': r.header } : {}))
+
   /**
    * Where the free minute ends. Without paid passes this is the plain 429 of every day before. With them, a refused
    * client is shown the 402 that names the pass (x402), and a client that answers with `X-PAYMENT` buys the pass: the
@@ -788,21 +806,20 @@ export function createStocksWeb ({
       send(res, 429, mcp ? { jsonrpc: '2.0', id: null, error: { code: -32000, message } } : { error: message }, undefined, { ...headers, ...cors, ...noStore, 'retry-after': '5' })
       return true
     }
-    const payment = req.headers['x-payment']
-    if (!payment) {
-      const resource = resourceOf(req)
-      send(res, 402, x402.accepts({ resource, error: 'the free minute is used up; ' + x402.description }), undefined, { ...headers, ...cors, ...noStore, 'access-control-expose-headers': 'x-payment-response' })
+    const pay = paymentOf(req)
+    if (!pay) {
+      const resource = resourceOf(req), error = 'the free minute is used up; ' + x402.description
+      send(res, 402, x402.accepts({ resource, error }), undefined, { ...headers, ...cors, ...noStore, ...offerHeaders({ resource, error }) })
       return true
     }
-    const r = await x402.purchase(String(payment), key)
+    const r = await x402.purchase(pay.header, key)
     if (!r.ok) {
       const body = mcp ? { jsonrpc: '2.0', id: null, error: { code: -32000, message: r.error } } : { error: r.error, ...(r.pending ? { pending: true } : {}) }
-      // A pending settlement carries its transaction in X-PAYMENT-RESPONSE, as x402 v2's settlement_pending does.
-      send(res, r.status || 402, body, undefined, { ...headers, ...cors, ...noStore, 'access-control-expose-headers': 'x-payment-response', ...(r.header ? { 'x-payment-response': r.header } : {}), ...(r.retryAfterS ? { 'retry-after': String(r.retryAfterS) } : {}) })
+      // A pending settlement carries its transaction in the receipt header, as x402 v2's settlement_pending does.
+      send(res, r.status || 402, body, undefined, { ...headers, ...cors, ...noStore, ...PAY_EXPOSE, ...receiptHeaders(r, pay.version), ...(r.retryAfterS ? { 'retry-after': String(r.retryAfterS) } : {}) })
       return true
     }
-    res.setHeader('x-payment-response', r.header)
-    res.setHeader('access-control-expose-headers', 'x-payment-response')
+    for (const [h, v] of Object.entries({ ...PAY_EXPOSE, ...receiptHeaders(r, pay.version) })) res.setHeader(h, v)
     if (limited(ip, units)) { send(res, 429, mcp ? { jsonrpc: '2.0', id: null, error: { code: -32000, message: TOO_MANY.error } } : TOO_MANY, undefined, { ...headers, ...cors, ...noStore, 'retry-after': '10' }); return true }
     return false
   }
@@ -812,14 +829,17 @@ export function createStocksWeb ({
    * the same 402 as the limiter's, with the reason, and one that answers with X-PAYMENT buys the pass through the same
    * x402.purchase as limitGate, so there is one way to pay and one price. Returns true when it has answered.
    */
-  async function passGate (req, res, { cors = {}, why }) {
+  async function passGate (req, res, { cors = {}, why, extensions = null, v2Body = false }) {
     const key = clientKey(clientIp(req))
     if (x402.passActive(key)) return false
     const noStore = { 'cache-control': 'no-store' }
-    const payment = req.headers['x-payment']
-    if (!payment) {
-      const resource = resourceOf(req)
-      send(res, 402, x402.accepts({ resource, error: why + '; ' + x402.description }), undefined, { ...cors, ...noStore, 'access-control-expose-headers': 'x-payment-response' })
+    const pay = paymentOf(req)
+    if (!pay) {
+      const resource = resourceOf(req), error = why + '; ' + x402.description
+      // A route made to be bought (/api/pass) answers the v2 form in the body too: a v2 reader, or a catalogue that reads
+      // the body, sees one version only. The other paid routes keep the v1 body their clients already read.
+      const v2 = v2Body ? offerV2({ resource, error, extensions }) : null
+      send(res, 402, v2 || x402.accepts({ resource, error }), undefined, { ...cors, ...noStore, ...offerHeaders({ resource, error, extensions }) })
       return true
     }
     // limitGate only reaches a purchase for a client the limiter already refused; this route reaches it for anyone, so
@@ -833,18 +853,17 @@ export function createStocksWeb ({
       send(res, 429, { error: `too many failed payments from this client; try again in ${waitM} minute${waitM === 1 ? '' : 's'}`, retry_after_s: waitS }, undefined, { ...cors, ...noStore, 'retry-after': String(waitS) })
       return true
     }
-    const r = await x402.purchase(String(payment), key)
+    const r = await x402.purchase(pay.header, key)
     if (!r.ok) {
       const f = fails && now() - fails.since < PASS_FAIL_WINDOW_MS ? fails : { since: now(), n: 0 }
       f.n++
       passFails.set(key, f)
       if (passFails.size > 10000) for (const [k, v] of passFails) if (now() - v.since >= PASS_FAIL_WINDOW_MS) passFails.delete(k)
-      send(res, r.status || 402, { error: r.error, ...(r.pending ? { pending: true } : {}) }, undefined, { ...cors, ...noStore, 'access-control-expose-headers': 'x-payment-response', ...(r.header ? { 'x-payment-response': r.header } : {}), ...(r.retryAfterS ? { 'retry-after': String(r.retryAfterS) } : {}) })
+      send(res, r.status || 402, { error: r.error, ...(r.pending ? { pending: true } : {}) }, undefined, { ...cors, ...noStore, ...PAY_EXPOSE, ...receiptHeaders(r, pay.version), ...(r.retryAfterS ? { 'retry-after': String(r.retryAfterS) } : {}) })
       return true
     }
     passFails.delete(key)
-    res.setHeader('x-payment-response', r.header)
-    res.setHeader('access-control-expose-headers', 'x-payment-response')
+    for (const [h, v] of Object.entries({ ...PAY_EXPOSE, ...receiptHeaders(r, pay.version) })) res.setHeader(h, v)
     return false
   }
   const passFails = new Map() // client key -> { since, n }: failed purchases on passGate in the current window
@@ -908,6 +927,11 @@ export function createStocksWeb ({
     if (STATIC[sub]) { const s = static_[sub]; return send(res, 200, s.body, s.type, { 'cache-control': 'public, max-age=86400' }) }
     // The old address of the changelog: it is a docs page now.
     if (sub === '/CHANGELOG.md') { res.writeHead(301, { location: publicPath + '/docs/changelog.md', 'cache-control': 'public, max-age=3600' }); return res.end() }
+    // The paid route described for catalogues (x402scan reads /openapi.json first). Only where passes are sold.
+    if (sub === '/openapi.json') {
+      if (!x402.enabled) return send(res, 404, { error: 'not found' })
+      return send(res, 200, openApi, undefined, { 'cache-control': 'public, max-age=3600', 'access-control-allow-origin': '*' })
+    }
     if (sub === '/robots.txt') return send(res, 200, robots, 'text/plain; charset=utf-8', { 'cache-control': 'public, max-age=3600' })
     if (sub === '/.well-known/mcp-registry-auth') return registryAuth ? send(res, 200, registryAuth, 'text/plain; charset=utf-8', { 'cache-control': 'public, max-age=300' }) : send(res, 404, { error: 'not found' })
     if (sub === '/.well-known/security.txt') return send(res, 200, securityTxt(site, sourceUrl, now()), 'text/plain; charset=utf-8', { 'cache-control': 'public, max-age=3600' })
@@ -1037,6 +1061,18 @@ export function createStocksWeb ({
     // it is one small object in memory, and nginx's own per-client limit still stands in front of it.
     if (sub === '/api/status/payments') {
       return send(res, 200, paymentsStatus(), undefined, { 'cache-control': 'no-store' })
+    }
+
+    // The pass on its own: a route made to be bought (22.11, x402 v2 and the catalogues that list paid routes). Without a
+    // live pass it is always the 402, whatever the free minute holds, so a catalogue probing it sees the offer; paid, or
+    // with a pass already live, it answers what the pass is. Failed purchases are capped per client by passGate. It
+    // costs no unit: buying must work for a client the limiter has refused.
+    if (sub === '/api/pass') {
+      const cors = { 'access-control-allow-origin': '*' }
+      if (!x402.enabled) return send(res, 404, { error: 'paid passes are not enabled on this server' }, undefined, cors)
+      if (await passGate(req, res, { cors, why: 'a pass is sold here', extensions: PASS_BAZAAR, v2Body: true })) return
+      const until = typeof x402.passUntil === 'function' ? x402.passUntil(clientKey(clientIp(req))) : 0
+      return send(res, 200, { pass: { active: true, until: until ? new Date(until).toISOString() : null, minutes: x402.passMinutes, units_per_minute: x402.passRate } }, undefined, { ...cors, 'cache-control': 'no-store' })
     }
 
     if (await limitGate(req, res, { units: sub === '/api/passport' ? PASSPORT_UNITS : 1 })) return

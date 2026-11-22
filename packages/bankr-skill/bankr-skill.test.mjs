@@ -38,10 +38,12 @@ console.log('a contract')
   check('a weak resemblance is not called a look-alike', /NOT ON COINBASE'S LIST/.test(weak.text) && !/LOOK-ALIKE/.test(weak.text))
 }
 {
-  for (const [label, answer] of [['a 503', () => res(503, { error: 'registry unavailable' })], ['a 429', () => res(429, { error: 'too many requests' })], ['a network error', () => { throw new Error('down') }], ['a body that is not a verdict', () => res(200, { hello: 1 })]]) {
+  for (const [label, answer] of [['a 503', () => res(503, { error: 'registry unavailable' })], ['a 429', () => res(429, { error: 'too many requests' })], ['a 402 (the free minute used up, passes on sale)', () => res(402, { x402Version: 1, error: 'the free minute is used up' })], ['a network error', () => { throw new Error('down') }], ['a body that is not a verdict', () => res(200, { hello: 1 })]]) {
     const r = await go([A, '--chain', 'base'], answer)
     check(`${label} is UNAVAILABLE, never listed`, r.code === 3 && /UNAVAILABLE/.test(r.text) && !/ISSUER-LISTED/.test(r.text), r.text)
   }
+  const paid = await go([A, '--chain', 'base'], () => res(402, { x402Version: 1, error: 'the free minute is used up' }))
+  check('a 402 says what it is, the rate limit, so the agent waits instead of reporting a broken check', /rate limited, try again in a minute/.test(paid.text), paid.text)
   const half = await go([A], (u) => u.includes('chain=base') ? res(503, {}) : res(200, { listed: true, symbol: 'NVDA', name: 'NVIDIA' }))
   check('listed on one chain while the other could not be read says both, and is not a clean yes (exit 3)', half.code === 3 && /robinhood: ISSUER-LISTED/.test(half.text) && /base: UNAVAILABLE/.test(half.text))
 }
@@ -105,6 +107,15 @@ console.log('the catalog Bankr reads')
   check('SKILL.md carries name and description in its frontmatter, the name being the slug', /^name: proof-of-stock$/m.test(front) && /^description: >/m.test(front))
   check('SKILL.md names the trust boundary and never calls a result an approval', /## Trust boundary/.test(skill) && /Never approve a trade because of it/.test(skill) && !/\bsafe to buy\b/i.test(skill))
   check('every command SKILL.md shows runs the script that exists', [...skill.matchAll(/node (scripts\/[\w.-]+)/g)].every((m) => fs.existsSync(new URL(m[1], dir))))
+  // The demo is what a reviewer reads first (final audit, 22.11: it named the calibration look-alike as Coinbase's own
+  // SNDKc). Whatever it calls "own" is the issuer's listed contract, and a known look-alike is never called that.
+  const shortOf = (a) => `${a.slice(0, 6)}…${a.slice(-4)}`
+  const LISTED_SNDK = '0xb200000000000000000000397293cb8cda9a10c5'
+  const LOOKALIKES = ['0x35b76a8fbfbac68c449a4a4a8d1bcda0d486f703', '0x02ecff464a843629b63b8462e42ffc35e38bb384']
+  const owned = [...cat.demo.code.matchAll(/own \w+ is (0x[0-9a-f]{4}…[0-9a-f]{4})/g)].map((m) => m[1])
+  check('the catalog demo calls only the issuer\'s listed contract "own", never a known look-alike', owned.includes(shortOf(LISTED_SNDK)) && owned.every((a) => !LOOKALIKES.map(shortOf).includes(a)), owned.join(','))
+  const asked = [...cat.demo.code.matchAll(/is (0x[0-9a-f]{4}…[0-9a-f]{4}) the real/g)].map((m) => m[1])
+  check('...and the address it asks about and calls a look-alike is one', asked.length === 1 && LOOKALIKES.map(shortOf).includes(asked[0]) && /LOOK-ALIKE/.test(cat.demo.code), asked.join(','))
 }
 
 console.log(`\n${passed} passed, ${failed} failed`)

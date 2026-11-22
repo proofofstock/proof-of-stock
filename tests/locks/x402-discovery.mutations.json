@@ -1,0 +1,22 @@
+{
+  "_finding": "x402 catalogues read /openapi.json first and the Bazaar extension in a route's 402 (22.11, x402 v2 for x402scan). What they read must be the price we settle and the call that works: a GET with no input.",
+  "target": "apps/x402-discovery.mjs",
+  "runner": [
+    "node",
+    "apps/stocks-web.test.mjs"
+  ],
+  "mutations": [
+    {
+      "name": "the OpenAPI price is not ours",
+      "find": "amount: String(priceUsd)",
+      "replace": "amount: '0'",
+      "expect": "FAIL /openapi.json lists the paid route with its price over x402 and its 402, at the public origin"
+    },
+    {
+      "name": "the Bazaar input names the wrong method",
+      "find": "input: { type: 'http', method: 'GET' }",
+      "replace": "input: { type: 'http', method: 'POST' }",
+      "expect": "FAIL ...with the Bazaar extension: a GET with no input, and a JSON pass as its output"
+    }
+  ]
+}

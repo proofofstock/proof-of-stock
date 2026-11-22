@@ -1,0 +1,16 @@
+{
+  "_finding": "Final audit of the Bankr skill (22.11): where the service sells passes over its free minute, a client past the minute gets 402, not 429. The skill called that a check it could not make; it is the rate limit, and the agent should wait and retry.",
+  "target": "packages/bankr-skill/proof-of-stock/scripts/check.mjs",
+  "runner": [
+    "node",
+    "packages/bankr-skill/bankr-skill.test.mjs"
+  ],
+  "mutations": [
+    {
+      "name": "a 402 is read as a failed check, not the rate limit",
+      "find": "(v.status === 429 || v.status === 402)",
+      "replace": "v.status === 429",
+      "expect": "FAIL a 402 says what it is, the rate limit, so the agent waits instead of reporting a broken check"
+    }
+  ]
+}

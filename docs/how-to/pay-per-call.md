@@ -5,10 +5,32 @@ and you would rather pay a small amount than wait. A pass is **0.01 USDC on Base
 minute**, ten times the free rate, bound to your client on the server. Nothing else changes: the same routes, the same
 answers, no account and no key. A sporadic reader never pays anything, and never sees a price.
 
-The payment is [x402](https://www.x402.org) over HTTP. A request the limiter refuses answers **402** with the offer;
-your client retries the same request with an `X-PAYMENT` header; the server verifies the payment, settles it on chain,
+The payment is [x402](https://www.x402.org) over HTTP, version 1 or 2. A request the limiter refuses answers **402**
+with the offer; your client retries the same request with the payment; the server verifies it, settles it on chain,
 serves that request, and keeps measuring your client against 600 units a minute until the pass ends. No further
 payment is asked while the pass is live.
+
+| | x402 v1 | x402 v2 |
+|---|---|---|
+| the offer | the 402 body: `{ x402Version: 1, accepts: [{ network: "base", maxAmountRequired, ... }] }` | the `PAYMENT-REQUIRED` header: base64 JSON `{ x402Version: 2, resource, accepts: [{ network: "eip155:8453", amount, ... }] }` |
+| the payment | `X-PAYMENT` | `PAYMENT-SIGNATURE`, with the offer echoed as `accepted` |
+| the receipt | `X-PAYMENT-RESPONSE` | `PAYMENT-RESPONSE` |
+
+Every 402 carries both: the v1 body and the v2 header. It is one offer in two wrappers: the same price, payee, asset
+and EIP-3009 authorization for USDC on Base. Pay in either; the receipt comes back in the version you paid in.
+
+## Buying a pass up front: `GET /api/pass`
+
+To buy before you need it, ask `https://proofofstock.xyz/api/pass`. Without a live pass it always answers the 402,
+whatever is left of your free minute, with the v2 offer in the body as well as the header and an x402 Bazaar
+description of the route. Paid, it answers what the pass is:
+
+```json
+{ "pass": { "active": true, "until": "2026-11-22T12:10:00.000Z", "minutes": 10, "units_per_minute": 600 } }
+```
+
+With a live pass it answers the same without asking for anything. The route is listed for x402 catalogues at
+`https://proofofstock.xyz/openapi.json`. It costs no unit of the free minute.
 
 ## With an x402 client library
 
@@ -40,7 +62,7 @@ Two calls. The first names the price; the second pays it. Building `X-PAYMENT` b
 practice this is a job for a script, not for a person:
 
 ```bash
-# 1. ask, and be told the price (once the free minute is used up; /api/status itself costs no units and never 402s)
+# 1. ask, and be told the price (once the free minute is used up; or ask /api/pass, which always names it)
 URL='https://proofofstock.xyz/api/passport?chain=base&address=<token address>'
 curl -s -D - -o /dev/null "$URL" | head -1            # HTTP/1.1 402
 curl -s "$URL" | jq '.accepts[0] | {maxAmountRequired, payTo, asset}'

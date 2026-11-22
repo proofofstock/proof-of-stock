@@ -13,6 +13,8 @@ The version is in `package.json`, and the site footer, the MCP `serverInfo.versi
 ## [Unreleased]
 
 ### Added
+- Paid passes speak x402 v2 beside v1: every 402 carries the v2 offer in `PAYMENT-REQUIRED` (network `eip155:8453`, `amount`) beside the v1 body; a payment in `PAYMENT-SIGNATURE` (v2) or `X-PAYMENT` (v1) buys the same pass, and the receipt comes back in the version paid (`PAYMENT-RESPONSE` or `X-PAYMENT-RESPONSE`). Same price, payee and EIP-3009 settlement by our own wallet.
+- `GET /api/pass`: the pass on its own. Without a live pass it always answers the 402 (v2 in the body too, with an x402 Bazaar description of the route); paid, it says until when the pass runs. `GET /openapi.json` lists it with its price for x402 catalogues such as x402scan. Neither exists where passes are off.
 - Landing: the lede says who asks: "Your agent asks before it buys, or you do, right here." The service is built for agents first; the terminal on the page is the same check for a person.
 - The landing's look-alike board arrives as HTML: the server writes the week's newest 24 cases and the counts sentence into the page (`apps/stocks-board.mjs`), so a reader that runs no script sees the board instead of "Loading the case archive.". The page still carries none of a token creator's own text: before the script runs, the token cell is the contract's short address, and the script writes the symbol and name in as text. The script still redraws it on load and every 5 minutes; a test runs app.js's own board on the same answer and holds the two equal, row for row.
 - Counts say what they are out of: `/api/overview` carries `listed` and `minted` per chain (minted null where the issuer reports no supply), the landing board's caption reads "N minted of M listed" before its priced count, and the status registry row adds "N minted (tradable on this chain)" when fewer are minted than listed.
@@ -31,6 +33,7 @@ The version is in `package.json`, and the site footer, the MCP `serverInfo.versi
 - Tests hold every MCP error to at most 64 characters of the caller's own tool, method or argument name, on the HTTP and the stdio server. The cut was already there; nothing held it.
 
 ### Fixed
+- Bankr skill: the catalog demo named the look-alike 0x35b7…f703 as Coinbase's own SNDKc; it now names the listed contract 0xb200…10c5, and a test holds that the demo never calls a known look-alike "own". A 402 (the free minute used up where passes are sold) now reads as the rate limit, like a 429, instead of a failed check.
 - Stats: an empty **Who called a tool** says why: only checkers called a tool that day (with how many, hidden here), or no tool call at all, instead of a bare "none". A day written before the Agents view keeps "none".
 - Bankr skill, after two outside audits: a contract the issuer removed from its list answers DELISTED (exit 1), never ISSUER-LISTED; a listing on one chain while the other could not be read is exit 3, not a clean yes; no redirect is followed; the ticker query is never printed back; symbols, names and ISINs from an answer print only in their own shape; a ticker search on one chain ignores the other; duplicate or unknown options are refused.
 - The Telegram link points to the project channel, `t.me/proofofstockchannel`, in the footer and in the organisation's `sameAs`.

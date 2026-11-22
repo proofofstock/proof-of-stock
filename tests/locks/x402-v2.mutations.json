@@ -1,0 +1,46 @@
+{
+  "_finding": "x402 catalogues such as x402scan register x402 v2 only (22.11: its check rejects 'x402 v1 response detected'). The site now offers v2 beside v1: the offer in PAYMENT-REQUIRED on every 402, a payment in PAYMENT-SIGNATURE answered in PAYMENT-RESPONSE, and /api/pass, a route that is always the 402 without a pass. A module that speaks v1 only must leave every answer as it was.",
+  "target": "apps/stocks-web.mjs",
+  "runner": [
+    "node",
+    "apps/stocks-web.test.mjs"
+  ],
+  "mutations": [
+    {
+      "name": "a v2 payment is not read",
+      "find": "req.headers['payment-signature'] ? { header: String(req.headers['payment-signature']), version: 2 }",
+      "replace": "false ? { header: '', version: 2 }",
+      "expect": "FAIL paid in v2 (PAYMENT-SIGNATURE): 200, what the pass is, and the receipt in PAYMENT-RESPONSE only"
+    },
+    {
+      "name": "a v2 payment is answered with the v1 receipt",
+      "find": "(version === 2 ? (r.headerV2 ?",
+      "replace": "(version === 3 ? (r.headerV2 ?",
+      "expect": "FAIL paid in v2 (PAYMENT-SIGNATURE): 200, what the pass is, and the receipt in PAYMENT-RESPONSE only"
+    },
+    {
+      "name": "the 402 carries no v2 offer header",
+      "find": "...(v2 ? { 'payment-required': b64json(v2) } : {})",
+      "replace": "",
+      "expect": "FAIL past the free minute on any route: the v1 body its clients read, and the v2 offer in PAYMENT-REQUIRED beside it"
+    },
+    {
+      "name": "/api/pass answers the v1 body",
+      "find": "v2Body: true",
+      "replace": "v2Body: false",
+      "expect": "FAIL /api/pass without a pass is the 402, in v2: the offer in the body and in PAYMENT-REQUIRED, the same object"
+    },
+    {
+      "name": "/api/pass serves without a pass",
+      "find": "if (await passGate(req, res, { cors, why: 'a pass is sold here'",
+      "replace": "if (false && await passGate(req, res, { cors, why: 'a pass is sold here'",
+      "expect": "FAIL /api/pass without a pass is the 402, in v2: the offer in the body and in PAYMENT-REQUIRED, the same object"
+    },
+    {
+      "name": "a module that speaks v1 only is asked for v2",
+      "find": "typeof x402.acceptsV2 === 'function' ? x402.acceptsV2(o) : null",
+      "replace": "x402.acceptsV2(o)",
+      "expect": "FAIL a payment module that speaks v1 only: /api/pass is its v1 402 and no PAYMENT-REQUIRED header"
+    }
+  ]
+}

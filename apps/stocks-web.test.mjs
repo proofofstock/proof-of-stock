@@ -455,6 +455,21 @@ if (!x402mod) {
     const lockBody = await lockedOut.json()
     const lockS = Number(lockedOut.headers.get('retry-after'))
     check('...the lockout names its wait: exact minutes in the text, the same seconds in the body as in Retry-After', lockS > 0 && lockS <= 600 && lockBody.retry_after_s === lockS && new RegExp(`try again in ${Math.ceil(lockS / 60)} minutes?$`).test(lockBody.error || '') && !/few minutes/.test(lockBody.error || ''), JSON.stringify(lockBody))
+    // x402 v2 end to end with the real module (22.11): the offer read from /api/pass's PAYMENT-REQUIRED is what the
+    // payer echoes back as accepted; the module verifies and settles it like v1, and the receipt is v2.
+    if (typeof x402mod.acceptsBodyV2 === 'function') {
+      t += 11 * 60e3
+      const ip5 = { 'x-real-ip': '203.0.113.48' }
+      const ask = await hit('/stocks/api/pass', { headers: ip5 })
+      const offerV2 = JSON.parse(Buffer.from(ask.headers.get('payment-required') || 'e30=', 'base64').toString('utf8'))
+      const accepted = offerV2.accepts?.[0]
+      const { header: v2h } = buildPayment({ payerKey, payTo, valueAtomic: BigInt(accepted?.amount || 0), now: t, version: 2, resource: offerV2.resource?.url, priceUsd: 0.01 })
+      const echoed = JSON.parse(Buffer.from(v2h, 'base64').toString('utf8')).accepted
+      check('the real module: the v2 offer on /api/pass is the one a payer echoes back as accepted', ask.status === 402 && accepted?.network === 'eip155:8453' && JSON.stringify(echoed) === JSON.stringify(accepted), JSON.stringify(accepted))
+      const bought = await hit('/stocks/api/pass', { headers: { ...ip5, 'payment-signature': v2h } })
+      const receipt = JSON.parse(Buffer.from(bought.headers.get('payment-response') || 'e30=', 'base64').toString('utf8'))
+      check('...a PAYMENT-SIGNATURE buys the pass, settled on chain, with a v2 receipt in PAYMENT-RESPONSE', bought.status === 200 && (await bought.json()).pass?.active === true && receipt.success === true && receipt.network === 'eip155:8453' && /^0x[0-9a-f]{64}$/.test(receipt.transaction || ''), JSON.stringify(receipt))
+    } else check('the pass module in this checkout speaks v1 only: v2 end to end skipped', true)
   } finally { await app402.stop() }
 }
 }
@@ -489,6 +504,59 @@ console.log('the payment state carries the sales read from Base')
   let off
   try { off = await (await fetch(`http://127.0.0.1:${po}/stocks/api/status/payments`)).json(); await new Promise((r) => setTimeout(r, 30)) } finally { await appOff.stop() }
   check('...and a server without paid passes reads no chain at all and says nothing of sales', off.enabled === false && !('sales' in off) && offCalls.length === 0, offCalls.join(','))
+}
+
+// x402 v2 beside v1 (22.11): the 402 carries the v2 offer in PAYMENT-REQUIRED; /api/pass is the route made to be bought
+// (always the 402 without a pass, the v2 form in the body too, the Bazaar extension inside); a payment in either
+// version is answered in the same version; /openapi.json lists the route for catalogues. A stand-in for the payment
+// module, so this runs in CI, where the module (a host file) is absent; the module's own v2 is tested in its file.
+console.log('x402 v2 on the wire, and the pass as a route')
+{
+  const passes = new Map()
+  const v1Offer = ({ resource, error }) => ({ x402Version: 1, error, accepts: [{ scheme: 'exact', network: 'base', maxAmountRequired: '10000', resource }] })
+  const v2Offer = ({ resource, error, extensions }) => ({ x402Version: 2, error, resource: { url: resource }, accepts: [{ scheme: 'exact', network: 'eip155:8453', amount: '10000' }], ...(extensions ? { extensions } : {}) })
+  const stand = (withV2) => () => ({
+    enabled: true, wallet: '0x' + '5e'.repeat(20), priceUsd: 0.01, passMinutes: 10, passRate: 600, description: 'pay 0.01 USDC on base for a 10-minute pass',
+    pausedUntil: () => 0, accepts: v1Offer, ...(withV2 ? { acceptsV2: v2Offer } : {}),
+    passActive: (k) => (passes.get(k) || 0) > Date.now(), passUntil: (k) => passes.get(k) || 0,
+    purchase: async (h, k) => (h === 'good' ? (passes.set(k, Date.now() + 600e3), { ok: true, header: 'v1-receipt', headerV2: 'v2-receipt' }) : { ok: false, status: 402, error: 'the signature does not belong to the payer' }),
+  })
+  const quiet = async () => '0x0'
+  const appP = createStocksWeb({ roots: { base: baseRoot, robinhood: rhRoot }, fetchImpl, log: () => {}, analytics: { enabled: false }, exam: { url: null }, x402: { payTo: '0x' + 'd6'.repeat(20) }, x402Module: stand(true), baseCall: quiet })
+  const appV1 = createStocksWeb({ roots: { base: baseRoot, robinhood: rhRoot }, fetchImpl, log: () => {}, analytics: { enabled: false }, exam: { url: null }, x402: { payTo: '0x' + 'd6'.repeat(20) }, x402Module: stand(false), baseCall: quiet })
+  const { port: pp2 } = await appP.start(0, '127.0.0.1')
+  const { port: pv1 } = await appV1.start(0, '127.0.0.1')
+  const at = (port) => (p, headers = {}) => fetch(`http://127.0.0.1:${port}/stocks${p}`, { headers })
+  const P = at(pp2), V1 = at(pv1)
+  const decode = (h) => { try { return JSON.parse(Buffer.from(String(h), 'base64').toString('utf8')) } catch (_) { return null } }
+  try {
+    const offer = await P('/api/pass', { 'x-real-ip': '198.51.100.1' })
+    const body = await offer.json()
+    const head = decode(offer.headers.get('payment-required'))
+    check('/api/pass without a pass is the 402, in v2: the offer in the body and in PAYMENT-REQUIRED, the same object', offer.status === 402 && body.x402Version === 2 && JSON.stringify(head) === JSON.stringify(body) && body.resource?.url === 'https://proofofstock.xyz/api/pass' && body.accepts?.[0]?.network === 'eip155:8453', JSON.stringify(body).slice(0, 160))
+    check('...with the Bazaar extension: a GET with no input, and a JSON pass as its output', body.extensions?.bazaar?.info?.input?.type === 'http' && body.extensions.bazaar.info.input.method === 'GET' && body.extensions.bazaar.info.output?.type === 'json' && body.extensions.bazaar.info.output.example?.pass?.units_per_minute === 600 && body.extensions.bazaar.schema?.required?.includes('input'))
+    check('...the payment headers are exposed to a browser, and the offer is never cached', /payment-required/.test(offer.headers.get('access-control-expose-headers') || '') && /payment-response/.test(offer.headers.get('access-control-expose-headers') || '') && /no-store/.test(offer.headers.get('cache-control') || ''))
+    const v2paid = await P('/api/pass', { 'x-real-ip': '198.51.100.2', 'payment-signature': 'good' })
+    const v2body = await v2paid.json()
+    check('paid in v2 (PAYMENT-SIGNATURE): 200, what the pass is, and the receipt in PAYMENT-RESPONSE only', v2paid.status === 200 && v2body.pass?.active === true && v2body.pass.minutes === 10 && v2body.pass.units_per_minute === 600 && !Number.isNaN(Date.parse(v2body.pass.until)) && v2paid.headers.get('payment-response') === 'v2-receipt' && !v2paid.headers.get('x-payment-response'), JSON.stringify(v2body))
+    const v1paid = await P('/api/pass', { 'x-real-ip': '198.51.100.3', 'x-payment': 'good' })
+    check('paid in v1 (X-PAYMENT): 200, and the receipt in X-PAYMENT-RESPONSE only', v1paid.status === 200 && v1paid.headers.get('x-payment-response') === 'v1-receipt' && !v1paid.headers.get('payment-response'))
+    check('a client whose pass is live is told what it has, not asked to pay again', (await P('/api/pass', { 'x-real-ip': '198.51.100.2' })).status === 200)
+    const bad = await P('/api/pass', { 'x-real-ip': '198.51.100.4', 'payment-signature': 'forged' })
+    check('a payment that does not verify is a 402 with the reason, and no pass', bad.status === 402 && /does not belong to the payer/.test((await bad.json()).error || '') && (await P('/api/pass', { 'x-real-ip': '198.51.100.4' })).status === 402)
+    let lim
+    for (let i = 0; i < 61; i++) lim = await P('/api/find?chain=base&q=nvda', { 'x-real-ip': '198.51.100.5' })
+    const limBody = await lim.json()
+    check('past the free minute on any route: the v1 body its clients read, and the v2 offer in PAYMENT-REQUIRED beside it', lim.status === 402 && limBody.x402Version === 1 && decode(lim.headers.get('payment-required'))?.x402Version === 2 && !decode(lim.headers.get('payment-required'))?.extensions)
+    const api = await (await P('/openapi.json')).json()
+    const op = api.paths?.['/api/pass']?.get
+    check('/openapi.json lists the paid route with its price over x402 and its 402, at the public origin', api.openapi?.startsWith('3.') && api.servers?.[0]?.url === 'https://proofofstock.xyz' && op?.['x-payment-info']?.protocols?.includes('x402') && op['x-payment-info'].price?.amount === '0.01' && op['x-payment-info'].price.currency === 'USD' && op.responses?.['402'] && op.responses?.['200'])
+    check('...and only that route: every route it names answers 402 to a stranger', Object.keys(api.paths || {}).length === 1)
+    const old = await V1('/api/pass', { 'x-real-ip': '198.51.100.6' })
+    const oldBody = await old.json()
+    check('a payment module that speaks v1 only: /api/pass is its v1 402 and no PAYMENT-REQUIRED header', old.status === 402 && oldBody.x402Version === 1 && !old.headers.get('payment-required'))
+  } finally { await appP.stop(); await appV1.stop() }
+  check('a server without paid passes has no /api/pass and no /openapi.json', (await get('/stocks/api/pass')).status === 404 && (await get('/stocks/openapi.json')).status === 404)
 }
 
 console.log('passes off, the world of the day before')
