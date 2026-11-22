@@ -32,9 +32,11 @@ console.log('the site keeps the payment state for stp-health')
   const app = createStocksWeb({ roots: { base: path.join(root, 'b'), robinhood: path.join(root, 'r') }, fetchImpl: async () => ({ ok: false, status: 503, json: async () => ({}) }),
     now: () => t, log: (m) => said.push(String(m)), analytics: { enabled: false }, exam: { url: null }, x402Module: fake })
   const { port } = await app.start(0, '127.0.0.1')
-  const status = async () => (await (await fetch(`http://127.0.0.1:${port}/stocks/api/status`)).json()).payments
+  const status = async () => await (await fetch(`http://127.0.0.1:${port}/stocks/api/status/payments`)).json()
   try {
     const s0 = await status()
+    const chainsOnly = await (await fetch(`http://127.0.0.1:${port}/stocks/api/status`)).json()
+    check('/api/status stays per chain: no payments key beside the chains (its readers take every key as a chain)', !('payments' in chainsOnly) && Object.keys(chainsOnly).every((k) => ['base', 'robinhood'].includes(k)), Object.keys(chainsOnly).join())
     check('with passes on, status names the settlement wallet, not paused, nothing late', s0.enabled === true && s0.settlement_wallet === WALLET && s0.paused_until === null && s0.late_settlements.length === 0, JSON.stringify(s0))
     modLog(`[x402] ALERT late settlement ${TX} still has no receipt after 10 min; reconcile by hand`)
     modLog('[x402] settled 0x' + 'aa'.repeat(32) + ' payer 0x' + '11'.repeat(20) + ' for 0.01 USDC')
@@ -51,7 +53,7 @@ console.log('the site keeps the payment state for stp-health')
     now: () => NOW, log: () => {}, analytics: { enabled: false }, exam: { url: null }, x402Module: null })
   const { port: p2 } = await app2.start(0, '127.0.0.1')
   try {
-    const off = (await (await fetch(`http://127.0.0.1:${p2}/stocks/api/status`)).json()).payments
+    const off = await (await fetch(`http://127.0.0.1:${p2}/stocks/api/status/payments`)).json()
     check('with passes off, status says only that', JSON.stringify(off) === '{"enabled":false}')
   } finally { await app2.stop?.() }
 }
@@ -84,7 +86,9 @@ console.log('stp-health turns it into alerts')
   check('...and an RPC error is an error, not a zero balance', threw)
 }
 const src = fs.readFileSync(new URL('../scripts/stocks/health-check.mjs', import.meta.url), 'utf8')
-check('stp-health runs the payment checks on what /api/status says', src.includes('checks.push(...paymentChecks({ payments, balanceWei, balanceError, now }))'))
+check('stp-health reads the payment state from its own route and runs the checks on it', src.includes("fetch(site + '/api/status/payments'") && src.includes('checks.push(...paymentChecks({ payments, balanceWei, balanceError, now }))'))
+const app = fs.readFileSync(new URL('./stocks-web/app.js', import.meta.url), 'utf8'), canary = fs.readFileSync(new URL('../scripts/canary.mjs', import.meta.url), 'utf8')
+check('the site and the canary count only chain entries of a status, never every key', /chainsOf\(st\)\.map\(\(\[, c\]\) => c\)/.test(app) && /chainsOf\(st\)\.map\(\(\[c, v\]\)/.test(app) && !/Object\.values\(st\)/.test(app) && /'registry_age_s' in s/.test(canary))
 
 console.log(`\n${passed} passed, ${failed} failed`)
 if (failed) { console.log(failures.join('\n')); process.exit(1) }

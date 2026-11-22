@@ -12,6 +12,51 @@ The version is in `package.json`, and the site footer, the MCP `serverInfo.versi
 
 ## [Unreleased]
 
+### Added
+- Landing: the lede says who asks: "Your agent asks before it buys, or you do, right here." The service is built for agents first; the terminal on the page is the same check for a person.
+- The landing's look-alike board arrives as HTML: the server writes the week's newest 24 cases and the counts sentence into the page (`apps/stocks-board.mjs`), so a reader that runs no script sees the board instead of "Loading the case archive.". The page still carries none of a token creator's own text: before the script runs, the token cell is the contract's short address, and the script writes the symbol and name in as text. The script still redraws it on load and every 5 minutes; a test runs app.js's own board on the same answer and holds the two equal, row for row.
+- Counts say what they are out of: `/api/overview` carries `listed` and `minted` per chain (minted null where the issuer reports no supply), the landing board's caption reads "N minted of M listed" before its priced count, and the status registry row adds "N minted (tradable on this chain)" when fewer are minted than listed.
+- Guard example: after an accepted quote, `agent-buy.mjs` prints a KyberSwap link with USDC and the checked contract filled in, built from that address only, so the swap can be made in a browser without a search by name. A refused quote prints no link.
+- Guard: `examples/agent-buy.mjs`, an agent's whole buy from "buy $20 of SNDK on Base" to an unsigned swap: the handed look-alike is refused, the issuer's contract is checked, its passport read, a public DEX quote held to that contract and to the issuer's reference, and the swap built only for the user's wallet and KyberSwap's router. It never signs or sends.
+- Landing: the Bankr skill is in the connect list, said as what it is (in review for Bankr's skill catalog), linking the submission.
+- Status: a **Paid passes** block says whether passes are selling or paused, and links the settling wallet on BaseScan, so every sale is a public transaction anyone can count.
+- README: the daily public exam is linked in the first screen, with a dated build log of the releases (the code is exported here from a private repository, so this repository's own history is short).
+- Stats: an **Agents** tab, MCP without the clients that name themselves probes, catalogues or health checkers. A view by name beside the split by behaviour, which stays as it was; the report prints the same view on its own line.
+- Status: the **Paid passes** block shows the sales as the chain has them: how many settlements the wallet has sent (its own transaction count on Base) and the latest one linked on BaseScan, with its day and who paid. A purchase from our own test wallet says so, and while it is the only one the block says no one else has bought a pass yet. `/api/status/payments` carries the same under `sales`. Read from a Base node every 10 minutes at most, never while a request waits.
+
+### Security
+- The typefaces (Onest, Martian Mono) are served from the site, not from Google Fonts: a page view no longer hands the reader's address to a third party. The CSP now allows fonts and styles from the site only; the OFL licence is served beside the fonts at `/fonts/OFL.txt`.
+- `GET /api/status/payments` costs no unit of the free minute: a monitor reading it past the minute gets the payment state, not a 402. nginx's per-client limit still stands in front of it.
+- `/mcp` no longer lists `authorization` among its CORS allowed headers; the server takes no credentials and nginx clears the header anyway.
+- Tests hold every MCP error to at most 64 characters of the caller's own tool, method or argument name, on the HTTP and the stdio server. The cut was already there; nothing held it.
+
+### Fixed
+- Stats: an empty **Who called a tool** says why: only checkers called a tool that day (with how many, hidden here), or no tool call at all, instead of a bare "none". A day written before the Agents view keeps "none".
+- Bankr skill, after two outside audits: a contract the issuer removed from its list answers DELISTED (exit 1), never ISSUER-LISTED; a listing on one chain while the other could not be read is exit 3, not a clean yes; no redirect is followed; the ticker query is never printed back; symbols, names and ISINs from an answer print only in their own shape; a ticker search on one chain ignores the other; duplicate or unknown options are refused.
+- The Telegram link points to the project channel, `t.me/proofofstockchannel`, in the footer and in the organisation's `sameAs`.
+- Landing: the price example names its token ("NVDAc, for example"), and the two seal mosaics say which is the seal of that day and which is the record as shown.
+- README opens with the threat (a token called "NVIDIA" takes a minute to deploy) before what the service does.
+- Status: "90 tokens tracked" beside 415 listed read as 22% coverage. The row now says the recorder reads only minted tokens, and how many of the listed ones have supply (Base; Robinhood reports no supply, so nothing is said there).
+- History: the page listed the newest 8 registry snapshots under a count of 33 with no word about the rest. The heading now says "the newest 8 of 33" and links every snapshot.
+- Landing: "It can only read" sat beside "two keys that send transactions". It now says what holds: the service never touches your wallet, and its own two keys hold only gas. The free rate says what a minute buys (about 20 passports) before the units.
+- Landing: the look-alike board's empty-state sentence ("No new look-alikes flagged in the last 7 days") sat hidden in the page, so a reader that runs no script (a search engine, an agent, a judge's crawler) read it as a claim while the board was full. The script now writes it, and only when the week's window is empty.
+- **No more 502s during a deploy.** The server reads both issuer registries before it listens, a few seconds in which every restart left the port closed and nginx answered 502. A new unit, `deployment/systemd/stp-web.socket`, keeps the port open across restarts: a request in that gap waits and is answered by the new process. The server takes the socket by the systemd protocol and still binds the port itself without it. Installed once per host (`deployment/CUTOVER.md`, "Restarts without a gap").
+- Payments: after five refused payments on the big-batch route the 429 said "try again in a few minutes". It now names the wait ("try again in 7 minutes") and carries `retry_after_s`, the same seconds as `Retry-After`.
+- Landing: the free tier read "50 addresses a call, 60 calls a minute", two limits that are each true but not reachable together (a batch of 50 costs 5 of the 60 units). It now says what a minute really buys: up to 600 addresses, 50 per call. The pass is "ten times the free limit", not "600 calls a minute".
+
+- **The Status dot was red with everything green.** `/api/status` had gained a `payments` key beside the chains, and its readers (the Status dot and the status line on the site, the outside canary) take every key as a chain. `/api/status` is per chain again; the payment state moved to `GET /api/status/payments`, which stp-health reads. The site and the canary now count only chain entries.
+
+### Added
+- `docs/legal.md` names every service our servers talk to (the issuers, market data, the chains, the anchor witnesses, Bitcoin sources, GitHub, Telegram), so a reader can check what leaves our host.
+
+### Added
+
+- **The passport says when an announced multiplier change takes effect** (`issuer.multiplier_pending_at`). Robinhood added the time to its assets on 20.11 (first seen on SNDK, x8); Coinbase gives none, so it is null there. The canonical issuer list does not carry it, so its hash does not move.
+- **The landing says agents can pay for themselves.** A block before the questions: over the free limit the API answers 402, the agent pays 0.01 USDC on Base over x402 and gets 10 minutes at ten times the rate; the free tier stays as it was. It links to the how-to and to the first settled payment, and the server leaves it out where paid passes are off.
+
+### Changed
+- **The symbol sweep reads crowded symbols deeper.** A symbol whose DexScreener search filled its 30-pair cap has more pools than that search shows; it now goes to GeckoTerminal first and is read page by page (up to 5 pages), and GeckoTerminal gets 12 pages a run instead of 3. Two vanity-address ANTc copies hid on the third page.
+
 ## [0.8.0] - 2026-11-20
 
 ### Changed

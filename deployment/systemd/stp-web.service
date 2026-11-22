@@ -8,6 +8,12 @@ OnFailure=stp-alert@%n.service
 Description=Stock Token Passport: public site and MCP server (read-only)
 After=network-online.target
 Wants=network-online.target
+# The port is held by stp-web.socket once that is installed, so a restart leaves no gap for nginx to answer 502 into.
+# Ordering only, neither Wants nor Requires: the socket is enabled on its own (sockets.target), so on a host without it,
+# or with it disabled, the server binds the port itself as before, and disabling it is a real way back. With the
+# socket active, stopping only this service does not take the site down: the next request starts it again. To stop
+# the site, stop both: systemctl stop stp-web.socket stp-web.service.
+After=stp-web.socket
 
 [Service]
 Type=simple

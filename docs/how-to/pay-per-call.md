@@ -77,6 +77,7 @@ hash is on BaseScan, and anyone can check the payment there.
 | 429, `this payment is being settled` | the same authorization is in flight already; send it again in a few seconds |
 | 429, `a pass was bought here recently` | purchase pacing: one broadcast purchase per client and per payer every 5 minutes |
 | 429, `paid passes are paused` | several settlements in a row failed on chain; selling stops for a while |
+| 429, `too many failed payments from this client; try again in N minutes` | five refused payments on the big-batch route within 10 minutes; the body's `retry_after_s` and `Retry-After` give the same wait in seconds |
 | 429, `your pass is active` | you are over even 600 units a minute; slow down, `Retry-After: 5` |
 
 Prices and pass shape are decided by the server code, not by the client: the only amount accepted is the one the 402

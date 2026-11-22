@@ -7,7 +7,7 @@ import path from 'node:path'
 import { createAnalytics, parseHit, uaClass, ipBytes, parseIgnore, parseIgnoreEntry, ignoredAddress, selfEntries, DAY_CAP_BYTES, KEEP_DAYS, LOADS_PER_VISITOR_DAY, BEACONS_PER_VISITOR_DAY } from './stocks-analytics.mjs'
 import { CANARY_UA } from '../scripts/canary.mjs'
 import { createStocksWeb } from './stocks-web.mjs'
-import { summarise, report } from '../scripts/stocks/analytics-report.mjs'
+import { summarise, report, isCheckerName } from '../scripts/stocks/analytics-report.mjs'
 
 let passed = 0, failed = 0
 const failures = []
@@ -75,11 +75,13 @@ console.log('what an MCP row may hold')
   an.mcp('1.1.1.1', H, JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { clientInfo: { name: 'call me +90 555 0000' } } }), [])
   an.mcp('1.1.1.1', H, JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { clientInfo: { name: 'claude-code' } } }), [])
   const rows = fs.existsSync(dir) ? rowsOf(dir) : []
-  const text = rows.map((r) => JSON.stringify(r)).join('\n')
   check('a batch writes nothing', rows.length === 4, String(rows.length))
   check('a method or tool the server does not define is stored as "other"', rows[0].method === 'other' && rows[1].tool === 'other')
   check('a client name that is not a short plain word is "other"; a plain one is kept', rows[2].client === 'other' && rows[3].client === 'claude-code')
-  check('no text the caller chose is stored', !/555|phone|choosing/.test(text))
+  // The visitor pseudonym is random hex, so it may contain "555" by chance (about one run in seventy, CI 20.11): the
+  // search runs over every field but that one, and the pseudonym is held to its own shape instead.
+  const chosen = rows.map(({ visitor, ...r }) => JSON.stringify(r)).join('\n')
+  check('no text the caller chose is stored', !/555|phone|choosing/.test(chosen) && rows.every((r) => r.visitor == null || /^[0-9a-f]{16}$/.test(r.visitor)), chosen.slice(0, 200))
 }
 
 console.log('the counter stays bounded')
@@ -289,8 +291,15 @@ console.log('MCP: discovery apart from use')
   const quiet = summarise([M('probe1', 'initialize'), M('probe1', 'tools/list')])
   check('a day nobody called a tool is all discovery, with no use', quiet.mcp_use_agents === 0 && quiet.mcp_use_requests === 0 && quiet.mcp_discovery_requests === 2)
   check('the count of requests comes from the rows, not from the top calls, which is capped', summarise(Array.from({ length: 40 }, (_, i) => M('v' + i, 'tools/call', { tool: 'tool' + i }))).mcp_requests === 40)
+  // The view without checkers (owner, 21.11): by the name a client sends, beside the split, never instead of it.
+  check('the view without checkers hides the clients that name themselves probes or catalogues', s.mcp_checker_agents === 2 && s.mcp_agent_clients === 1 && s.mcp_agent_use_agents === 1 && s.mcp_agent_requests === 3 && s.mcp_agent_use_requests === 3 && s.mcp_agent_tool_calls === 1 && JSON.stringify(s.mcp_agent_names) === JSON.stringify([['claude-code', 1]]))
+  check('...a checker that calls a tool stays use in the split, and is hidden in the view', named.mcp_use_agents === 2 && named.mcp_agent_use_agents === 1 && named.mcp_agent_tool_calls === 1 && summarise([M('p', 'tools/call', { tool: 'find_stock_token', client: 'mcpbeat' })]).mcp_use_agents === 1)
+  const plain = summarise([M('x', 'tools/call', { tool: 'find_stock_token' }), M('y', 'initialize', { client: 'kitscout-live-check' }), M('y', 'tools/call', { tool: 'list_stock_tokens' })])
+  check('...one row with a checker name marks the agent, and an agent with no name is not hidden', plain.mcp_agent_clients === 1 && plain.mcp_agent_use_agents === 1 && JSON.stringify(plain.mcp_agent_names) === JSON.stringify([['(no name)', 1]]))
+  check('...the words catch a new checker by its name, and a plain name passes', ['glimind-probe', 'hostedmcp-liveness', 'mcptry-health-check', 'talaria-catalog', 'glama', 'registry-census', 'FaceabotProbe', 'trustrank', 'agent-collector'].every(isCheckerName) && !['claude-code', 'BrickBlueBot', 'cursor', 'pi', null, undefined].some(isCheckerName))
   const md2 = (() => { const d = fs.mkdtempSync(path.join(os.tmpdir(), 'stp-mcp-')); fs.writeFileSync(path.join(d, 'hits-2026-11-13.jsonl'), rows.map((r) => JSON.stringify(r)).join('\n') + '\n'); const out = report({ dir: d, days: 1, today: '2026-11-13' }); fs.rmSync(d, { recursive: true, force: true }); return out })()
   check('the report says the split, and that a client name is only a label', /3 agents, 1 of them called a tool/.test(md2) && /5 discovery and 3 use/.test(md2) && /a label, not the split/.test(md2))
+  check('...and the view without checkers on its own line', /\*\*MCP without checkers\*\*.*1 agents, 1 of them called a tool; requests 3, tool calls 1; who called a tool: claude-code 1/.test(md2))
 }
 
 fs.rmSync(tmp, { recursive: true, force: true })

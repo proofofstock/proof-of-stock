@@ -10,7 +10,7 @@ import { SITE_NAME, SITE_DESCRIPTION } from '../evm/core/stocks/page-meta.mjs'
 
 export const CONTACT_EMAIL = 'hello@proofofstock.xyz'
 // The project's own profiles (owner, 11.11): shown in the footer and as the organisation's sameAs.
-export const PROFILES = Object.freeze(['https://x.com/proofofstock', 'https://t.me/proofofstock1'])
+export const PROFILES = Object.freeze(['https://x.com/proofofstock', 'https://t.me/proofofstockchannel'])
 
 /** The crawlers named in robots.txt, by company: search, AI training and AI answer-time fetchers. */
 export const AI_CRAWLERS = Object.freeze([

@@ -17,6 +17,16 @@ const inc = (m, k, by = 1) => m.set(k, (m.get(k) || 0) + by)
 
 const ACTION_LABEL = { section: 'sections seen (a second on screen)', chip: 'buttons under the headline', search: 'searches (kind:outcome)', command: 'commands typed', faq: 'questions opened', copy: 'copied', out: 'links out', tab: 'chain switch', board: 'board rows opened' }
 
+/**
+ * A client that names itself a checker: a catalogue, registry, uptime or health checker, prober, scanner or reviewer
+ * (owner, 21.11: "show it without the catalogues"). This is a VIEW, not the split: discovery and use above still go by
+ * what an agent did. A name is what a client chose to send, so this undercounts checkers (a new one with a plain name
+ * passes as an agent, and so does one that sends no name) and never hides a real agent that names itself plainly. Words,
+ * not a list of names, so a new "foo-probe" is caught the day it appears; the few catalogues with no such word are named.
+ */
+export const CHECKER_NAME = /probe|prober|check|health|liveness|uptime|monitor|beat|catalog|registry|census|crawl|scout|inspector|audit|verif|review|research|rank|playground|incremental|collector|recon|scan|index|^glama\b/i
+export const isCheckerName = (name) => typeof name === 'string' && CHECKER_NAME.test(name)
+
 /** One day's rows → its summary. Exported for the tests. */
 export function summarise (rows) {
   const people = new Set(), loads = new Map(), loadVisitors = new Map()
@@ -54,6 +64,12 @@ export function summarise (rows) {
       if (isToolCall(r)) mcpUsers.add(r.visitor)
     }
   }
+  // The view without checkers: an agent is a checker when any of its rows that day sent a checker name.
+  const checkers = new Set(mcpRows.filter((r) => isCheckerName(r.client)).map((r) => r.visitor))
+  const agentRows = mcpRows.filter((r) => !checkers.has(r.visitor))
+  const agentUsers = new Set([...mcpUsers].filter((v) => !checkers.has(v)))
+  const agentNames = new Map()
+  for (const v of agentUsers) inc(agentNames, (mcpRows.find((r) => r.visitor === v && r.client) || {}).client || '(no name)')
   const timeByPage = new Map(), perPerson = new Map()
   for (const [k, s] of timeByVisitorPage) {
     const [v, page] = k.split(' ')
@@ -85,6 +101,14 @@ export function summarise (rows) {
     mcp_discovery_requests: mcpRows.filter((r) => !mcpUsers.has(r.visitor)).length,
     mcp_use_agents: mcpUsers.size,
     mcp_discovery_agents: mcpVisitors.size - mcpUsers.size,
+    // Without the clients that name themselves checkers (isCheckerName): the same counts, on the rest.
+    mcp_checker_agents: checkers.size,
+    mcp_agent_clients: mcpVisitors.size - checkers.size,
+    mcp_agent_requests: agentRows.length,
+    mcp_agent_use_agents: agentUsers.size,
+    mcp_agent_use_requests: agentRows.filter((r) => agentUsers.has(r.visitor)).length,
+    mcp_agent_tool_calls: agentRows.filter(isToolCall).length,
+    mcp_agent_names: top(agentNames),
   }
 }
 
@@ -117,7 +141,8 @@ export function report ({ dir, days = 7, today = new Date().toISOString().slice(
       `- **came from:** ${list(s.refs)}`,
       `- **countries (people):** ${list(s.countries)}`,
       ...['section', 'chip', 'search', 'command', 'faq', 'copy', 'out', 'tab'].map((a) => `- **${ACTION_LABEL[a]}** (people): ${list(s.actions[a] || [])}`),
-      `- **MCP:** ${s.mcp_clients} agents, ${s.mcp_use_agents} of them called a tool; requests ${s.mcp_requests}, of which ${s.mcp_discovery_requests} discovery and ${s.mcp_use_requests} use; calls: ${list(s.mcp_calls)}; client names (a label, not the split): ${list(s.mcp_client_names)}`, '')
+      `- **MCP:** ${s.mcp_clients} agents, ${s.mcp_use_agents} of them called a tool; requests ${s.mcp_requests}, of which ${s.mcp_discovery_requests} discovery and ${s.mcp_use_requests} use; calls: ${list(s.mcp_calls)}; client names (a label, not the split): ${list(s.mcp_client_names)}`,
+      `- **MCP without checkers** (clients naming themselves probes, catalogues, health checkers; a view, not the split): ${s.mcp_agent_clients} agents, ${s.mcp_agent_use_agents} of them called a tool; requests ${s.mcp_agent_requests}, tool calls ${s.mcp_agent_tool_calls}; who called a tool: ${list(s.mcp_agent_names)}`, '')
   }
   return out.join('\n')
 }

@@ -6,7 +6,7 @@
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { fromDexScreener, fromGecko, queriesOf, searchSymbols, mergeSweep, sweptForList, runSweep, readSweep, SWEEP_FILE, DS_BREAKER } from './symbol-sweep.mjs'
+import { fromDexScreener, fromGecko, queriesOf, searchSymbols, mergeSweep, sweptForList, runSweep, readSweep, SWEEP_FILE, DS_BREAKER, DS_SEARCH_CAP, GECKO_SEARCH_PAGE, GECKO_MAX_SWEEP_PAGES } from './symbol-sweep.mjs'
 import { buildImpostorList } from './impostor-list.mjs'
 import { COINBASE_URL } from '../../evm/core/stocks/registries.mjs'
 
@@ -65,6 +65,34 @@ console.log('asking within the budgets')
   const paces = []
   await searchSymbols({ queries: ['A', 'B'], slug: 'base', network: 'base', registrySet: reg, fetchImpl: f, sleep: async (ms) => { paces.push(ms) }, geckoBudget: 1 })
   check('requests are paced: DexScreener between symbols, GeckoTerminal before each', paces.join() === '1100,12500', paces.join())
+}
+
+console.log('crowded symbols: where a copy hides past the first page (20.11)')
+{
+  // B is crowded: DexScreener answers its 30-pair cap. GeckoTerminal has three pages of B; the copy is on the third.
+  const HIDDEN = '0x' + 'c4'.repeat(20)
+  const pool = () => ({ id: 'x' })
+  const dsFull = { pairs: Array.from({ length: DS_SEARCH_CAP }, () => ({ chainId: 'base', baseToken: { address: REAL, symbol: 'SNDKc' }, quoteToken: { address: USDC, symbol: 'USDC' } })) }
+  const gtPages = { 1: { data: Array.from({ length: GECKO_SEARCH_PAGE }, pool), included: [] }, 2: { data: Array.from({ length: GECKO_SEARCH_PAGE }, pool), included: [] },
+    3: { data: [pool(), pool()], included: [{ type: 'token', id: 'base_' + HIDDEN, attributes: { symbol: 'SNDKc', name: 'Sandisk' } }] } }
+  const urls = []
+  const f = async (u) => {
+    const url = new URL(String(u)); urls.push(url.hostname.split('.')[1] + ':' + (url.searchParams.get('q') || url.searchParams.get('query')) + ':' + (url.searchParams.get('page') || 1))
+    if (url.hostname.includes('dexscreener')) return { ok: true, status: 200, json: async () => (url.searchParams.get('q') === 'B' ? dsFull : dsBody) }
+    const q = url.searchParams.get('query'), p = Number(url.searchParams.get('page') || 1)
+    return { ok: true, status: 200, json: async () => (q === 'B' ? gtPages[p] : { data: [], included: [] }) }
+  }
+  const r = await searchSymbols({ queries: ['A', 'B', 'C', 'D'], slug: 'base', network: 'base', registrySet: reg, fetchImpl: f, sleep: async () => {}, geckoBudget: 5, geckoCursor: 0 })
+  const gt = urls.filter((u) => u.startsWith('geckoterminal'))
+  check('a symbol whose DexScreener answer hit the cap is crowded', r.crowded === 1)
+  check('...and is read on GeckoTerminal first, page after page while pages are full', gt.slice(0, 3).join() === 'geckoterminal:B:1,geckoterminal:B:2,geckoterminal:B:3', gt.join(' '))
+  check('...so the copy on the third page is found', r.found.has(HIDDEN) && r.found.get(HIDDEN).sources.has('geckoterminal'))
+  check('...and the rest of the budget goes to the others, one page each, skipping the crowded one', gt.slice(3).join() === 'geckoterminal:A:1,geckoterminal:C:1' && r.asked.geckoterminal === 5, gt.join(' '))
+  urls.length = 0
+  const many = { 1: gtPages[1], 2: gtPages[1], 3: gtPages[1], 4: gtPages[1], 5: gtPages[1], 6: gtPages[1] }
+  const g = async (u) => { const url = new URL(String(u)); urls.push(url.searchParams.get('page') || '1'); return url.hostname.includes('dexscreener') ? { ok: true, status: 200, json: async () => dsFull } : { ok: true, status: 200, json: async () => many[Number(url.searchParams.get('page') || 1)] } }
+  await searchSymbols({ queries: ['B'], slug: 'base', network: 'base', registrySet: reg, fetchImpl: g, sleep: async () => {}, geckoBudget: 20 })
+  check(`...never past ${GECKO_MAX_SWEEP_PAGES} pages of one symbol`, urls.length - 1 === GECKO_MAX_SWEEP_PAGES, urls.join(','))
 }
 
 console.log('the text comes from the chain')

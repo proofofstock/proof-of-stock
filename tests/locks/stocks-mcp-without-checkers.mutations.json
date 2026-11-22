@@ -1,0 +1,40 @@
+{
+  "_finding": "The owner asked to see MCP without the catalogues and health checkers (21.11). That view goes by the name a client sends, so it must stay a view beside the split by behaviour, never replace it: a checker that calls a tool is still use in the split. One row carrying a checker name marks the whole agent for the day, an agent with no name is not hidden, and the counts of the view come from the rows of the agents that remain.",
+  "target": "scripts/stocks/analytics-report.mjs",
+  "runner": [
+    "node",
+    "apps/stocks-analytics.test.mjs"
+  ],
+  "mutations": [
+    {
+      "name": "the view replaces the split: checkers stop counting as use",
+      "find": "      if (isToolCall(r)) mcpUsers.add(r.visitor)",
+      "replace": "      if (isToolCall(r) && !isCheckerName(r.client)) mcpUsers.add(r.visitor)",
+      "expect": "FAIL ...a checker that calls a tool stays use in the split, and is hidden in the view"
+    },
+    {
+      "name": "only the row that carries the name is hidden, not the agent",
+      "find": "  const agentRows = mcpRows.filter((r) => !checkers.has(r.visitor))",
+      "replace": "  const agentRows = mcpRows.filter((r) => !isCheckerName(r.client))",
+      "expect": "FAIL the view without checkers hides the clients that name themselves probes or catalogues"
+    },
+    {
+      "name": "an agent with no name is hidden as a checker",
+      "find": "export const isCheckerName = (name) => typeof name === 'string' && CHECKER_NAME.test(name)",
+      "replace": "export const isCheckerName = (name) => typeof name !== 'string' || CHECKER_NAME.test(name)",
+      "expect": "FAIL ...one row with a checker name marks the agent, and an agent with no name is not hidden"
+    },
+    {
+      "name": "the agents that called a tool include the checkers",
+      "find": "  const agentUsers = new Set([...mcpUsers].filter((v) => !checkers.has(v)))",
+      "replace": "  const agentUsers = new Set(mcpUsers)",
+      "expect": "FAIL ...a checker that calls a tool stays use in the split, and is hidden in the view"
+    },
+    {
+      "name": "the view counts every tool call of the day",
+      "find": "    mcp_agent_tool_calls: agentRows.filter(isToolCall).length,",
+      "replace": "    mcp_agent_tool_calls: mcpRows.filter(isToolCall).length,",
+      "expect": "FAIL ...a checker that calls a tool stays use in the split, and is hidden in the view"
+    }
+  ]
+}

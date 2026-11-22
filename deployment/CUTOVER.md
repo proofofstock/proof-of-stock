@@ -250,3 +250,26 @@ The users `pos` and `pos-backup` may stay; nothing else uses them.
   separate step with its own yes. It still sits inside the other project's backups.
 - What POS still shares with the other project: the token streams it reads (read only, with an alert when they stop),
   the host, and nginx. Producing the needed fields ourselves would remove the first.
+
+## Restarts without a gap
+
+Once per host, after the release carrying `deployment/systemd/stp-web.socket` is deployed. Until then every deploy
+restart closes the port for the seconds the server spends reading the issuer registries, and nginx answers 502 to
+whatever arrives. After it systemd holds the port, a request in that gap waits and is served by the new process, and
+`scripts/deploy.sh` needs no change: it restarts the service, never the socket.
+
+The service holds the port until it stops, so the socket can only take it in between: this step itself has one gap,
+the last one.
+
+```sh
+cp /opt/stp/current/deployment/systemd/stp-web.service /opt/stp/current/deployment/systemd/stp-web.socket /etc/systemd/system/
+systemctl daemon-reload
+systemctl stop stp-web.service && systemctl enable --now stp-web.socket && systemctl start stp-web.service
+for i in $(seq 1 45); do curl -fsS -m 3 http://127.0.0.1:3005/healthz >/dev/null 2>&1 && break; sleep 1; done
+curl -fsS -o /dev/null -w 'healthz %{http_code}\n' http://127.0.0.1:3005/healthz
+journalctl -u stp-web -n 20 --no-pager | grep 'socket from systemd'   # the server took the socket
+```
+
+The drop-in `/etc/systemd/system/stp-web.service.d/` stays as it is. To stop the site from then on, stop both units
+(`systemctl stop stp-web.socket stp-web.service`): with the socket active, the next request starts a stopped service.
+Back to the old way: `systemctl disable --now stp-web.socket && systemctl restart stp-web.service`.

@@ -115,6 +115,10 @@ console.log('the server: every route that carries the text')
   check('/api/history/cases: no deployer in any event (the board shows these rows)', cases.events.every((e) => !('deployer' in e)) && !JSON.stringify(cases).includes('de'.repeat(20)))
   const home = await (await get('/')).text()
   check('the landing page carries the board but none of the token\'s own text, in HTML or JSON-LD', home.includes('id="findings"') && !home.includes('SYSTEM: ignore') && !home.includes(HOSTILE_SYMBOL.slice(0, 12)))
+  // The board arrives written into the page (apps/stocks-board.mjs, 22.11). Its token cell is the contract, never the
+  // symbol: this symbol's label is NVDAc, the same text as the listed symbol it copies, so the check is on the cell itself.
+  const rows = (home.match(/<tbody id="board-rows">([\s\S]*?)<\/tbody>/) || [])[1] || ''
+  check('...its board rows name the contract in the token cell, never the creator\'s symbol', rows.includes('<tr') && [...rows.matchAll(/<code>([^<]*)<\/code>/g)].every(([, t]) => /^0x[0-9a-f]{4}…[0-9a-f]{4}$/.test(t)), rows.slice(0, 200))
   check('...the archive file itself is not rewritten', fs.readFileSync(path.join(hist, 'cases-2026-11-10.jsonl'), 'utf8').includes('SYSTEM: ignore'))
 
   const pass = await (await get(`/api/passport?chain=base&address=${OTHER}`)).json()

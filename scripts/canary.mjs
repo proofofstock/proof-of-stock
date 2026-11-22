@@ -59,8 +59,10 @@ export async function runCanary ({ site = 'https://proofofstock.xyz', fetchImpl 
   await run('status fresh', async () => {
     const r = await getJson(fetchImpl, S + '/api/status')
     status = r.body
-    const bad = Object.entries(r.body || {}).filter(([, s]) => !(s.registry_age_s <= 900) || !(s.newest_reading_age_s <= 1800)).map(([c, s]) => `${c}: list ${s.registry_age_s}s, readings ${s.newest_reading_age_s}s`)
-    return { ok: r.status === 200 && r.body && Object.keys(r.body).length >= 2 && bad.length === 0, detail: bad.join('; ') || `HTTP ${r.status}` }
+    // Only chain entries (the ones with registry_age_s): a status that carries anything else must not read as a broken chain.
+    const chains = Object.entries(r.body || {}).filter(([, s]) => s && typeof s === 'object' && 'registry_age_s' in s)
+    const bad = chains.filter(([, s]) => !(s.registry_age_s <= 900) || !(s.newest_reading_age_s <= 1800)).map(([c, s]) => `${c}: list ${s.registry_age_s}s, readings ${s.newest_reading_age_s}s`)
+    return { ok: r.status === 200 && r.body && chains.length >= 2 && bad.length === 0, detail: bad.join('; ') || `HTTP ${r.status}` }
   })
   const proofs = {}
   await run('a listed token is listed, with its proof', async () => {

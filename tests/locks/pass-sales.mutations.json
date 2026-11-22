@@ -1,0 +1,46 @@
+{
+  "_finding": "The outside review (21.11) read the paid passes as unproven: nothing on the site showed a pass had ever been sold. The count and the latest sale are read from Base, not kept by us: the settlement wallet's own transaction count, and its latest transaction found by a search over blocks, with who paid it. A purchase of our own must never read as a customer's.",
+  "target": "apps/pass-sales.mjs",
+  "runner": [
+    "node",
+    "apps/pass-sales.test.mjs"
+  ],
+  "mutations": [
+    {
+      "name": "the search takes the transaction at the count, not the one just below it",
+      "find": "num(t.nonce) === count - 1",
+      "replace": "num(t.nonce) === count",
+      "expect": "FAIL the latest settlement is the wallet's transaction in the block where the count reached it, with its day"
+    },
+    {
+      "name": "a stranger's transaction in the same block is taken for the wallet's",
+      "find": "String(t.from).toLowerCase() === w &&",
+      "replace": "",
+      "expect": "FAIL the latest settlement is the wallet's transaction in the block where the count reached it, with its day"
+    },
+    {
+      "name": "any token's transfer to the payee is read as the payment",
+      "find": "String(l.address).toLowerCase() === USDC_BASE &&",
+      "replace": "",
+      "expect": "FAIL ...it paid out, the payer is read from the USDC transfer to our payee, and a customer is not ours"
+    },
+    {
+      "name": "our own test wallet is not recognised",
+      "find": "ours: payer != null && ours.has(payer)",
+      "replace": "ours: false",
+      "expect": "FAIL a sale from our own test wallet is named ours"
+    },
+    {
+      "name": "the latest sale is searched again though the count has not moved",
+      "find": "if (latestByCount.has(count)) return latestByCount.get(count)",
+      "replace": "",
+      "expect": "FAIL a count that has not moved costs one call: the latest is kept, a mined transaction does not change"
+    },
+    {
+      "name": "a failed read throws away the last good answer",
+      "find": "log(`[pass-sales] read failed:",
+      "replace": "state = null; log(`[pass-sales] read failed:",
+      "expect": "FAIL a node that fails keeps the last good answer and logs the failure"
+    }
+  ]
+}

@@ -45,5 +45,24 @@ const js = fs.readFileSync(new URL('./stocks-web/app.js', import.meta.url), 'utf
 check('the landing board shows the same reason', js.includes("imitated_left_list: 'closed: the stock it copied left the issuer\\'s list'") && js.includes("(e.event === 'gone' && GONE_WHY[e.gone_reason])"))
 fs.rmSync(root, { recursive: true, force: true })
 
+// The page lists the newest 8 registry snapshots; with more, it says how many and where the rest are (outside review,
+// 21.11: "33 snapshots" over a list of 8 read as missing data).
+console.log('registry snapshots shown against the count')
+const snap = (i) => ({ fetched_at: `2026-11-${String(10 + i).padStart(2, '0')}T10:00:00Z`, records: 100 + i, hash: 'sha256:' + String(i).padStart(64, '0'), prev_hash: i ? 'x' : null, added: 1 })
+const fake = (n) => ({ cases: () => ({ counts: { open: 0, listed: 0 }, events: [], archive_started_at: '2026-11-10T00:00:00Z' }), registry: () => ({ count: n, snapshots: Array.from({ length: n }, (_, i) => snap(n - 1 - i)) }) })
+const many = historyPage({ store: fake(12), chains: ['base'], now: Date.now(), version: '0', assets: { css: 'a', docsCss: 'b' } })
+check('more than 8: the heading says the newest 8 of all, and links every snapshot', many.includes('Registry snapshots, the newest 8 of 12') && many.includes('href="api/history/registry?chain=base"') && (many.match(/hs-ev reg/g) || []).length === 8)
+const few = historyPage({ store: fake(3), chains: ['base'], now: Date.now(), version: '0', assets: { css: 'a', docsCss: 'b' } })
+check('...8 or fewer: no such note', few.includes('<h3>Registry snapshots</h3>') && !few.includes('newest 8 of'))
+
+// The landing board says what it counts out of (outside review, 21.11: "90 tradable of 415 wherever counts appear").
+console.log('the board counts out of the list')
+{
+  const line = (js.match(/^ *const boardOutOf = .*$/m) || [''])[0]
+  const boardOutOf = line ? new Function(line.trim() + '; return boardOutOf')() : () => null
+  check('the board caption says minted of listed when fewer are minted', boardOutOf({ listed: 415, minted: 90 }) === '90 minted of 415 listed · ' && js.includes('boardOutOf(b) + `${b.priced} priced'), String(boardOutOf({ listed: 415, minted: 90 })))
+  check('...the listed count alone when all are minted or supply is not reported, nothing from an old server', boardOutOf({ listed: 205, minted: null }) === '205 listed · ' && boardOutOf({ listed: 5, minted: 5 }) === '5 listed · ' && boardOutOf({}) === '')
+}
+
 console.log(`\n${passed} passed, ${failed} failed`)
 if (failed) { console.log(failures.join('\n')); process.exit(1) }

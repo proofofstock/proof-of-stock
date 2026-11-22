@@ -80,7 +80,7 @@ const key = (cls, text) => `<i class="sx-k ${cls}"></i>${esc(text)}`
 const card = (title, body, { sub = '', cls = '' } = {}) => `<section class="sx-card ${cls}"><div class="sx-h"><h2>${esc(title)}</h2>${sub ? `<span class="sx-leg">${esc(sub)}</span>` : ''}</div>${body}</section>`
 const tile = (label, value, foot, cls = '') => `<div class="sx-kpi ${cls}"><span class="sx-kl">${esc(label)}</span><b class="sx-kn">${value}</b><span class="sx-kf">${foot}</span></div>`
 
-const TABS = [['overview', 'Overview'], ['visits', 'Visits'], ['mcp', 'MCP'], ['recorder', 'Recorder'], ['exam', 'Exam'], ['days', 'Days']]
+const TABS = [['overview', 'Overview'], ['visits', 'Visits'], ['mcp', 'MCP'], ['agents', 'Agents'], ['recorder', 'Recorder'], ['exam', 'Exam'], ['days', 'Days']]
 
 /** The page. `days`: dailySummaries() oldest first; `runs`: { chain: lastRuns() }; `exam`: the /api/exam body or null. */
 /**
@@ -169,6 +169,29 @@ export function statsPage ({ days, runs, exam, now, version, assets, ignoring = 
   const mcp = `<div class="sx-row c2">${mcpReq}${mcpClients}</div>
     <div class="sx-row c3">${card('Discovery and use', split, { sub: `${when} · by what an agent did, not by its name` })}${card('Calls', topList(ts?.mcp_calls, { limit: 7, cls: 'mcp' }), { sub: ts ? `${when} · ${toolCalls(ts)} tool calls of ${requests(ts)}` : when })}${card('Who connected', topList(ts?.mcp_client_names, { limit: 7, cls: 'mcp' }), { sub: `${when} · the name a client sends, a label only` })}</div>`
 
+  // Agents: the MCP tab without the clients that name themselves checkers (owner, 21.11: "without the catalogues").
+  // A view by name, beside the split by behaviour, never instead of it: a checker with a plain name still shows here.
+  const agentReq = histogram({
+    title: 'Requests without checkers', kind: 'mcp', legend: `${key('b0', 'requests')}${key('b1', 'from agents that called a tool')}`, aria: 'MCP requests by day from clients that do not name themselves checkers',
+    slots: days.map(({ day, summary: s }) => ({ label: dd(day), value: s ? num(s.mcp_agent_requests) : null, front: s ? num(s.mcp_agent_use_requests) : 0, title: s ? `${day}: ${num(s.mcp_agent_requests)} requests without checkers, ${num(s.mcp_agent_use_requests)} from agents that called a tool` : `${day}: no data` })),
+  })
+  const agentClients = histogram({
+    title: 'Agents without checkers', kind: 'mcp', legend: `${key('b0', 'connected')}${key('b1', 'called a tool')}`, aria: 'MCP agents by day that do not name themselves checkers, and those that called a tool',
+    slots: days.map(({ day, summary: s }) => ({ label: dd(day), value: s ? num(s.mcp_agent_clients) : null, front: s ? num(s.mcp_agent_use_agents) : 0, title: s ? `${day}: ${num(s.mcp_agent_clients)} agents without checkers, ${num(s.mcp_agent_use_agents)} called a tool` : `${day}: no data` })),
+  })
+  const agentSplit = ts
+    ? `<ul class="sx-kv"><li><span class="k">agents</span><span class="v">${num(ts.mcp_agent_clients)} of ${show(ts.mcp_clients)}</span></li><li><span class="k">checkers</span><span class="v">${num(ts.mcp_checker_agents)} hidden</span></li><li><span class="k">called a tool</span><span class="v">${num(ts.mcp_agent_use_agents)}</span></li><li><span class="k">tool calls</span><span class="v">${num(ts.mcp_agent_tool_calls)}</span></li></ul><p class="sx-more">Hidden: clients whose name says probe, check, health, catalog, registry, scan, review and the like. A name is what a client chose to send, so a checker with a plain name or no name still counts here.</p>`
+    : '<p class="sx-none">none</p>'
+  // An empty "Who called a tool" says why (owner, 21.11: "why is there no data?"): no tool call at all, or only checkers,
+  // counted. A day written before this view existed has no agent fields and keeps the plain "none".
+  const checkerUsers = ts ? Math.max(0, num(ts.mcp_use_agents) - num(ts.mcp_agent_use_agents)) : 0
+  const whoCalled = ts && ts.mcp_agent_use_agents != null && !(ts.mcp_agent_names || []).length
+    ? `<p class="sx-none">${checkerUsers ? `only checkers called a tool ${esc(when)}: ${checkerUsers}, hidden here` : `no tool call ${esc(when)}`}</p>`
+    : topList(ts?.mcp_agent_names, { limit: 7, cls: 'mcp' })
+  const agentTotals = real.reduce((a, { summary: s }) => ({ calls: a.calls + num(s.mcp_agent_tool_calls), days: a.days + (num(s.mcp_agent_use_agents) > 0 ? 1 : 0) }), { calls: 0, days: 0 })
+  const agents = `<div class="sx-row c2">${agentReq}${agentClients}</div>
+    <div class="sx-row c3">${card('Without checkers', agentSplit, { sub: `${when} · by the name a client sends` })}${card('Who called a tool', whoCalled, { sub: `${when} · checkers hidden` })}${card('Over the days shown', `<ul class="sx-kv"><li><span class="k">tool calls</span><span class="v">${agentTotals.calls}</span></li><li><span class="k">days with a call</span><span class="v">${agentTotals.days} of ${real.length}</span></li></ul>`, { sub: 'checkers hidden' })}</div>`
+
   // Recorder: per chain, a chart of the last runs' time against their budget, and the table.
   const recorder = `<div class="sx-row c2 rec">${chains.map(([c, rs]) => {
     const old = [...rs].reverse()
@@ -214,7 +237,7 @@ export function statsPage ({ days, runs, exam, now, version, assets, ignoring = 
     : `<tr class="sx-empty"><td>${esc(day)}</td><td colspan="10">no data</td></tr>`).join('')
   const dayTable = `<div class="sx-row c1 fit">${card('By day', `<table class="sx-table"><thead><tr><th>day</th><th class="n">people</th><th class="n">30 s+</th><th class="n">median s</th><th class="n">no beacon</th><th class="n">bots</th><th class="n">tools</th><th class="n">MCP agents</th><th class="n">called a tool</th><th class="n">tool calls</th><th class="n">MCP requests</th></tr></thead><tbody>${dayRows}</tbody></table>`, { sub: 'newest first, UTC' })}</div>`
 
-  const panels = { overview, visits, mcp, recorder, exam: examPanel, days: dayTable }
+  const panels = { overview, visits, mcp, agents, recorder, exam: examPanel, days: dayTable }
   const range = days.length ? `${days[0].day} to ${days[days.length - 1].day} UTC` : ''
   return `<!doctype html>
 <html lang="en">

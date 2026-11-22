@@ -1,0 +1,28 @@
+{
+  "_finding": "The outside review (21.11) read the paid passes as unproven. /status now shows the sales the chain has, and must say a purchase of our own is ours: a test purchase shown as a customer's would be the kind of claim the page exists to avoid.",
+  "target": "apps/stocks-status.mjs",
+  "runner": [
+    "node",
+    "apps/status-usage.test.mjs"
+  ],
+  "mutations": [
+    {
+      "name": "our own purchase is shown as a stranger's",
+      "find": "? `, paid by our own test wallet",
+      "replace": "? `, paid by a buyer",
+      "expect": "FAIL one sale of our own: the count, the transaction linked on BaseScan, its day, and that no one else has bought one"
+    },
+    {
+      "name": "no one else has bought is said whatever the count",
+      "find": "${n === 1 ? '. No one else has bought a pass yet' : ''}",
+      "replace": "${'. No one else has bought a pass yet'}",
+      "expect": "FAIL ...a later sale of ours after customers does not claim no one else bought"
+    },
+    {
+      "name": "a transaction that is not a hash is linked",
+      "find": "|| !HASH_RE.test(String(l.transaction))",
+      "replace": "",
+      "expect": "FAIL ...a transaction or payer that is not one is never linked or printed"
+    }
+  ]
+}

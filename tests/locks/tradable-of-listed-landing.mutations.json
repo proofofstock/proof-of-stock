@@ -1,0 +1,28 @@
+{
+  "_finding": "The outside review (21.11) read 415 tokens beside 90 price readings as 22% coverage. Wherever the site counts tokens it must say what the count is out of: the issuer's list, and of it the minted tokens, the only ones with a price to read. Where the issuer reports no supply the minted count is null, never a guess.",
+  "target": "apps/stocks-web/app.js",
+  "runner": [
+    "node",
+    "apps/history-gone-reason.test.mjs"
+  ],
+  "mutations": [
+    {
+      "name": "the caption is not on the board",
+      "find": "boardOutOf(b) + `${b.priced} priced",
+      "replace": "`${b.priced} priced",
+      "expect": "FAIL the board caption says minted of listed"
+    },
+    {
+      "name": "the caption says listed only, never minted",
+      "find": "b.minted != null && b.minted < b.listed ? `${b.minted} minted of ${b.listed} listed · ` :",
+      "replace": "false ? '' :",
+      "expect": "FAIL the board caption says minted of listed"
+    },
+    {
+      "name": "an old server's answer prints undefined",
+      "find": "(b.listed == null ? '' : ",
+      "replace": "(",
+      "expect": "FAIL ...the listed count alone when all are minted"
+    }
+  ]
+}

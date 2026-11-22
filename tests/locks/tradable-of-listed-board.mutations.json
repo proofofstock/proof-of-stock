@@ -1,0 +1,28 @@
+{
+  "_finding": "The outside review (21.11) read 415 tokens beside 90 price readings as 22% coverage. Wherever the site counts tokens it must say what the count is out of: the issuer's list, and of it the minted tokens, the only ones with a price to read. Where the issuer reports no supply the minted count is null, never a guess.",
+  "target": "evm/core/stocks/cross-chain.mjs",
+  "runner": [
+    "node",
+    "evm/core/stocks/cross-chain.test.mjs"
+  ],
+  "mutations": [
+    {
+      "name": "the board does not say how many are minted",
+      "find": "listed: (records || []).length, minted, priced",
+      "replace": "listed: (records || []).length, minted: null, priced",
+      "expect": "FAIL the board says how many the issuer lists"
+    },
+    {
+      "name": "a missing supply reads as minted",
+      "find": "m.length && m.every((x) => x != null) ? m.filter(Boolean).length : null",
+      "replace": "m.filter((x) => x !== false).length",
+      "expect": "FAIL the board says how many the issuer lists"
+    },
+    {
+      "name": "an unminted token counts as minted",
+      "find": "m.filter(Boolean).length : null",
+      "replace": "m.length : null",
+      "expect": "FAIL ...an unminted token is listed and not minted"
+    }
+  ]
+}

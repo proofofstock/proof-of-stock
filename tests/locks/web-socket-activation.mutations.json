@@ -1,0 +1,28 @@
+{
+  "_finding": "Every deploy restart closed the site's port for the seconds the server reads the issuer registries, and nginx answered 502 (host, 20.11). systemd now holds the port (deployment/systemd/stp-web.socket) and hands it over as fd 3: the server must take exactly that descriptor, by the protocol, and listen on it instead of binding the port.",
+  "target": "apps/stocks-web.mjs",
+  "runner": [
+    "node",
+    "apps/stocks-web.test.mjs"
+  ],
+  "mutations": [
+    {
+      "name": "the wrong descriptor is taken",
+      "find": "  return 3\n}",
+      "replace": "  return 4\n}",
+      "expect": "FAIL one descriptor meant for this process is fd 3"
+    },
+    {
+      "name": "a descriptor meant for another process is taken",
+      "find": "if (env.LISTEN_FDS !== '1' || Number(env.LISTEN_PID) !== pid) return null",
+      "replace": "if (env.LISTEN_FDS !== '1') return null",
+      "expect": "FAIL ...none, several, or one meant for another process is null"
+    },
+    {
+      "name": "the handed-over socket is ignored and the port bound again",
+      "find": "fd != null ? server.listen({ fd }, resolve) : server.listen(port, host, resolve)",
+      "replace": "server.listen(port, host, resolve)",
+      "expect": "FAIL ...start listens on the descriptor when given one"
+    }
+  ]
+}

@@ -1,0 +1,22 @@
+{
+  "_finding": "The outside review (21.11) read \"Loading the case archive.\" over an empty table: the look-alike board came only from app.js, so a reader that runs no script (a search engine, an agent, a judge's AI helper) saw nothing where a browser saw 24 rows. The server writes the same board into the page, the script redraws it, and the two must say the same thing. The page itself carries none of a creator's text: before the script runs, the token cell is the contract's short address.",
+  "target": "apps/stocks-board.mjs",
+  "runner": [
+    "node",
+    "apps/untrusted-text.test.mjs"
+  ],
+  "mutations": [
+    {
+      "name": "the served landing carries a creator's symbol",
+      "find": "<td><code>${shortAddress(e.address)}</code></td>",
+      "replace": "<td><code>${esc(e.symbol || '?')}</code></td>",
+      "expect": "FAIL ...its board rows name the contract in the token cell, never the creator's symbol"
+    },
+    {
+      "name": "the served landing carries a creator's name",
+      "find": "<td><code>${shortAddress(e.address)}</code></td>",
+      "replace": "<td><code>${shortAddress(e.address)}</code>${esc(e.name || '')}</td>",
+      "expect": "FAIL the landing page carries the board but none of the token's own text"
+    }
+  ]
+}

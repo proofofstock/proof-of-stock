@@ -1,0 +1,22 @@
+{
+  "_finding": "The outside review (21.11) read 415 tokens beside 90 price readings as 22% coverage. Wherever the site counts tokens it must say what the count is out of: the issuer's list, and of it the minted tokens, the only ones with a price to read. Where the issuer reports no supply the minted count is null, never a guess.",
+  "target": "apps/stocks-status.mjs",
+  "runner": [
+    "node",
+    "apps/status-usage.test.mjs"
+  ],
+  "mutations": [
+    {
+      "name": "the registry row says nothing of minted",
+      "find": "${s.registry_minted != null && s.registry_minted < s.registry_records ? `, ${s.registry_minted} minted (tradable on this chain)` : ''}` : 'not loaded'",
+      "replace": "` : 'not loaded'",
+      "expect": "FAIL the registry row says how many of the listed are minted"
+    },
+    {
+      "name": "the minted note shows when every token is minted",
+      "find": "s.registry_minted != null && s.registry_minted < s.registry_records ? `, ${s.registry_minted} minted",
+      "replace": "s.registry_minted != null ? `, ${s.registry_minted} minted",
+      "expect": "FAIL the registry row says how many of the listed are minted"
+    }
+  ]
+}

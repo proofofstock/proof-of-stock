@@ -55,7 +55,7 @@ export async function readCoinbase (fetchImpl = fetch, { chainId, onBody = null 
       const nav = num(t.nav_price)
       out.push({
         issuer: 'coinbase', chain_id: chainId, address, symbol: str(t.symbol), name: str(t.name), isin: str(t.isin),
-        multiplier: num(t.multiplier), multiplier_pending: null,
+        multiplier: num(t.multiplier), multiplier_pending: null, multiplier_pending_at: null,
         supplied: num(t.total_supply) > 0,
         paused: Array.isArray(t.paused_features) && t.paused_features.length > 0 ? t.paused_features.map(String) : [],
         reference: { kind: 'nav_total_return', price_usd: nav, bid: null, ask: null, updated_at: iso(t.nav_price_updated_at), halted: null },
@@ -97,6 +97,9 @@ export async function readRobinhood (fetchImpl = fetch, { chainId, onBody = null
     out.push({
       issuer: 'robinhood', chain_id: chainId, address, symbol: str(a.tokenSymbol), name: str(a.tokenName), isin: str(a.isin),
       multiplier: num(a.currentMultiplier), multiplier_pending: num(a.pendingMultiplier),
+      // When the pending multiplier takes effect (field added by Robinhood on 20.11.2026; first seen on SNDK, x8 at
+      // 14:30Z). Read for the passport only: it is NOT in the canonical list (history.mjs), whose hash it would change.
+      multiplier_pending_at: num(a.pendingMultiplier) != null ? iso(a.pendingMultiplierEffectiveTime) : null,
       // Not read: Robinhood reports no supply. true keeps the recorder reading the token; supply_known says it means nothing.
       supplied: true, supply_known: false,
       paused: a.status && a.status !== 'ASSET_STATUS_ACTIVE' ? [String(a.status)] : [],

@@ -11,8 +11,9 @@
 // What it sends, and what it cannot send. One transaction per chain per day: TO ITS OWN ADDRESS, value zero, with the
 // day and the manifest hash as plain ASCII calldata, so that anyone reading the transaction in an explorer sees what
 // it says without a decoder and without us. The recipient is the signer and the value is zero in the code itself, not
-// as a convention, so the worst a bug in this file can do is waste its own gas. There is no transfer, no approval and
-// no call to anyone's contract anywhere in this project.
+// as a convention, so the worst a bug in this file can do is waste its own gas. This file makes no transfer, no
+// approval and no call to anyone's contract. (Since 19.11 the project holds one other key, for paid passes: it calls
+// USDC's transferWithAuthorization for a payment its buyer signed, in a host-only module, and never touches this key.)
 //
 // Writes, in --out: mirror-<day>.json, beside the manifest it mirrors. A transaction already recorded for a day and a
 // chain is never sent twice; a rerun only fills in what is missing and updates a pending one with its block.

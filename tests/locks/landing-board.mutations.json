@@ -1,0 +1,64 @@
+{
+  "_finding": "The outside review (21.11) read \"Loading the case archive.\" over an empty table: the look-alike board came only from app.js, so a reader that runs no script (a search engine, an agent, a judge's AI helper) saw nothing where a browser saw 24 rows. The server writes the same board into the page, the script redraws it, and the two must say the same thing. The page itself carries none of a creator's text: before the script runs, the token cell is the contract's short address.",
+  "target": "apps/stocks-board.mjs",
+  "runner": [
+    "node",
+    "apps/landing-board.test.mjs"
+  ],
+  "mutations": [
+    {
+      "name": "the token cell carries the creator's symbol",
+      "find": "<td><code>${shortAddress(e.address)}</code></td>",
+      "replace": "<td><code>${esc(e.symbol || '?')}</code></td>",
+      "expect": "FAIL none of a creator's text is in the page"
+    },
+    {
+      "name": "the board shows older events first",
+      "find": "sort((a, b) => Date.parse(b.at) - Date.parse(a.at))",
+      "replace": "sort((a, b) => Date.parse(a.at) - Date.parse(b.at))",
+      "expect": "FAIL ...the same rows, cell for cell (hideRh false)"
+    },
+    {
+      "name": "a status label drifts from the script's",
+      "find": "listed: 'later listed by the issuer: we were early or wrong'",
+      "replace": "listed: 'later listed by the issuer'",
+      "expect": "FAIL ...the same rows, cell for cell (hideRh false)"
+    },
+    {
+      "name": "a page that hides Robinhood Chain still shows its rows",
+      "find": "!(hideRh && c === 'robinhood')",
+      "replace": "true",
+      "expect": "FAIL ...the same counts sentence (hideRh true)"
+    },
+    {
+      "name": "the misses are not counted",
+      "find": "${missed ? `, ${missed} later listed by the issuer` : ''}",
+      "replace": "",
+      "expect": "FAIL ...the same counts sentence (hideRh false)"
+    },
+    {
+      "name": "an age said differently from the script",
+      "find": "if (s < 5400) return Math.round(s / 60) + ' min ago'",
+      "replace": "if (s < 5400) return Math.round(s / 60) + ' minutes ago'",
+      "expect": "FAIL the same words at every boundary"
+    },
+    {
+      "name": "the rows are not written into the page",
+      "find": "return out.replace('<tbody id=\"board-rows\"></tbody>'",
+      "replace": "return out.replace('<tbody id=\"board-rows-x\"></tbody>'",
+      "expect": "FAIL the page is written with the rows, so a reader without scripts sees them"
+    },
+    {
+      "name": "an empty week leaves the empty table head",
+      "find": "out.replace('<div class=\"board-wrap\">', '<div class=\"board-wrap\" hidden>')",
+      "replace": "out",
+      "expect": "FAIL an empty week says so, with no empty table head over it"
+    },
+    {
+      "name": "an unreadable archive is said as an empty week",
+      "find": "  if (!per.length) return null\n",
+      "replace": "",
+      "expect": "FAIL an archive that cannot be read leaves the page as it was, for the script to decide"
+    }
+  ]
+}

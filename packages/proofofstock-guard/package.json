@@ -47,7 +47,8 @@
   },
   "scripts": {
     "test": "node index.test.mjs",
-    "demo": "node examples/demo.mjs"
+    "demo": "node examples/demo.mjs",
+    "demo:buy": "node examples/agent-buy.mjs"
   },
   "types": "./index.d.ts"
 }

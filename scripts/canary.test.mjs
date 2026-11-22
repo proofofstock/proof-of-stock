@@ -22,7 +22,7 @@ function world (broken = null) {
   return async (url, init = {}) => {
     const u = String(url)
     if (u === 'https://proofofstock.xyz/') return broken === 'page' ? json(502, {}) : { status: 200, ok: true, text: async () => '<title>Proof of Stock</title>' }
-    if (u.endsWith('/api/status')) { const s = { registry_age_s: broken === 'stale' ? 3600 : 60, newest_reading_age_s: 300 }; return json(200, { base: s, robinhood: s }) }
+    if (u.endsWith('/api/status')) { const s = { registry_age_s: broken === 'stale' ? 3600 : 60, newest_reading_age_s: 300 }; return json(200, { base: s, robinhood: s, payments: { enabled: true, paused_until: null } }) } // a non-chain key must not read as a broken chain (20.11)
     if (u.includes('/verify?chain=base&address=' + KNOWN.listed.address)) return json(200, { listed: broken !== 'delisted', symbol: 'NVDAc', list_proof: { addresses_sha256: broken === 'hash' ? 'f'.repeat(64) : cbSha } })
     if (u.includes('/verify?chain=base&address=' + KNOWN.lookalike.address)) return json(200, { listed: broken === 'impostor-listed', impostor: {} })
     if (u.includes('/verify?chain=robinhood')) return json(200, { listed: false, list_proof: { addresses_sha256: rhSha } })

@@ -9,9 +9,12 @@
 //     one a second), at most DS_SWEEP_BUDGET a run, rotating (state.ds_cursor) when a registry is longer than that: the
 //     unit runs both chains' lists within one timeout (stp-impostors.service), and a long registry would not fit in it.
 //     After DS_BREAKER failures in a row it stops asking: the provider is down, not the symbol.
-//   - GeckoTerminal search, scoped to the chain, for a few symbols only (GECKO_SWEEP_BUDGET), GECKO_PACE_MS apart,
-//     rotating through the list run after run (state.gecko_cursor): its keyless API allows about 5 calls a minute per
-//     IP, and the peg recorder spends that same budget (gecko-lane.mjs). A 429 ends GeckoTerminal for the run.
+//   - GeckoTerminal search, scoped to the chain, GECKO_SWEEP_BUDGET pages a run, GECKO_PACE_MS apart: its keyless API
+//     allows about 5 calls a minute per IP, and the peg recorder spends that same budget (gecko-lane.mjs). A 429 ends
+//     GeckoTerminal for the run. CROWDED symbols go first, read page by page (up to GECKO_MAX_SWEEP_PAGES): a symbol
+//     whose DexScreener answer filled its 30-pair cap has more pools than that search shows, and a copy hides there
+//     (20.11: two vanity ANTc fakes sat on GeckoTerminal's third page of "ANTc" while DexScreener showed none). The rest
+//     of the budget rotates through the other symbols, one page each (state.gecko_cursor, state.gecko_crowded_cursor).
 //   - Every token on this chain in the answers that is not in the issuer's registry becomes a candidate, whatever it is
 //     called: the published rule (evm/core/stocks/impostor.mjs) decides later, in the impostor list, exactly as it does
 //     for the collector's tokens. The sweep only discovers addresses.
@@ -31,7 +34,12 @@ export const DS_PACE_MS = 1_100
 export const DS_BREAKER = 5
 export const DS_SWEEP_BUDGET = 400
 export const GECKO_PACE_MS = 12_500
-export const GECKO_SWEEP_BUDGET = Object.freeze({ base: 3, robinhood: 3 })
+export const GECKO_SWEEP_BUDGET = Object.freeze({ base: 12, robinhood: 12 })
+/** DexScreener's search answers at most this many pairs: an answer this long was cut off. */
+export const DS_SEARCH_CAP = 30
+/** GeckoTerminal's search pages hold this many pools: a full page may have a next one. */
+export const GECKO_SEARCH_PAGE = 20
+export const GECKO_MAX_SWEEP_PAGES = 5
 export const SWEEP_MAX_TOKENS = 5_000
 const TIMEOUT_MS = 8_000
 const ADDR = /^0x[0-9a-f]{40}$/
@@ -89,7 +97,7 @@ export function queriesOf (registry) {
  * failed: { dexscreener, geckoterminal }, gecko_cursor }. Never throws: a failure is counted, the run goes on.
  */
 export async function searchSymbols ({ queries, slug, network, registrySet, fetchImpl = fetch, sleep = (ms) => new Promise((r) => setTimeout(r, ms)),
-  dsPaceMs = DS_PACE_MS, geckoPaceMs = GECKO_PACE_MS, geckoBudget = 0, geckoCursor = 0, dsBudget = DS_SWEEP_BUDGET, dsCursor = 0 }) {
+  dsPaceMs = DS_PACE_MS, geckoPaceMs = GECKO_PACE_MS, geckoBudget = 0, geckoCursor = 0, dsBudget = DS_SWEEP_BUDGET, dsCursor = 0, crowdedCursor = 0 }) {
   const found = new Map()
   const add = (m, source) => {
     for (const [a, t] of m) {
@@ -104,26 +112,53 @@ export async function searchSymbols ({ queries, slug, network, registrySet, fetc
     return r.json()
   }
   const wrap = (c) => (queries.length ? ((Number(c) || 0) % queries.length + queries.length) % queries.length : 0)
+  const crowded = []
   let streak = 0, ds = wrap(dsCursor)
   for (let i = 0; i < Math.min(dsBudget, queries.length); i++) {
     if (streak >= DS_BREAKER) break
     const q = queries[ds]
     if (i && dsPaceMs > 0) await sleep(dsPaceMs)
     asked.dexscreener++
-    try { add(fromDexScreener(await get(`https://api.dexscreener.com/latest/dex/search?q=${encodeURIComponent(q)}`), slug, registrySet), 'dexscreener'); streak = 0 } catch (_) { failed.dexscreener++; streak++ }
+    try {
+      const body = await get(`https://api.dexscreener.com/latest/dex/search?q=${encodeURIComponent(q)}`)
+      add(fromDexScreener(body, slug, registrySet), 'dexscreener'); streak = 0
+      if (body && Array.isArray(body.pairs) && body.pairs.length >= DS_SEARCH_CAP) crowded.push(q)
+    } catch (_) { failed.dexscreener++; streak++ }
     ds = (ds + 1) % queries.length
   }
-  let cursor = queries.length ? ((Number(geckoCursor) || 0) % queries.length + queries.length) % queries.length : 0
-  for (let n = 0; n < Math.min(geckoBudget, queries.length); n++) {
-    const q = queries[cursor]
+  let budget = geckoBudget, stopped = false
+  // One GeckoTerminal page; null when the run must stop asking (a 429), else the number of pools on it.
+  const geckoPage = async (q, page) => {
     if (geckoPaceMs > 0) await sleep(geckoPaceMs)
-    asked.geckoterminal++
+    budget--; asked.geckoterminal++
     try {
-      add(fromGecko(await get(`https://api.geckoterminal.com/api/v2/search/pools?query=${encodeURIComponent(q)}&network=${encodeURIComponent(network)}&include=base_token,quote_token`), network, registrySet), 'geckoterminal')
-      cursor = (cursor + 1) % queries.length
-    } catch (e) { failed.geckoterminal++; if (e && e.status === 429) break; cursor = (cursor + 1) % queries.length }
+      const body = await get(`https://api.geckoterminal.com/api/v2/search/pools?query=${encodeURIComponent(q)}&network=${encodeURIComponent(network)}&include=base_token,quote_token${page > 1 ? `&page=${page}` : ''}`)
+      add(fromGecko(body, network, registrySet), 'geckoterminal')
+      return body && Array.isArray(body.data) ? body.data.length : 0
+    } catch (e) { failed.geckoterminal++; if (e && e.status === 429) { stopped = true; return null } return 0 }
   }
-  return { found, asked, failed, gecko_cursor: cursor, ds_cursor: ds }
+  // 1. the crowded symbols, page by page, in rotation when there are more than the budget holds
+  let cc = crowded.length ? ((Number(crowdedCursor) || 0) % crowded.length + crowded.length) % crowded.length : 0
+  for (let i = 0; i < crowded.length && budget > 0 && !stopped; i++) {
+    const q = crowded[cc]
+    for (let page = 1; page <= GECKO_MAX_SWEEP_PAGES && budget > 0; page++) {
+      const n = await geckoPage(q, page)
+      if (n == null || n < GECKO_SEARCH_PAGE) break
+    }
+    if (stopped) break
+    cc = (cc + 1) % crowded.length
+  }
+  // 2. the rest of the budget: the other symbols, one page each, in rotation
+  const others = new Set(crowded)
+  let cursor = queries.length ? ((Number(geckoCursor) || 0) % queries.length + queries.length) % queries.length : 0
+  for (let n = 0; n < queries.length && budget > 0 && !stopped; n++) {
+    const q = queries[cursor]
+    if (others.has(q)) { cursor = (cursor + 1) % queries.length; continue }
+    const got = await geckoPage(q, 1)
+    if (got == null) break
+    cursor = (cursor + 1) % queries.length
+  }
+  return { found, asked, failed, crowded: crowded.length, gecko_cursor: cursor, gecko_crowded_cursor: cc, ds_cursor: ds }
 }
 
 /**
@@ -180,11 +215,11 @@ export async function runSweep ({ chain, chainCfg, dir, fetchImpl = fetch, env =
   const state = readSweep(dir)
   const queries = queriesOf(reg)
   const s = await searchSymbols({ queries, slug: chainCfg.slug, network: chainCfg.gecko, registrySet, fetchImpl, ...(sleep ? { sleep } : {}),
-    geckoBudget: GECKO_SWEEP_BUDGET[chain] || 0, geckoCursor: state.gecko_cursor, dsCursor: state.ds_cursor })
+    geckoBudget: GECKO_SWEEP_BUDGET[chain] || 0, geckoCursor: state.gecko_cursor, dsCursor: state.ds_cursor, crowdedCursor: state.gecko_crowded_cursor })
   // Ask the chain about every find whose text it has not answered yet (new ones and earlier provider-only ones).
   const ask = [...s.found.keys()].filter((a) => !(state.tokens[a] && state.tokens[a].text_from === 'chain'))
   const evidence = ask.length ? await readEvidence({ chain, chainId: chainCfg.chainId, addresses: ask, fetchImpl, env }) : new Map()
   const m = mergeSweep(state, s.found, evidence, new Date(now()).toISOString())
-  writeSweep(dir, { ...m.state, gecko_cursor: s.gecko_cursor, ds_cursor: s.ds_cursor, swept_at: new Date(now()).toISOString() })
-  return { chain, queries: queries.length, asked: s.asked, failed: s.failed, found: s.found.size, new: m.added, read_on_chain: evidence.size, tokens: Object.keys(m.state.tokens).length }
+  writeSweep(dir, { ...m.state, gecko_cursor: s.gecko_cursor, gecko_crowded_cursor: s.gecko_crowded_cursor, ds_cursor: s.ds_cursor, swept_at: new Date(now()).toISOString() })
+  return { chain, queries: queries.length, crowded: s.crowded, asked: s.asked, failed: s.failed, found: s.found.size, new: m.added, read_on_chain: evidence.size, tokens: Object.keys(m.state.tokens).length }
 }

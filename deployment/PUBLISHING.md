@@ -208,7 +208,7 @@ A dry wallet refuses politely (the buyer is told the payment was not taken) and 
 reads; the default is `mainnet.base.org`.
 
 **The alarms reach Telegram through stp-health** (since 20.11; before that they were journal lines nobody read). The
-site keeps what is needed in `/api/status` under `payments`, and stp-health turns it into alerts every 15 minutes:
+site keeps what is needed in `/api/status/payments`, and stp-health turns it into alerts every 15 minutes:
 
 - `x402:paused`: several settlements in a row failed after broadcast, the griefing pattern. Selling resumes by itself
   after 30 minutes, and a day's settlements may not cost more than 0.0003 ETH of gas in any case (`DAILY_GAS_WEI` in

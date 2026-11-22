@@ -69,6 +69,8 @@ import { createAnalytics, parseHit } from './stocks-analytics.mjs'
 import { findAcross, sameStockElsewhere, overview, matrix, isinsOfTicker, MATRIX_VENUES } from '../evm/core/stocks/cross-chain.mjs'
 import { symbolLabel, nameLabel, UNTRUSTED_TEXT_NOTE } from '../evm/core/stocks/untrusted-text.mjs'
 import { createExamCache, EXAM_CHIP_HTML } from './stocks-exam.mjs'
+import { boardOf, withBoard, BOARD_LIMIT } from './stocks-board.mjs'
+import { createPassSales, rpcCaller } from './pass-sales.mjs'
 
 // The paid-pass module is a host file, never a tracked one (owner, 15.11): this repository is exported to a public
 // one, and the money path is not for export. A checkout without the file is the free service exactly; the import is
@@ -87,6 +89,9 @@ export function x402Missing (env = process.env, has = createX402 != null) {
   const asked = Boolean(env.STP_X402_PAY_TO) || Boolean(env.STP_X402_KEY_FILE)
   return asked && !has
 }
+
+/** The landing's paid-pass block (apps/stocks-web/index.html), cut out where passes are off. */
+export const PAY_SECTION_RE = /\n  <section class="pay" id="pay"[\s\S]*?<\/section>\n/
 
 /** What the site says at startup in that case. One line, because an alert nobody reads is the same as silence. */
 export const X402_MISSING_LINE = '[x402] THE HOST NAMES A PAYEE OR A KEY FILE AND THE MODULE IS NOT IN THIS RELEASE: passes are off, every refusal is a plain 429. Put evm/core/stocks/x402.mjs under the host files directory (deployment/PUBLISHING.md) so a deploy carries it.'
@@ -120,6 +125,13 @@ const STATIC = Object.freeze({
   // The guard's shield: our emblem inside a shield, beside the install line and in the repository's own README.
   '/shield.svg': ['shield.svg', 'image/svg+xml'],
   '/favicon.ico': ['logo.png', 'image/png'],
+  // The two typefaces, served from here (pentest, 22.11): from Google, every page view handed the reader's address to
+  // a third party. Variable woff2, the latin and latin-ext subsets; style.css names them. Licence: fonts/OFL.txt.
+  '/fonts/onest-latin.woff2': ['fonts/onest-latin.woff2', 'font/woff2'],
+  '/fonts/onest-latin-ext.woff2': ['fonts/onest-latin-ext.woff2', 'font/woff2'],
+  '/fonts/martian-mono-latin.woff2': ['fonts/martian-mono-latin.woff2', 'font/woff2'],
+  '/fonts/martian-mono-latin-ext.woff2': ['fonts/martian-mono-latin-ext.woff2', 'font/woff2'],
+  '/fonts/OFL.txt': ['fonts/OFL.txt', 'text/plain; charset=utf-8'],
 })
 /** The one line the MCP registry reads at /.well-known/mcp-registry-auth: an Ed25519 public key, base64 of 32 bytes. */
 export const MCP_REGISTRY_AUTH_RE = /^v=MCPv1; k=ed25519; p=[A-Za-z0-9+/]{43}=$/
@@ -128,7 +140,7 @@ export const GLAMA_CLAIM_RE = /^glama_claim_[A-Za-z0-9_-]{16,96}$/
 export const GLAMA_CLAIM_PATH = '/mcp/.well-known/glama.json'
 
 export const SECURITY_HEADERS = Object.freeze({
-  'content-security-policy': "default-src 'none'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
+  'content-security-policy': "default-src 'none'; script-src 'self'; style-src 'self'; font-src 'self'; img-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
   'x-content-type-options': 'nosniff',
   'referrer-policy': 'strict-origin-when-cross-origin',
   'x-frame-options': 'DENY',
@@ -244,6 +256,9 @@ export function createStocksWeb ({
   x402: x402Opts = {}, // evm/core/stocks/x402.mjs options; {} with no host env is off, and then nothing changes
   // The module itself, so a test can be a host that asked for passes and did not get it. Null is that host.
   x402Module = createX402,
+  // How the Paid passes block reads the settlement wallet on Base (apps/pass-sales.mjs): a JSON-RPC call function.
+  // Unset, a node at STP_RPC_BASE or the public one, over fetchImpl; a test passes its own chain.
+  baseCall = null,
   source, // the source link: undefined = package.json decides (stp.source_public), null = none, a URL = that URL
   // The claim Glama reads to see that the connector at /mcp is ours. It belongs to the host, never to this
   // repository: the repository is exported publicly, and an ownership claim has no business being published.
@@ -317,7 +332,9 @@ export function createStocksWeb ({
   const version = (k) => crypto.createHash('sha256').update(static_[k].body).digest('hex').slice(0, 12)
   static_['/'].body = Buffer.from(String(static_['/'].body).replace('href="style.css"', `href="style.css?v=${version('/style.css')}"`).replace('src="app.js"', `src="app.js?v=${version('/app.js')}"`).replace('src="beacon.js"', `src="beacon.js?v=${version('/beacon.js')}"`).replace('src="seal.js"', `src="seal.js?v=${version('/seal.js')}"`)
     .replaceAll('__MCP_URL__', publicOrigin + publicPath + '/mcp').replaceAll('__VERSION__', appVersion).replaceAll('__RELEASED__', released)
-    .replace('<!--source-->', sourceUrl ? sourceIcon(sourceUrl) : '').replace('<!--exam-->', sourceUrl ? EXAM_CHIP_HTML : ''))
+    .replace('<!--source-->', sourceUrl ? sourceIcon(sourceUrl) : '').replace('<!--exam-->', sourceUrl ? EXAM_CHIP_HTML : '')
+    // The paid-pass block promises a payment path: a server without one (passes off, a local copy) never shows it.
+    .replace(PAY_SECTION_RE, (block) => (x402.enabled ? block : '\n')))
   // What crawlers and link previews read: the preview image and logo by content hash (a new image is a new URL, so
   // X and Telegram fetch it again), robots.txt and the head tags every page gets.
   const site = publicOrigin + publicPath
@@ -403,6 +420,18 @@ export function createStocksWeb ({
     await Promise.all(Object.keys(CHAINS).flatMap((c) => [refreshRegistry(c), windows[c].refresh(), Promise.resolve(refreshImpostors(c)), Promise.resolve(refreshNames(c)), Promise.resolve(history.refresh(c))]))
   }
 
+  // The wall of findings, written into the page so a reader that runs no script sees the board, not "Loading" (22.11).
+  // One build per PAGE_CACHE_MS: the flag ages it shows are minutes and hours.
+  const hideRh = String(static_['/'].body).includes('<body class="no-rh">')
+  let boardCache = { at: -Infinity, board: null }
+  function landingBoard () {
+    if (now() - boardCache.at < PAGE_CACHE_MS) return boardCache.board
+    let board = null
+    try { board = boardOf(Object.fromEntries(Object.keys(CHAINS).map((c) => [c, history.cases(c, { limit: BOARD_LIMIT })])), { now: now(), hideRh }) } catch (e) { log(`[board] ${e.message}`) }
+    boardCache = { at: now(), board }
+    return board
+  }
+
   // The page, with a link preview for the token the link names, built only from what is held in memory.
   function pageFor (url) {
     let c = url.searchParams.get('chain'), a = String(url.searchParams.get('address') || '').toLowerCase()
@@ -427,7 +456,7 @@ export function createStocksWeb ({
     // A listed token and a listed impostor are pages worth a search result; any other address is the empty passport
     // of a contract nobody indexed, one per address that exists: not indexed.
     const jsonLd = named ? pageJsonLd({ site, url: canonical, title: meta.title, description: meta.description, logo: seo.logo }) : homeJsonLd({ site, version: appVersion, ...seo })
-    return Buffer.from(injectMeta(static_['/'].body, meta, canonical, { ...seo, jsonLd, robots: named && !record && !impostor ? 'noindex' : undefined }))
+    return Buffer.from(withBoard(injectMeta(static_['/'].body, meta, canonical, { ...seo, jsonLd, robots: named && !record && !impostor ? 'noindex' : undefined }), landingBoard()))
   }
 
   // A docs page with its canonical link, preview and JSON-LD. The docs are fixed at start, so each page is built once.
@@ -560,11 +589,17 @@ export function createStocksWeb ({
 
   /** What the server holds, per chain, with ages: the numbers behind /api/status and /status. */
   /** Paid passes, for stp-health: whether selling is paused, settlements to reconcile by hand, the wallet that pays gas. */
+  // What the settlement wallet has done, read from Base (outside review, 21.11). Only where passes are on: the free
+  // world reads no chain and its answer is unchanged.
+  const passSales = x402.enabled
+    ? createPassSales({ wallet: x402.wallet, payTo: x402Opts.payTo || process.env.STP_X402_PAY_TO, now, log,
+      call: baseCall || rpcCaller({ url: process.env.STP_RPC_BASE || 'https://mainnet.base.org', fetchImpl }), ...(baseCall ? { pauseMs: 0 } : {}) })
+    : null
   function paymentsStatus () {
     if (!x402.enabled) return { enabled: false }
     const t = now(), paused = typeof x402.pausedUntil === 'function' ? x402.pausedUntil() : 0
     return { enabled: true, settlement_wallet: x402.wallet || null, paused_until: paused > t ? new Date(paused).toISOString() : null,
-      late_settlements: lateSettlements.filter((e) => t - Date.parse(e.at) < 24 * 3600e3) }
+      late_settlements: lateSettlements.filter((e) => t - Date.parse(e.at) < 24 * 3600e3), sales: passSales.snapshot() }
   }
 
   function statusNumbers () {
@@ -574,7 +609,12 @@ export function createStocksWeb ({
       let newest = null
       if (w.window) for (const e of w.window.byToken.values()) if (e.latestAt > (newest ?? -Infinity)) newest = e.latestAt
       const impAt = imp && imp.generated_at ? Date.parse(imp.generated_at) : NaN
-      return [c, { registry_records: r?.records?.length ?? null, registry_age_s: r?.at ? Math.round((now() - r.at) / 1000) : null, registry_error: r?.error ?? null,
+      // How many listed tokens the issuer has minted: the recorder reads only those, so it explains a readings count
+      // below the registry's (outside review, 21.11: 90 of 415 read as 22% coverage). Null when the issuer reports no
+      // supply (Robinhood), never a guess.
+      const minted = r?.records ? r.records.map(mintedOf) : null
+      const registryMinted = minted && minted.every((m) => m != null) ? minted.filter(Boolean).length : null
+      return [c, { registry_records: r?.records?.length ?? null, registry_minted: registryMinted, registry_age_s: r?.at ? Math.round((now() - r.at) / 1000) : null, registry_error: r?.error ?? null,
         readings_tokens: w.window ? w.window.byToken.size : null, readings_age_s: w.window ? Math.round((now() - w.window.loaded_at) / 1000) : null, readings_error: w.error ? internal(`readings ${c}`, w.error, 'the readings could not be read') : null,
         newest_reading_at: newest == null ? null : new Date(newest).toISOString(), newest_reading_age_s: newest == null ? null : Math.round((now() - newest) / 1000),
         impostors_listed: imp && imp.items ? imp.items.length : null, impostors_age_s: Number.isFinite(impAt) ? Math.round((now() - impAt) / 1000) : null }]
@@ -707,7 +747,9 @@ export function createStocksWeb ({
     recent: recentImpostors,
     matrix: matrixFor,
   })
-  const MCP_HEADERS = Object.freeze({ 'access-control-allow-origin': '*', 'access-control-allow-headers': 'content-type, accept, authorization, mcp-protocol-version, mcp-session-id, last-event-id', 'access-control-allow-methods': 'POST, OPTIONS', 'cache-control': 'no-store' })
+  // No `authorization` among the allowed headers: the server takes no credentials and nginx clears the header before
+  // the app, so allowing it only told a browser page it could send one (pentest, 22.11).
+  const MCP_HEADERS = Object.freeze({ 'access-control-allow-origin': '*', 'access-control-allow-headers': 'content-type, accept, mcp-protocol-version, mcp-session-id, last-event-id', 'access-control-allow-methods': 'POST, OPTIONS', 'cache-control': 'no-store' })
 
   function clientIp (req) {
     // nginx sets X-Real-IP from the Cloudflare-restored client address; only trust it from the loopback proxy.
@@ -785,7 +827,10 @@ export function createStocksWeb ({
     // keccak and an ECDSA recovery). A settled purchase clears the count.
     const fails = passFails.get(key)
     if (fails && now() - fails.since < PASS_FAIL_WINDOW_MS && fails.n >= PASS_FAIL_MAX) {
-      send(res, 429, { error: 'too many failed payments from this client; try again in a few minutes' }, undefined, { ...cors, ...noStore, 'retry-after': String(Math.ceil((PASS_FAIL_WINDOW_MS - (now() - fails.since)) / 1000)) })
+      // The refusal names the wait it means: the same seconds as Retry-After, and in minutes for a person reading it.
+      const waitS = Math.max(1, Math.ceil((PASS_FAIL_WINDOW_MS - (now() - fails.since)) / 1000))
+      const waitM = Math.ceil(waitS / 60)
+      send(res, 429, { error: `too many failed payments from this client; try again in ${waitM} minute${waitM === 1 ? '' : 's'}`, retry_after_s: waitS }, undefined, { ...cors, ...noStore, 'retry-after': String(waitS) })
       return true
     }
     const r = await x402.purchase(String(payment), key)
@@ -979,13 +1024,20 @@ export function createStocksWeb ({
     }
     if (sub === '/status') {
       analytics.load(clientIp(req), req.headers, '/status')
-      return send(res, 200, cachedPage('/status', () => withPageHead('/status', statusPage({ chains: statusNumbers(), now: now(), version: appVersion, usage: usageOf(dailySummaries({ dir: analyticsOpts.dir ?? process.env.STP_ANALYTICS_DIR ?? null, days: 7, today: new Date(now()).toISOString().slice(0, 10) })), assets: { css: `style.css?v=${version('/style.css')}`, docsCss: `docs.css?v=${version('/docs.css')}`, beacon: `beacon.js?v=${version('/beacon.js')}` } }), STATUS_DESCRIPTION)), 'text/html; charset=utf-8', { 'cache-control': 'no-store' })
+      return send(res, 200, cachedPage('/status', () => withPageHead('/status', statusPage({ chains: statusNumbers(), now: now(), version: appVersion, payments: paymentsStatus(), usage: usageOf(dailySummaries({ dir: analyticsOpts.dir ?? process.env.STP_ANALYTICS_DIR ?? null, days: 7, today: new Date(now()).toISOString().slice(0, 10) })), assets: { css: `style.css?v=${version('/style.css')}`, docsCss: `docs.css?v=${version('/docs.css')}`, beacon: `beacon.js?v=${version('/beacon.js')}` } }), STATUS_DESCRIPTION)), 'text/html; charset=utf-8', { 'cache-control': 'no-store' })
     }
     if (sub === '/history') {
       analytics.load(clientIp(req), req.headers, '/history')
       return send(res, 200, cachedPage('/history', () => withPageHead('/history', historyPage({ store: history, chains: Object.keys(CHAINS), explorers: Object.fromEntries(Object.entries(CHAINS).map(([c, v]) => [c, v.explorer])), now: now(), version: appVersion, assets: { css: `style.css?v=${version('/style.css')}`, docsCss: `docs.css?v=${version('/docs.css')}`, beacon: `beacon.js?v=${version('/beacon.js')}` } }))), 'text/html; charset=utf-8', { 'cache-control': 'public, max-age=300' })
     }
     if (!sub.startsWith('/api/')) return send(res, 404, { error: 'not found' })
+
+    // The payment state is for monitoring: stp-health reads it every 15 minutes, and a monitor that met the free
+    // minute's 402 instead of the state would miss the very alert it is for (pentest, 22.11). It costs no unit;
+    // it is one small object in memory, and nginx's own per-client limit still stands in front of it.
+    if (sub === '/api/status/payments') {
+      return send(res, 200, paymentsStatus(), undefined, { 'cache-control': 'no-store' })
+    }
 
     if (await limitGate(req, res, { units: sub === '/api/passport' ? PASSPORT_UNITS : 1 })) return
 
@@ -995,8 +1047,11 @@ export function createStocksWeb ({
       if (hit) analytics.hit(clientIp(req), req.headers, hit)
       return send(res, 204, '', 'text/plain', { 'cache-control': 'no-store' })
     }
+    // /api/status is per chain and nothing else: its readers (the site's Status dot and status line, the outside
+    // canary) take every key as a chain, and a 'payments' key beside the chains turned the dot red and the canary
+    // false (20.11). The payment state has its own route, read by stp-health.
     if (sub === '/api/status') {
-      return send(res, 200, { ...statusNumbers(), payments: paymentsStatus() }, undefined, { 'cache-control': 'no-store' })
+      return send(res, 200, statusNumbers(), undefined, { 'cache-control': 'no-store' })
     }
     if (sub === '/api/exam') {
       const r = exam.get()
@@ -1080,19 +1135,37 @@ export function createStocksWeb ({
   return {
     server, refreshAll, x402,
     examRefresh: (force) => exam.refresh(force),
-    async start (port, host) {
+    // `fd` is a listening socket handed over by systemd (systemdListenFd); without one the server binds port and host.
+    async start (port, host, { fd = null } = {}) {
       await refreshAll()
       timer = setInterval(() => { refreshAll().catch(() => {}) }, REGISTRY_TTL_MS); timer.unref()
-      await new Promise((resolve) => server.listen(port, host, resolve))
+      await new Promise((resolve) => (fd != null ? server.listen({ fd }, resolve) : server.listen(port, host, resolve)))
       return server.address()
     },
     async stop () { clearInterval(timer); await new Promise((resolve) => server.close(resolve)) },
   }
 }
 
+/**
+ * The listening socket systemd passed in, by its socket-activation protocol: exactly one descriptor (fd 3), meant for
+ * this process. Null when there is none, and the server binds the port itself as before.
+ *
+ * Why (measured on the host, 20.11): the server reads both issuer registries before it listens, about 9 s, and during
+ * every deploy restart nginx found the port closed and answered 502. With deployment/systemd/stp-web.socket the port
+ * belongs to systemd and stays open across the restart, so a request in that gap waits in the kernel's queue and is
+ * answered by the new process instead of being refused.
+ */
+export function systemdListenFd (env = process.env, pid = process.pid) {
+  if (env.LISTEN_FDS !== '1' || Number(env.LISTEN_PID) !== pid) return null
+  return 3
+}
+
 if (isEntryPoint(import.meta.url)) {
   const app = createStocksWeb()
-  const a = await app.start(Number(process.env.STOCKS_WEB_PORT || 3005), process.env.STOCKS_WEB_HOST || '127.0.0.1')
-  console.log(`[stocks-web] listening on ${a.address}:${a.port}`)
+  const fd = systemdListenFd()
+  // Not passed on to anything this process might start: the descriptor was meant for this one.
+  delete process.env.LISTEN_FDS; delete process.env.LISTEN_PID; delete process.env.LISTEN_FDNAMES
+  const a = await app.start(Number(process.env.STOCKS_WEB_PORT || 3005), process.env.STOCKS_WEB_HOST || '127.0.0.1', { fd })
+  console.log(`[stocks-web] listening on ${a.address}:${a.port}${fd != null ? ' (socket from systemd)' : ''}`)
   for (const sig of ['SIGTERM', 'SIGINT']) process.on(sig, () => { app.stop().finally(() => process.exit(0)) })
 }

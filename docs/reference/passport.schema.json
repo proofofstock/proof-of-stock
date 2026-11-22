@@ -56,7 +56,7 @@
     },
     "issuer": {
       "type": "object",
-      "required": ["name", "symbol", "token_name", "isin", "minted", "multiplier", "multiplier_pending", "paused", "rights"],
+      "required": ["name", "symbol", "token_name", "isin", "minted", "multiplier", "multiplier_pending", "multiplier_pending_at", "paused", "rights"],
       "additionalProperties": false,
       "if": { "properties": { "name": { "const": "robinhood" } } },
       "then": { "properties": { "minted": { "type": "null" } } },
@@ -69,6 +69,7 @@
         "minted": { "type": ["boolean", "null"], "description": "null on Robinhood, whose API reports no supply" },
         "multiplier": { "$ref": "#/definitions/number_or_null" },
         "multiplier_pending": { "$ref": "#/definitions/number_or_null" },
+        "multiplier_pending_at": { "type": ["string", "null"], "format": "date-time", "description": "when multiplier_pending takes effect, as the issuer announces it; null when none is announced or the issuer gives no time (Coinbase)" },
         "paused": { "type": "array", "items": { "type": "string" } },
         "rights": { "const": "set by the issuer's prospectus, not by the token contract" }
       }

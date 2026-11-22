@@ -1,0 +1,64 @@
+{
+  "_finding": "The agent buy example is the one place where the guard's answer turns into a swap. It must quote only the contract the guard passed, refuse a price far from the issuer's reference, build a swap only for the user's own wallet and only to the aggregator's router, and build nothing unless a wallet was given.",
+  "target": "packages/proofofstock-guard/examples/agent-buy.mjs",
+  "runner": [
+    "node",
+    "packages/proofofstock-guard/examples/agent-buy.test.mjs"
+  ],
+  "mutations": [
+    {
+      "name": "a quote for another contract is accepted",
+      "find": "String(rs.tokenOut).toLowerCase() !== address ||",
+      "replace": "false &&",
+      "expect": "FAIL a quote for any other contract than the one checked is refused"
+    },
+    {
+      "name": "the price is not held to the issuer's reference",
+      "find": "if (Math.abs(premium) > maxPremium)",
+      "replace": "if (false)",
+      "expect": "FAIL a quote 10% above the reference is refused"
+    },
+    {
+      "name": "a swap to any router is accepted",
+      "find": "if (String(tx.routerAddress).toLowerCase() !== KYBER_ROUTER)",
+      "replace": "if (false)",
+      "expect": "FAIL a built swap to any other contract than the router is refused"
+    },
+    {
+      "name": "a swap is built without a wallet being given",
+      "find": "if (!from) { say(",
+      "replace": "if (false) { say(",
+      "expect": "FAIL ...and without a wallet nothing is built"
+    },
+    {
+      "name": "a paused token is quoted",
+      "find": "p.issuer.paused.length)",
+      "replace": "false)",
+      "expect": "FAIL a paused token is refused before any quote"
+    },
+    {
+      "name": "the look-alike is bought after the guard pointed elsewhere",
+      "find": "address = d.use_instead.toLowerCase() }",
+      "replace": "address = handed.toLowerCase() }",
+      "expect": "FAIL ...the quote is asked for the issuer's contract, never the look-alike"
+    },
+    {
+      "name": "the link opens the contract the agent was handed, not the one checked",
+      "find": "  const link = swapLink(address)",
+      "replace": "  const link = swapLink(handed || address)",
+      "expect": "FAIL after the quote, the link opens USDC -> the issuer's contract"
+    },
+    {
+      "name": "a link is printed before the quote is held to the reference",
+      "find": "  if (!(tokens > 0)) return stop(1, 'refused', 'The quote gives nothing for the money. Nothing bought.')",
+      "replace": "  print('link   ' + swapLink(address))\n  if (!(tokens > 0)) return stop(1, 'refused', 'The quote gives nothing for the money. Nothing bought.')",
+      "expect": "FAIL a refused quote gives no link"
+    },
+    {
+      "name": "the swap pays out to someone other than the user",
+      "find": "sender: from, recipient: from",
+      "replace": "sender: from, recipient: '0x0000000000000000000000000000000000000001'",
+      "expect": "FAIL with a wallet, the swap is built for that wallet as sender and recipient"
+    }
+  ]
+}

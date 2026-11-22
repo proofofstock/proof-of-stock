@@ -61,6 +61,13 @@ console.log('tools')
   check('a bad chain is -32602, as on the HTTP server', bad.error?.code === -32602 && !bad.result, JSON.stringify(bad))
   const nope = await handle({ jsonrpc: '2.0', id: 10, method: 'tools/call', params: { name: 'buy_stock', arguments: { chain: 'base' } } }, opts)
   check('there is no trading tool to call: an unknown tool is -32602', nope.error?.code === -32602 && !nope.result)
+  const longName = 'x'.repeat(500)
+  const echoed = (r) => ((r.error?.message || '').match(/x+/) || [''])[0].length
+  const echoes = [
+    await handle({ jsonrpc: '2.0', id: 12, method: 'tools/call', params: { name: longName } }, opts),
+    await handle({ jsonrpc: '2.0', id: 13, method: longName }, opts),
+  ].map(echoed)
+  check('an error repeats at most 64 characters of the tool or method name the caller sent', echoes.every((n) => n > 0 && n <= 64), echoes.join(','))
   // The schemas it advertises are the ones it holds callers to (audit 12.11: hours 99999 ran).
   const call = (args, name = 'stock_passport') => handle({ jsonrpc: '2.0', id: 11, method: 'tools/call', params: { name, arguments: args } }, opts)
   check('hours past the advertised maximum is -32602', (await call({ chain: 'base', address: A, hours: 99999 })).error?.code === -32602)

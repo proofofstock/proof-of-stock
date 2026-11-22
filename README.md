@@ -5,12 +5,40 @@
 
 ## At a glance
 
+Anyone can deploy a token called "NVIDIA" in a minute, and look-alikes of the issuers' stock tokens keep appearing
+on the same chains. An agent that buys by name buys whichever it finds first. The live list of the ones we flagged is at
+[proofofstock.xyz/history](https://proofofstock.xyz/history).
+
 **Is this stock token the real one?** Paste an address or a ticker; we check it against the issuer's own list on Base
 (Coinbase) and Robinhood Chain (Robinhood). Tokenized stocks are a kind of real-world asset (RWA); we check stocks only,
 not bonds, funds or commodities.
 
 We are a centralised service, and that is why every claim here comes with a way to check it without us. The chain is
 not here so that we can be trusted: it is here so that we cannot rewrite yesterday.
+
+**Check us first:** every day a public exam asks the live service every token on both issuers' lists plus the week's
+look-alikes, and grades the answers against the issuers' own data. The reports are in the
+[`exam` branch](https://github.com/proofofstock/proof-of-stock/tree/exam).
+
+<details>
+<summary><b>Build log</b>: what shipped when</summary>
+
+The code is developed in a private repository and exported here at each release, so this repository's own history is
+short. The dated record is [CHANGELOG.md](CHANGELOG.md); in one line per release:
+
+| Date | Release | What shipped |
+|---|---|---|
+| 2026-11-08 | 0.1.0 | The passport, the price recorder (every 15 minutes), the impostor list and the public site |
+| 2026-11-10 | 0.2.0 | `/verify`, the embeddable badge, MCP `verify_stock_tokens` and `recent_impostors`, the agent guard with an AgentKit action |
+| 2026-11-10 | 0.3.0 | Documentation at `/docs/`, `/llms.txt`, the Base ↔ Robinhood premium matrix |
+| 2026-11-11 | 0.4.0 | The case archive; the guard trusts only a well-formed answer |
+| 2026-11-11 | 0.5.0 | The source is public (this repository) |
+| 2026-11-12 | 0.5.1 | The public exam on the landing page; descriptions for every MCP tool argument |
+| 2026-11-14 | 0.6.0 | A written threat model; the guard published through CI, not from a laptop |
+| 2026-11-15 | 0.7.0 | Paid passes over the free rate, paid in USDC on Base over x402 |
+| 2026-11-20 | 0.8.0 | Payment alarms reach Telegram; look-alikes found by symbol search across DEX aggregators |
+
+</details>
 
 <table>
   <tr>

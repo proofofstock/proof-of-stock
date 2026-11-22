@@ -635,6 +635,9 @@
   }
 
   // ---------- boards ----------
+  // What the board counts out of (outside review, 21.11: "90 tradable of 415 wherever counts appear"): the issuer's
+  // list and, where the issuer reports supply, the minted ones. Only minted tokens have a price to read.
+  const boardOutOf = (b) => (b.listed == null ? '' : b.minted != null && b.minted < b.listed ? `${b.minted} minted of ${b.listed} listed · ` : `${b.listed} listed · `)
   async function board (input) {
     const out = block(input)
     try {
@@ -642,7 +645,7 @@
       const m = o.market_now
       out.append(line((SESSION[m.session] || m.session) + (m.reason === 'weekend' ? ' (weekend)' : m.holiday ? ' (' + m.holiday + ')' : '') + '. Furthest from the issuer price:', 'muted'))
       out.append(sections(['token', 'difference', 'reference age', 'pool'], Object.entries(o.chains).filter(([c]) => chain === 'all' || c === chain).map(([c, b]) => ({
-        caption: [mark(c), h('span', { class: 'faint' }, `${b.priced} priced · ${b.unpriced} without a deep pool or a price` + (b.stale ? ` · ${b.stale} not read in the last 30 min (newest ${String(b.newest_reading_at || '').slice(0, 16).replace('T', ' ')}Z)` : ''))],
+        caption: [mark(c), h('span', { class: 'faint' }, boardOutOf(b) + `${b.priced} priced · ${b.unpriced} without a deep pool or a price` + (b.stale ? ` · ${b.stale} not read in the last 30 min (newest ${String(b.newest_reading_at || '').slice(0, 16).replace('T', ' ')}Z)` : ''))],
         rows: b.rows.slice(0, 8).map((r) => h('tr', { class: 'click', onclick: () => passport(c, r.address, r.symbol) },
           h('td', null, r.symbol), h('td', { class: sign(r.premium) }, pct(r.premium)), h('td', null, age(r.reference_age_s)), h('td', null, big(r.liquidity_usd)))),
       }))))
@@ -801,7 +804,7 @@
     try { st = await api('api/status') } catch (_) { /* the greeting still works */ }
     // The footer's Status dot: green when every part is on schedule, amber when one is late, red when one stopped.
     try {
-      const ages = st ? Object.values(st) : []
+      const ages = st ? chainsOf(st).map(([, c]) => c) : []
       const late = ages.some((c) => c.newest_reading_age_s == null || c.newest_reading_age_s > 1800 || c.registry_age_s == null || c.registry_age_s > 600)
       const down = ages.some((c) => c.newest_reading_age_s == null || c.newest_reading_age_s > 3600 || c.registry_records == null)
       const dot = document.querySelector('#foot-status .foot-dot')
@@ -853,6 +856,9 @@
     const week = per.reduce((n, [, v]) => n + (v.count || 0), 0)
     const missed = ev.filter((e) => e.event === 'listed').length
     counts.textContent = `Open cases: ${open}. This week: ${week} new event${week === 1 ? '' : 's'}${missed ? `, ${missed} later listed by the issuer` : ''}.`
+    // The empty-state sentence is written here, never in the page: a reader that does not run scripts (a search engine,
+    // an agent, a judge's crawler) read a hidden "No new look-alikes" as a claim while the board was full (21.11).
+    empty.textContent = ev.length ? '' : 'No new look-alikes flagged in the last 7 days.'
     empty.hidden = ev.length > 0
     rows.closest('.board-wrap').hidden = ev.length === 0 // no empty table head over the empty-state line
     rows.replaceChildren(...ev.map((e) => {
@@ -873,12 +879,14 @@
   // The terminal's status bar: one short, unbreakable part per chain ("base 338 listed · price 15m ago"), so the bar keeps
   // to one line where it fits and a narrow screen stacks whole parts. The full sentence stays for screen readers and as
   // the hover title.
+  // A chain's entry in /api/status is the object that carries registry_records; anything else is not a chain (20.11).
+  const chainsOf = (st) => Object.entries(st || {}).filter(([, v]) => v && typeof v === 'object' && 'registry_records' in v)
   const ago = (s) => (s < 90 ? s + 's' : s < 5400 ? Math.round(s / 60) + 'm' : s < 172800 ? Math.round(s / 3600) + 'h' : Math.round(s / 86400) + 'd') + ' ago'
   function status (st) {
     const el = $('#status')
     el.removeAttribute('title')
     if (!st) { el.textContent = 'offline'; return }
-    const parts = Object.entries(st).map(([c, v]) => {
+    const parts = chainsOf(st).map(([c, v]) => {
       const n = v.registry_records ?? '?'
       const none = v.readings_age_s == null ? 'loading' : 'none yet'
       return {

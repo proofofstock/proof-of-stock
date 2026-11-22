@@ -17,6 +17,24 @@
       "find": "  const row = (k, v, cls = '') => `<li><span class=\"k\">${esc(k)}</span><span class=\"v ${cls}\">${esc(v)}</span></li>`",
       "replace": "  const row = (k, v, _cls = '') => `<li><span class=\"k\">${esc(k)}</span><span class=\"v \">${esc(v)}</span></li>`",
       "expect": "FAIL ...and says so when nothing is set or the server cannot read its own addresses"
+    },
+    {
+      "name": "the empty card says none again, without why",
+      "find": "  const whoCalled = ts && ts.mcp_agent_use_agents != null && !(ts.mcp_agent_names || []).length",
+      "replace": "  const whoCalled = false",
+      "expect": "FAIL ...an empty \"Who called a tool\" says only checkers called"
+    },
+    {
+      "name": "the checkers that called are not counted",
+      "find": "const checkerUsers = ts ? Math.max(0, num(ts.mcp_use_agents) - num(ts.mcp_agent_use_agents)) : 0",
+      "replace": "const checkerUsers = 0",
+      "expect": "FAIL ...an empty \"Who called a tool\" says only checkers called"
+    },
+    {
+      "name": "a day written before the view reads as only checkers",
+      "find": "ts && ts.mcp_agent_use_agents != null && !(ts.mcp_agent_names",
+      "replace": "ts && !(ts.mcp_agent_names",
+      "expect": "FAIL ...an empty \"Who called a tool\" says only checkers called"
     }
   ]
 }

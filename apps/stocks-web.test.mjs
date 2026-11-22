@@ -10,7 +10,7 @@ import os from 'node:os'
 import path from 'node:path'
 import zlib from 'node:zlib'
 import crypto from 'node:crypto'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import { createStocksWeb, SECURITY_HEADERS, PAGE_CACHE_MS, MCP_REGISTRY_AUTH_RE, GLAMA_CLAIM_RE, GLAMA_CLAIM_PATH } from './stocks-web.mjs'
 import { statsPage } from './stocks-stats.mjs'
 import { COINBASE_URL, ROBINHOOD_ASSETS_URL, ROBINHOOD_PRICES_URL } from '../evm/core/stocks/registries.mjs'
@@ -127,6 +127,24 @@ console.log('the page')
   check('the page names its assets by content hash and is not cached itself', /src="app\.js\?v=[0-9a-f]{12}"/.test(html) && /href="style\.css\?v=[0-9a-f]{12}"/.test(html) && r.headers.get('cache-control') === 'no-cache')
   check('the script and the stylesheet are served', (await get('/stocks/app.js')).status === 200 && (await get('/stocks/style.css')).headers.get('content-type').startsWith('text/css'))
   check('nothing else of the repository is served', (await get('/stocks/stocks-web.mjs')).status === 404 && (await get('/stocks/../package.json')).status === 404)
+  {
+  // The typefaces are ours: no page view reaches a third party (pentest, 22.11).
+  const csp = SECURITY_HEADERS['content-security-policy']
+  check('the CSP names no other origin: fonts and styles are self only', !/https?:/.test(csp) && /font-src 'self'/.test(csp) && /style-src 'self';/.test(csp), csp)
+  const pages = ['/stocks/', '/stocks/status', '/stocks/history', '/stocks/docs/changelog.md']
+  // As a browser asks: a docs page answers markdown to anyone who does not accept HTML, and the markdown has no head.
+  const asBrowser = { headers: { accept: 'text/html,application/xhtml+xml,*/*;q=0.8' } }
+  const bodies = await Promise.all(pages.map(async (p) => { const r = await get(p, asBrowser); const b = await r.text(); return [p, /<head>/.test(b) ? r.status : 0, b] }))
+  check('no page links a font host or any stylesheet from elsewhere', bodies.every(([, s, b]) => s === 200 && !/fonts\.(googleapis|gstatic)\.com/.test(b) && !/<link[^>]+rel="(stylesheet|preconnect)"[^>]+href="https?:/.test(b)), bodies.filter(([, s, b]) => s !== 200 || /fonts\.(googleapis|gstatic)\.com/.test(b)).map(([p]) => p).join(','))
+  const css = fs.readFileSync(new URL('./stocks-web/style.css', import.meta.url), 'utf8')
+  const faces = [...css.matchAll(/@font-face\s*\{([^}]*)\}/g)].map((m) => ({ family: m[1].match(/font-family:\s*'([^']+)'/)?.[1], url: m[1].match(/url\('([^']+)'\)/)?.[1] }))
+  const families = ['--mono', '--sans'].map((v) => css.match(new RegExp(`${v}:\\s*'([^']+)'`))?.[1])
+  check('each family the page asks for has a face of its own, in both subsets', families.every((f) => f && faces.filter((x) => x.family === f).length === 2), JSON.stringify(families))
+  const served = await Promise.all(faces.map(async (f) => { const r = await get('/stocks/' + f.url); return { url: f.url, status: r.status, type: r.headers.get('content-type'), magic: Buffer.from(await r.arrayBuffer()).subarray(0, 4).toString('latin1') } }))
+  check('...and every face the stylesheet names is served here as woff2', served.length === 4 && served.every((s) => s.status === 200 && s.type === 'font/woff2' && s.magic === 'wOF2'), JSON.stringify(served))
+  const ofl = await get('/stocks/fonts/OFL.txt')
+  check('the fonts travel with their licence', ofl.status === 200 && (await ofl.text()).split('SIL OPEN FONT LICENSE Version 1.1').length === 3)
+  }
   check('POST is refused', (await get('/stocks/api/find?chain=base&q=nvda', { method: 'POST' })).status === 405)
   const bare = await get('/stocks?chain=robinhood', { redirect: 'manual' })
   check('/stocks redirects to /stocks/, keeping the query', bare.status === 301 && bare.headers.get('location') === '/stocks/?chain=robinhood')
@@ -173,6 +191,10 @@ console.log('the history archive')
   check('a bad event, since or chain is a 400', (await get('/stocks/api/history/cases?chain=base&event=x')).status === 400 && (await get('/stocks/api/history/cases?chain=base&since=nope')).status === 400 && (await get('/stocks/api/history/cases?chain=nope')).status === 400)
   const both = await (await get('/stocks/api/history/cases')).json()
   check('without a chain, every chain answers; an empty one says so', both.chains.base.count === 2 && both.chains.robinhood.count === 0)
+  // 21.11 a reader that runs no script saw "Loading the case archive." over an empty table (apps/stocks-board.mjs).
+  const landing = await (await get('/stocks/')).text()
+  const wall = (landing.match(/<section class="board"[\s\S]*?<\/section>/) || [''])[0]
+  check('the landing arrives with the week\'s cases written in, not "Loading"', (wall.match(/<tr class="click"/g) || []).length === 2 && wall.includes(`<code>${Y.slice(0, 6)}…${Y.slice(-4)}</code>`) && wall.includes('<td>AAPLc<span class="board-why">') && wall.includes('Open cases: 1 on Base. This week: 2 new events, 1 later listed by the issuer.') && !/Loading the case archive/.test(wall), wall.slice(0, 300))
   const ri = await (await get('/stocks/api/history/registry?chain=base')).json()
   check('the registry index has no bodies', ri.count === 1 && ri.snapshots[0].records === 1 && !('body' in ri.snapshots[0]) && !('row' in ri.snapshots[0]))
   const rd = await (await get('/stocks/api/history/registry?chain=base&date=2026-11-08')).json()
@@ -306,6 +328,11 @@ console.log('rate limit')
   for (let i = 0; i < 61; i++) last = (await get('/stocks/api/find?chain=base&q=nvda', { headers: { 'x-real-ip': '203.0.113.7' } })).status
   check('the 61st request in a minute from one client is 429', last === 429)
   check('another client is not affected', (await get('/stocks/api/find?chain=base&q=nvda', { headers: { 'x-real-ip': '203.0.113.8' } })).status === 200)
+  const pay = await get('/stocks/api/status/payments', { headers: { 'x-real-ip': '203.0.113.7' } })
+  check('the payment state still answers a client past its minute: a monitor is never refused', pay.status === 200 && (await pay.json()).enabled === false)
+  const mon = { headers: { 'x-real-ip': '203.0.113.10' } }
+  for (let i = 0; i < 70; i++) await get('/stocks/api/status/payments', mon)
+  check('...and reading it costs no unit of the minute', (await get('/stocks/api/find?chain=base&q=nvda', mon)).status === 200)
 }
 
 console.log('a host that asked for paid passes and did not get the module')
@@ -394,6 +421,9 @@ if (!x402mod) {
     const forged = Buffer.from(JSON.stringify({ x402Version: 1, scheme: 'exact', network: 'base', payload: { signature: '0x' + 'aa'.repeat(65), authorization: { from: payer, to: payTo, value: '10000', validAfter: '0', validBefore: '9999999999', nonce: '0x' + 'ab'.repeat(32) } } }), 'utf8').toString('base64')
     const bad = await hit('/stocks/api/status', { headers: { ...ip2, 'x-payment': forged } })
     check('a payment that does not verify is a 402 that took nothing', bad.status === 402 && !bad.headers.get('x-payment-response'))
+    const payState = await hit('/stocks/api/status/payments', { headers: ip2 })
+    const payStateBody = await payState.json()
+    check('the payment state answers a client the free minute prices with a 402: the state, not the price', payState.status === 200 && payStateBody.enabled === true)
     t += 11 * 60e3
     const back = []
     for (let i = 0; i < 61; i++) back.push((await hit('/stocks/api/status', { headers: ip })).status)
@@ -419,10 +449,46 @@ if (!x402mod) {
     // Failed purchases on the big-batch route are capped per client (security review, 19.11).
     const ip4 = { 'x-real-ip': '203.0.113.47' }
     const tries = []
-    for (let i = 0; i < 6; i++) tries.push((await hit(`/stocks/verify?chain=base&addresses=${many(51)}`, { headers: { ...ip4, 'x-payment': forged } })).status)
+    let lockedOut
+    for (let i = 0; i < 6; i++) { lockedOut = await hit(`/stocks/verify?chain=base&addresses=${many(51)}`, { headers: { ...ip4, 'x-payment': forged } }); tries.push(lockedOut.status) }
     check('five failed payments are refused as payments; the sixth is a 429 before any verification', tries.slice(0, 5).every((s) => s === 402) && tries[5] === 429, tries.join(','))
+    const lockBody = await lockedOut.json()
+    const lockS = Number(lockedOut.headers.get('retry-after'))
+    check('...the lockout names its wait: exact minutes in the text, the same seconds in the body as in Retry-After', lockS > 0 && lockS <= 600 && lockBody.retry_after_s === lockS && new RegExp(`try again in ${Math.ceil(lockS / 60)} minutes?$`).test(lockBody.error || '') && !/few minutes/.test(lockBody.error || ''), JSON.stringify(lockBody))
   } finally { await app402.stop() }
 }
+}
+
+// The sales on the payment state (apps/pass-sales.mjs), read from a chain the test plays. A stand-in for the payment
+// module, so this runs in every checkout and in CI, where the module (a host file) is absent.
+console.log('the payment state carries the sales read from Base')
+{
+  const W = '0x' + '5e'.repeat(20), PAYEE = '0x' + 'd6'.repeat(20)
+  const chainCalls = []
+  const saleChain = async (method, params) => {
+    chainCalls.push(method)
+    if (method === 'eth_getTransactionCount') return params[1] === 'latest' || parseInt(params[1], 16) >= 7 ? '0x1' : '0x0'
+    if (method === 'eth_blockNumber') return '0x10'
+    if (method === 'eth_getBlockByNumber') return { timestamp: '0x691f0000', transactions: [{ hash: '0x' + 'c1'.repeat(32), from: params[0] === '0x7' ? W : '0x0', nonce: '0x0' }] }
+    if (method === 'eth_getTransactionReceipt') return { status: '0x1', logs: [{ address: '0x833589fcd6edb6e08f4c7c32d4f71b54bda02913', topics: [TRANSFER_TOPIC, '0x' + '0'.repeat(24) + 'ab'.repeat(20), '0x' + '0'.repeat(24) + PAYEE.slice(2)] }] }
+    throw new Error('unexpected ' + method)
+  }
+  const stand = () => ({ enabled: true, wallet: W, priceUsd: '0.01', passMinutes: 10, passRate: 600, pausedUntil: () => 0, passActive: () => false, accepts: () => null, purchase: async () => ({ ok: false, error: 'not in this test' }) })
+  const appS = createStocksWeb({ roots: { base: baseRoot, robinhood: rhRoot }, fetchImpl, log: () => {}, analytics: { enabled: false }, exam: { url: null }, x402: { payTo: PAYEE }, x402Module: stand, baseCall: saleChain })
+  const { port: ps } = await appS.start(0, '127.0.0.1')
+  try {
+    const state = async () => (await fetch(`http://127.0.0.1:${ps}/stocks/api/status/payments`)).json()
+    check('before the first read from Base the payment state has no sales, and asking starts the read', (await state()).sales === null)
+    let withSales
+    for (let i = 0; i < 50 && !(withSales = await state()).sales?.latest; i++) await new Promise((r) => setTimeout(r, 20))
+    check('the payment state carries the sales as Base has them: the count of the wallet and its latest settlement', withSales.sales?.settlement_transactions === 1 && withSales.sales.latest?.transaction === '0x' + 'c1'.repeat(32) && withSales.sales.latest.payer === '0x' + 'ab'.repeat(20) && withSales.sales.latest.ours === false, JSON.stringify(withSales.sales))
+  } finally { await appS.stop() }
+  const offCalls = []
+  const appOff = createStocksWeb({ roots: { base: baseRoot, robinhood: rhRoot }, fetchImpl, log: () => {}, analytics: { enabled: false }, exam: { url: null }, x402: {}, x402Module: () => ({ enabled: false, passActive: () => false, accepts: () => null, purchase: async () => ({ ok: false }) }), baseCall: async (m) => { offCalls.push(m); return '0x0' } })
+  const { port: po } = await appOff.start(0, '127.0.0.1')
+  let off
+  try { off = await (await fetch(`http://127.0.0.1:${po}/stocks/api/status/payments`)).json(); await new Promise((r) => setTimeout(r, 30)) } finally { await appOff.stop() }
+  check('...and a server without paid passes reads no chain at all and says nothing of sales', off.enabled === false && !('sales' in off) && offCalls.length === 0, offCalls.join(','))
 }
 
 console.log('passes off, the world of the day before')
@@ -595,6 +661,14 @@ console.log('the public MCP endpoint')
   check('an MCP client asking for an event stream still gets 405', (await get('/stocks/mcp', { headers: { accept: 'application/json, text/event-stream' } })).status === 405)
   const pre = await get('/stocks/mcp', { method: 'OPTIONS' })
   check('a browser preflight is answered with CORS for POST', pre.status === 204 && pre.headers.get('access-control-allow-methods').includes('POST'))
+  const allowed = (pre.headers.get('access-control-allow-headers') || '').split(',').map((h) => h.trim().toLowerCase())
+  check('...it allows the MCP headers and never authorization: this server takes no credentials', allowed.includes('mcp-protocol-version') && allowed.includes('content-type') && !allowed.includes('authorization') && !allowed.includes('cookie'), allowed.join(','))
+  const longName = 'x'.repeat(500)
+  const echoTool = (await (await rpc({ jsonrpc: '2.0', id: 30, method: 'tools/call', params: { name: longName } })).json()).error?.message || ''
+  const echoMethod = (await (await rpc({ jsonrpc: '2.0', id: 31, method: longName })).json()).error?.message || ''
+  const echoArg = (await (await rpc({ jsonrpc: '2.0', id: 32, method: 'tools/call', params: { name: 'list_stock_tokens', arguments: { chain: 'base', [longName]: 1 } } })).json()).error?.message || ''
+  const echoed = (m) => (m.match(/x+/) || [''])[0].length
+  check('an error repeats at most 64 characters of what the caller sent, as tool, method or argument name', [echoTool, echoMethod, echoArg].every((m) => echoed(m) > 0 && echoed(m) <= 64), [echoTool, echoMethod, echoArg].map(echoed).join(','))
   check('a batch is refused', (await rpc([{ jsonrpc: '2.0', id: 7, method: 'ping' }])).status === 400)
   check('junk is a parse error', (await (await rpc('{nope')).json()).error.code === -32700)
   check('a body over 16 KB is 413', (await rpc({ jsonrpc: '2.0', id: 8, method: 'ping', pad: 'x'.repeat(20000) })).status === 413)
@@ -774,7 +848,7 @@ console.log('verify and badge')
   check('...and the page says noindex itself, and loads no beacon and nothing from another host', /<meta name="robots" content="noindex, nofollow">/.test(html) && !/beacon\.js/.test(html) && !/(src|href)="(https?:)?\/\//.test(html))
   // One screen: six tabs as radio inputs (CSS only), the first checked; a panel for each; tiles on top.
   const radios = html.match(/<input class="sx-r sr" type="radio" name="sx-tab" id="sx-t-[a-z]+"( checked)?>/g) || []
-  check('...tabs are radio inputs and labels, no script: Overview checked, then Visits, MCP, Recorder, Exam, Days', radios.length === 6 && radios.filter((r) => r.includes(' checked')).length === 1 && radios[0].includes('sx-t-overview') && ['overview', 'visits', 'mcp', 'recorder', 'exam', 'days'].every((id) => html.includes(`<label for="sx-t-${id}">`) && html.includes(`class="sx-panel sx-p-${id}"`)) && (html.match(/class="sx-kpi /g) || []).length === 6)
+  check('...tabs are radio inputs and labels, no script: Overview checked, then Visits, MCP, Agents, Recorder, Exam, Days', radios.length === 7 && radios.filter((r) => r.includes(' checked')).length === 1 && radios[0].includes('sx-t-overview') && ['overview', 'visits', 'mcp', 'agents', 'recorder', 'exam', 'days'].every((id) => html.includes(`<label for="sx-t-${id}">`) && html.includes(`class="sx-panel sx-p-${id}"`)) && (html.match(/class="sx-kpi /g) || []).length === 6)
   check('...the histograms are inline SVG drawn on the server, with a bar for the day that has data and its value under it', /<svg class="sx-svg" viewBox="0 0 140 100" preserveAspectRatio="none" role="img"/.test(html) && /<rect class="b0" x="[\d.]+" y="[\d.]+" width="6.2" height="92.00"\/>/.test(html) && /<ol class="sx-x">(<li class=""><b>·<\/b><span>\d\d<\/span><\/li>){13}<li class=""><b>1<\/b>/.test(html))
   // Who leaves no row (owner, 13.11): the dashboard says it in counts and a date. An address must never reach a page
   // that ends up in a screenshot, not even the owner's own.
@@ -782,6 +856,9 @@ console.log('verify and badge')
   check('...the MCP tile and charts split discovery from use, by behaviour and not by name', /MCP agents, today/.test(html) && /1<small>\/3 called a tool<\/small>/.test(html) && /3 discovery requests · 1 use/.test(html) && /MCP requests by day/.test(html) && /MCP agents by day/.test(html) && />discovery</.test(html) && />called a tool</.test(html))
   check('...the day table carries the split and counts requests from the rows, like the charts', /<th class="n">MCP agents<\/th><th class="n">called a tool<\/th><th class="n">tool calls<\/th><th class="n">MCP requests<\/th>/.test(html) && /<td class="n">3<\/td><td class="n">1<\/td><td class="n">1<\/td><td class="n">4<\/td>/.test(html))
   check('...the MCP tab counts both flows and says the client name is only a label', /Discovery and use/.test(html) && /<span class="k">discovery<\/span><span class="v">3 requests<\/span>/.test(html) && /<span class="k">use<\/span><span class="v">1 requests<\/span>/.test(html) && /Who connected/.test(html) && /a label only/.test(html) && /counts as use once it calls a tool that day/.test(html))
+  // Agents (owner, 21.11: "without the catalogues"): the clients that name themselves checkers are hidden by name, as a
+  // view beside the split by behaviour; the name a client sent is escaped like every other.
+  check('...the Agents tab hides the clients that name themselves checkers, and escapes the names it shows', /Requests without checkers/.test(html) && /Agents without checkers/.test(html) && /<span class="k">agents<\/span><span class="v">1 of 3<\/span>/.test(html) && /<span class="k">checkers<\/span><span class="v">2 hidden<\/span>/.test(html) && /<span class="k">tool calls<\/span><span class="v">1<\/span>/.test(html) && /Who called a tool/.test(html) && html.includes('&lt;img src=x onerror=alert(1)&gt;') && !html.includes('<img src=x'))
   check('...it says who is not counted, in counts and a date, and never an address', /Not counted/.test(html) && /2 addresses or ranges/.test(html) && /1 of its own/.test(html) && /1 entry not an address/.test(html) && /since 2026-11-13 · earlier days still hold ours/.test(html) && !/198\.51\.100|203\.0\.113|192\.0\.2|nonsense/.test(html))
   await appS.stop()
   // A host that cannot read its own addresses, and nothing configured: the block says both, instead of looking fine.
@@ -795,13 +872,20 @@ console.log('verify and badge')
   // Empty: no analytics file, no run, no exam. Every tab still renders, with words instead of numbers, and no NaN.
   const days14 = Array.from({ length: 14 }, (_, i) => ({ day: new Date(NOW - (13 - i) * 864e5).toISOString().slice(0, 10), summary: null }))
   const empty = statsPage({ days: days14, runs: { base: [], robinhood: [] }, exam: null, now: NOW, version: 't', assets: { css: 'style.css', docsCss: 'docs.css' } })
-  check('/stats with no data: every tab renders, charts say no data, the recorder and the exam say none, no NaN or undefined', (empty.match(/class="sx-panel sx-p-/g) || []).length === 6 && (empty.match(/<span class="sx-nodata">no data<\/span>/g) || []).length >= 3 && /no run today or yesterday/.test(empty) && /no exam report from the last 36 h/.test(empty) && (empty.match(/<td colspan="10">no data<\/td>/g) || []).length === 14 && !/NaN|undefined|Infinity/.test(empty) && !/<script|style="/i.test(empty))
+  check('/stats with no data: every tab renders, charts say no data, the recorder and the exam say none, no NaN or undefined', (empty.match(/class="sx-panel sx-p-/g) || []).length === 7 && (empty.match(/<span class="sx-nodata">no data<\/span>/g) || []).length >= 3 && /no run today or yesterday/.test(empty) && /no exam report from the last 36 h/.test(empty) && (empty.match(/<td colspan="10">no data<\/td>/g) || []).length === 14 && !/NaN|undefined|Infinity/.test(empty) && !/<script|style="/i.test(empty))
   // The day-over-day delta is only against the calendar day before; a gap says so instead of comparing older days.
   const sm = (people) => ({ people, engaged: 0, median_visible_s: null, browsers_without_beacon: 0, bots: 0, tools: 0, views: [], tokens: [], refs: [], countries: [], actions: {}, mcp_clients: 0, mcp_calls: [], mcp_client_names: [] })
   const gap = days14.map((d, i) => ({ ...d, summary: i === 13 ? sm(9) : i === 10 ? sm(4) : null }))
   const next = days14.map((d, i) => ({ ...d, summary: i === 13 ? sm(9) : i === 12 ? sm(4) : null }))
   const page = (ds) => statsPage({ days: ds, runs: {}, exam: null, now: NOW, version: 't', assets: { css: 'style.css', docsCss: 'docs.css' } })
   check('...the people tile compares with the day before only when that day has data; no auto refresh to reset the tab', page(gap).includes('no data for the day before') && page(next).includes('+5 vs the day before') && !/http-equiv="refresh"/.test(empty))
+  // An empty "Who called a tool" says why (owner, 21.11): only checkers called, or nobody did; an old day keeps "none".
+  const who = (extra) => page(days14.map((d, i) => ({ ...d, summary: i === 13 ? { ...sm(1), ...extra } : null }))).split('Who called a tool')[1].split('</section>')[0]
+  const onlyCheckers = who({ mcp_use_agents: 3, mcp_agent_use_agents: 0, mcp_agent_names: [] })
+  const nobody = who({ mcp_use_agents: 0, mcp_agent_use_agents: 0, mcp_agent_names: [] })
+  const named = who({ mcp_use_agents: 3, mcp_agent_use_agents: 1, mcp_agent_names: [['BrickBlueBot', 1]] })
+  const old = who({ mcp_use_agents: 3 })
+  check('...an empty "Who called a tool" says only checkers called (with how many), or that nobody did; an old day says none', /only checkers called a tool today: 3, hidden here/.test(onlyCheckers) && /no tool call today/.test(nobody) && !/only checkers/.test(nobody) && /BrickBlueBot/.test(named) && !/only checkers|no tool call/.test(named) && /none/.test(old) && !/only checkers|no tool call/.test(old), onlyCheckers + ' | ' + nobody + ' | ' + old)
   // Sample runs: a run near its budget is amber, a stopped one red, in the chart and the table; the reason is escaped.
   const run = (o) => ({ started_at: '2026-11-13T10:00:00Z', duration_s: 100, budget_s: 600, rows_written: 4, tokens_considered: 4, ...o })
   const withRuns = statsPage({ days: days14, runs: { base: [run({ duration_s: 590 }), run({})], robinhood: [run({ aborted: '<b>rpc down</b>' })] }, exam: null, now: NOW, version: 't', assets: { css: 'style.css', docsCss: 'docs.css' } })
@@ -1102,19 +1186,20 @@ console.log('source link')
   }
   // Explicit, so the check holds whatever package.json says; the default follows package.json (checked below).
   const hidden = await pages({ source: null })
-  check('while the repository is private, no page links to it (no GitHub 404 for a visitor)', !hidden.home.includes('github.com') && !hidden.doc.includes('github.com') && !hidden.home.includes('<!--source-->'))
+  // Our own repository only: the landing links other projects on GitHub (the Bankr skill submission, 21.11).
+  check('while the repository is private, no page links to it (no GitHub 404 for a visitor)', !hidden.home.includes('github.com/proofofstock') && !hidden.doc.includes('github.com/proofofstock') && !hidden.home.includes('<!--source-->'))
   const shown = await pages({ source: GH })
   check('once it is public, the footer and the docs link to the source', shown.home.includes(`href="${GH}"`) && shown.doc.includes(`href="${GH}"`))
   check('...and the exam chip sits with the proof links right after Status, hidden until the page has a fresh result', /id="foot-status"[\s\S]{0,90}<a id="exam-chip" class="foot-link exam" href="https:\/\/github\.com\/proofofstock\/proof-of-stock\/tree\/exam" target="_blank" rel="noopener noreferrer" hidden>/.test(shown.home) && !hidden.home.includes('exam-chip') && !shown.home.includes('<!--exam-->'))
   {
     // The bottom of every page: X, Telegram, GitHub, in that order and nothing after them (owner, 12.11).
     const icons = (html, cls) => [...html.matchAll(new RegExp(`<a class="${cls}" href="([^"]+)"`, 'g'))].map((m) => m[1])
-    const order = JSON.stringify(['https://x.com/proofofstock', 'https://t.me/proofofstock1', GH])
+    const order = JSON.stringify(['https://x.com/proofofstock', 'https://t.me/proofofstockchannel', GH])
     const foot = (shown.home.match(/<footer class="foot">[\s\S]*?<\/footer>/) || [''])[0]
     check('the site: X, Telegram and GitHub are the last thing in the footer, not in the link row', JSON.stringify(icons(foot, 'foot-ic')) === order && /<\/span>\s*<\/span>\s*<\/div>\s*<\/footer>/.test(foot) && !/<a(?![^>]*exam-chip)[^>]*foot-link[^>]*github/.test(foot) && foot.lastIndexOf('foot-ic') > foot.indexOf('foot-bottom'))
     const dfoot = (shown.doc.match(/<footer class="dx-foot">[\s\S]*?<\/footer>/) || [''])[0]
     check('the docs: the same three icons at the bottom, each named for a screen reader', JSON.stringify(icons(dfoot, 'dx-ic')) === order && (dfoot.match(/aria-label="Proof of Stock[^"]*"><span class="i i-(x|tg|gh)" aria-hidden="true">/g) || []).length === 3)
-    check('...and while private, the docs show X and Telegram only', JSON.stringify(icons((hidden.doc.match(/<footer class="dx-foot">[\s\S]*?<\/footer>/) || [''])[0], 'dx-ic')) === JSON.stringify(['https://x.com/proofofstock', 'https://t.me/proofofstock1']))
+    check('...and while private, the docs show X and Telegram only', JSON.stringify(icons((hidden.doc.match(/<footer class="dx-foot">[\s\S]*?<\/footer>/) || [''])[0], 'dx-ic')) === JSON.stringify(['https://x.com/proofofstock', 'https://t.me/proofofstockchannel']))
   }
   const pkg = JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url), 'utf8'))
   const byDefault = await pages({})
@@ -1286,5 +1371,40 @@ console.log('the public exam: /api/exam')
 }
 
 fs.rmSync(tmp, { recursive: true, force: true })
+console.log('a port held by systemd across restarts (deploy 502s, 20.11)')
+{
+  const { systemdListenFd } = await import('./stocks-web.mjs')
+  check('one descriptor meant for this process is fd 3', systemdListenFd({ LISTEN_FDS: '1', LISTEN_PID: '4242' }, 4242) === 3)
+  check('...none, several, or one meant for another process is null, and the server binds the port itself', systemdListenFd({}, 4242) === null && systemdListenFd({ LISTEN_FDS: '2', LISTEN_PID: '4242' }, 4242) === null && systemdListenFd({ LISTEN_FDS: '1', LISTEN_PID: '4243' }, 4242) === null && systemdListenFd({ LISTEN_FDS: '1' }, 4242) === null)
+  const sw = createStocksWeb({ roots: { base: baseRoot, robinhood: rhRoot }, fetchImpl, now: () => NOW, log: () => {}, analytics: { enabled: false }, exam: { url: null }, x402Module: null })
+  const seen = []
+  sw.server.listen = (...a) => { seen.push(a); a.at(-1)(); return sw.server }
+  sw.server.address = () => ({ address: '127.0.0.1', port: 3005 })
+  await sw.start(3005, '127.0.0.1', { fd: 3 })
+  await sw.start(3005, '127.0.0.1')
+  check('...start listens on the descriptor when given one, on port and host otherwise', JSON.stringify(seen[0][0]) === '{"fd":3}' && seen[0].length === 2 && seen[1][0] === 3005 && seen[1][1] === '127.0.0.1', JSON.stringify(seen.map((a) => a.slice(0, -1))))
+  sw.server.close = (cb) => cb(); await sw.stop()
+  if (process.platform !== 'win32') {
+    // The real hand-over, as systemd does it: a socket opened by another process, passed as fd 3 with LISTEN_FDS and
+    // LISTEN_PID (set by `exec`, so it is the pid of the server itself), and closed by its opener before any request.
+    const net = await import('node:net')
+    const { spawn } = await import('node:child_process')
+    const holder = net.createServer()
+    await new Promise((r) => holder.listen(0, '127.0.0.1', r))
+    const hport = holder.address().port
+    const childDir = fs.mkdtempSync(path.join(os.tmpdir(), 'stocks-web-fd-'))
+    const child = path.join(childDir, 'listen-fd-child.mjs')
+    fs.writeFileSync(child, `import http from 'node:http'\nimport { systemdListenFd } from ${JSON.stringify(pathToFileURL(path.join(path.dirname(fileURLToPath(import.meta.url)), 'stocks-web.mjs')).href)}\nconst fd = systemdListenFd()\nhttp.createServer((q, s) => s.end('from-fd-' + fd)).listen({ fd }, () => console.log('up'))\n`)
+    const p = spawn('sh', ['-c', `LISTEN_FDS=1 LISTEN_PID=$$ exec "${process.execPath}" "${child}"`], { stdio: ['ignore', 'pipe', 'pipe', holder._handle.fd] })
+    let out = ''
+    await new Promise((r) => { p.stdout.on('data', (d) => { out += d; if (out.includes('up')) r() }); p.on('exit', r); setTimeout(r, 10000) })
+    await new Promise((r) => holder.close(r))
+    const body = await fetch(`http://127.0.0.1:${hport}/`).then((r) => r.text()).catch((e) => 'error ' + e.message)
+    p.kill()
+    fs.rmSync(childDir, { recursive: true, force: true })
+    check('...a socket passed the way systemd does is served by the new process after its opener let go', body === 'from-fd-3', body)
+  }
+}
+
 console.log(`\n${passed} passed, ${failed} failed`)
 if (failed) { for (const x of failures) console.log(x); process.exit(1) }

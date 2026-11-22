@@ -291,11 +291,11 @@ body.sx { --sx-gap: 12px; --sx-b0: color-mix(in srgb, var(--accent-hi) 30%, tran
 .sx-tabs label:hover { color: var(--text); }
 .sx-built { margin-left: auto; color: var(--faint); font: 11px/1 var(--mono); white-space: nowrap; }
 .sx-panel { display: none; }
-#sx-t-overview:checked ~ .sx-panels .sx-p-overview, #sx-t-visits:checked ~ .sx-panels .sx-p-visits, #sx-t-mcp:checked ~ .sx-panels .sx-p-mcp,
+#sx-t-overview:checked ~ .sx-panels .sx-p-overview, #sx-t-visits:checked ~ .sx-panels .sx-p-visits, #sx-t-mcp:checked ~ .sx-panels .sx-p-mcp, #sx-t-agents:checked ~ .sx-panels .sx-p-agents,
 #sx-t-recorder:checked ~ .sx-panels .sx-p-recorder, #sx-t-exam:checked ~ .sx-panels .sx-p-exam, #sx-t-days:checked ~ .sx-panels .sx-p-days { display: grid; }
-#sx-t-overview:checked ~ .sx-tabs [for="sx-t-overview"], #sx-t-visits:checked ~ .sx-tabs [for="sx-t-visits"], #sx-t-mcp:checked ~ .sx-tabs [for="sx-t-mcp"],
+#sx-t-overview:checked ~ .sx-tabs [for="sx-t-overview"], #sx-t-visits:checked ~ .sx-tabs [for="sx-t-visits"], #sx-t-mcp:checked ~ .sx-tabs [for="sx-t-mcp"], #sx-t-agents:checked ~ .sx-tabs [for="sx-t-agents"],
 #sx-t-recorder:checked ~ .sx-tabs [for="sx-t-recorder"], #sx-t-exam:checked ~ .sx-tabs [for="sx-t-exam"], #sx-t-days:checked ~ .sx-tabs [for="sx-t-days"] { color: var(--text); border-bottom-color: var(--accent-hi); }
-#sx-t-overview:focus-visible ~ .sx-tabs [for="sx-t-overview"], #sx-t-visits:focus-visible ~ .sx-tabs [for="sx-t-visits"], #sx-t-mcp:focus-visible ~ .sx-tabs [for="sx-t-mcp"],
+#sx-t-overview:focus-visible ~ .sx-tabs [for="sx-t-overview"], #sx-t-visits:focus-visible ~ .sx-tabs [for="sx-t-visits"], #sx-t-mcp:focus-visible ~ .sx-tabs [for="sx-t-mcp"], #sx-t-agents:focus-visible ~ .sx-tabs [for="sx-t-agents"],
 #sx-t-recorder:focus-visible ~ .sx-tabs [for="sx-t-recorder"], #sx-t-exam:focus-visible ~ .sx-tabs [for="sx-t-exam"], #sx-t-days:focus-visible ~ .sx-tabs [for="sx-t-days"] { outline: 2px solid var(--accent-hi); outline-offset: -2px; border-radius: 6px 6px 0 0; }
 
 /* Panels: rows of cards. */

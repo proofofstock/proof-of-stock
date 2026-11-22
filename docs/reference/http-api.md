@@ -232,7 +232,7 @@ curl -s 'https://proofofstock.xyz/api/overview?chain=base'
   "market_now": { "session": "regular", "reason": "regular", "ny_date": "2026-11-10", "holiday": null, "early_close": false },
   "chains": {
     "base": {
-      "issuer": "coinbase", "priced": 1, "unpriced": 0, "stale": 0,
+      "issuer": "coinbase", "listed": 2, "minted": 1, "priced": 1, "unpriced": 0, "stale": 0,
       "rows": [{
         "symbol": "NVDAc", "name": "NVIDIA", "address": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "isin": "US67066G1040",
         "observed_at": "2026-11-10T14:45:00Z", "premium": 0.0025, "premium_refused": null,
@@ -256,6 +256,8 @@ Per chain:
 | Field | Type | Meaning |
 |---|---|---|
 | `issuer` | string or null | the registry's issuer |
+| `listed` | integer | tokens on the issuer's list for this chain |
+| `minted` | integer or null | of them, the tokens with supply on this chain: only these have a price to read. Null when the issuer reports no supply (Robinhood) |
 | `priced` | integer | tokens with a current reading that has a premium |
 | `unpriced` | integer | tokens with a current reading and no premium. Counted, never ranked |
 | `stale` | integer | tokens whose latest reading is older than 1800 s. Counted, never ranked |
@@ -485,7 +487,7 @@ not a price difference and not an arbitrage. Row and cell fields are listed unde
 <a id="route-status"></a>
 ## `GET /api/status`
 
-What the server holds, per chain, and the state of paid passes (`payments`).
+What the server holds, per chain. Every key is a chain; nothing else is ever added beside them.
 
 ```bash
 curl -s 'https://proofofstock.xyz/api/status'
@@ -502,12 +504,11 @@ curl -s 'https://proofofstock.xyz/api/status'
     "registry_records": 1, "registry_age_s": 120, "registry_error": null,
     "readings_tokens": 1, "readings_age_s": 120, "readings_error": null,
     "newest_reading_at": "2026-11-10T14:45:00.000Z", "newest_reading_age_s": 900
-  },
-  "payments": { "enabled": true, "settlement_wallet": "0x0252…bf4a", "paused_until": null, "late_settlements": [] }
+  }
 }
 ```
 
-`payments` is `{ "enabled": false }` where paid passes are off. Otherwise: `settlement_wallet` is the address that sends the settlement transactions and pays their gas (the sender of every one on chain); `paused_until` is set while selling is paused after failed settlements; `late_settlements` lists, for 24 hours, the transactions that were sent and had no receipt after 10 minutes (`{ transaction, at }`). Our own health check alerts on these (`deployment/PUBLISHING.md`).
+The state of paid passes is its own route, `GET /api/status/payments`: `{ "enabled": false }` where paid passes are off. Otherwise: `settlement_wallet` is the address that sends the settlement transactions and pays their gas (the sender of every one on chain); `paused_until` is set while selling is paused after failed settlements; `late_settlements` lists, for 24 hours, the transactions that were sent and had no receipt after 10 minutes (`{ transaction, at }`). Our own health check alerts on these (`deployment/PUBLISHING.md`). This route costs no unit of the rate limit, so a monitor past its free minute still reads the state. `sales` is what the settlement wallet has done, read from Base every 10 minutes, or null before the first read: `settlement_transactions` is the wallet's own transaction count (one per pass sold, the number BaseScan shows), and `latest` its newest settlement: `transaction`, `at` (the block time), `settled` (false when it reverted and paid nothing out), `payer`, and `ours`, true when the payer is our own test wallet.
 
 | Field | Type | Unit | Null means |
 |---|---|---|---|

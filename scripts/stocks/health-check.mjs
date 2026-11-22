@@ -290,7 +290,8 @@ if (isEntryPoint(import.meta.url)) {
   const mirrors = Object.fromEntries(Object.entries(roots).map(([c, root]) => [c, readMirror(path.join(root, 'stock-peg'), c)]))
   const checks = evaluate({ status, siteError, runs, prevRuns, mirrors, now })
   checks.push(...standaloneChecks(now))
-  const payments = status && status.payments
+  let payments = null
+  try { const r = await fetch(site + '/api/status/payments', { signal: AbortSignal.timeout(10_000) }); if (r.ok) payments = await r.json() } catch (_) { /* the site check above already says the site is down */ }
   if (payments && payments.enabled) {
     let balanceWei = null, balanceError = null
     if (/^0x[0-9a-fA-F]{40}$/.test(payments.settlement_wallet || '')) { try { balanceWei = await baseBalance(payments.settlement_wallet) } catch (e) { balanceError = String(e && e.message || e) } }

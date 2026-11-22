@@ -129,7 +129,11 @@ export function overview (byChain, { limit = 12, minLiquidityUsd = 0, now = null
       rows.push({ symbol: r.symbol, name: r.name ?? null, address: r.address, isin: r.isin, ...l })
     }
     rows.sort((a, b) => Math.abs(b.premium) - Math.abs(a.premium))
-    out[chain] = { issuer: records?.[0]?.issuer ?? null, priced: rows.length, unpriced, stale, rows: rows.slice(0, limit), as_of: window?.loaded_at ? new Date(window.loaded_at).toISOString() : null, newest_reading_at: newest == null ? null : new Date(newest).toISOString() }
+    // What the board counts out of (outside review, 21.11: "90 tradable of 415 wherever counts appear"): the issuer's
+    // list, and of it the tokens with supply on this chain. minted is null when the issuer reports no supply (Robinhood).
+    const m = (records || []).map(mintedOf)
+    const minted = m.length && m.every((x) => x != null) ? m.filter(Boolean).length : null
+    out[chain] = { issuer: records?.[0]?.issuer ?? null, listed: (records || []).length, minted, priced: rows.length, unpriced, stale, rows: rows.slice(0, limit), as_of: window?.loaded_at ? new Date(window.loaded_at).toISOString() : null, newest_reading_at: newest == null ? null : new Date(newest).toISOString() }
   }
   return out
 }

@@ -57,5 +57,46 @@ check('the page shows each number with what it is', /Used in the last 3 days/.te
 check('...and says what it leaves out and that these are our numbers, not onchain', page.includes('a browser is the site itself') && page.includes('our own daily exam and canary are not counted') && page.includes('not verified onchain') && page.includes('1 of the days have no counter file'))
 check('with no usage the block is not on the page', !/st-use/.test(statusPage({ chains, now: 0, version: '0', assets: { css: 'a', docsCss: 'b' } })))
 
+// Paid passes (outside review, 21.11): the proof that passes are sold is the settling wallet's own transactions on
+// BaseScan, not a count we keep. A paused sale says until when; payments off says so; a malformed wallet is not linked.
+console.log('paid passes on /status')
+const W = '0x025297a6729ea9df0bb1f75c216c2b3a9b5cbf4a'
+const NOW = Date.parse('2026-11-21T12:00:00Z')
+const pay = (payments) => statusPage({ chains, now: NOW, version: '0', assets: { css: 'a', docsCss: 'b' }, payments })
+const on = pay({ enabled: true, settlement_wallet: W, paused_until: null, late_settlements: [] })
+check('selling: the price, the pass and the settling wallet linked on BaseScan', /<h2>Paid passes<\/h2>/.test(on) && on.includes('0.01 USDC on Base buys a 10-minute pass') && on.includes(`<a href="https://basescan.org/address/${W}">0x0252…bf4a on BaseScan</a>`) && on.includes('docs/how-to/pay-per-call.md'))
+const paused = pay({ enabled: true, settlement_wallet: W, paused_until: '2026-11-21T12:30:00.000Z', late_settlements: [] })
+check('...paused: says until when, and that the free tier still answers', paused.includes('Selling is paused until 2026-11-21 12:30 UTC') && paused.includes('free tier answers as usual') && !paused.includes('buys a 10-minute pass'))
+check('...a pause that has ended reads as selling', pay({ enabled: true, settlement_wallet: W, paused_until: '2026-11-21T11:00:00.000Z' }).includes('buys a 10-minute pass'))
+check('...off says so, and links no wallet', /Off on this server/.test(pay({ enabled: false })) && !/basescan/.test(pay({ enabled: false })))
+const odd = pay({ enabled: true, settlement_wallet: '"><script>x</script>', paused_until: null })
+check('...a wallet that is not an address is not linked or printed', !/basescan|<script>x/.test(odd) && odd.includes('buys a 10-minute pass'))
+check('...and without a payments state the block is not on the page', !/Paid passes/.test(pay(null)))
+
+// The sales as the chain has them (outside review, 21.11): the wallet's own count and its latest settlement, linked,
+// with who paid. A purchase of our own says so; a stranger's is linked by address; nothing before the first read.
+console.log('sales read from Base')
+const TX = '0xf6d0e92a6f3ce3e1dbc6e2649ff6538b02b290174ae07a7436d4fe985813fc64'
+const PAYER = '0x' + 'ab'.repeat(20)
+const sold = (sales) => pay({ enabled: true, settlement_wallet: W, paused_until: null, late_settlements: [], sales })
+const ours = sold({ settlement_transactions: 1, latest: { transaction: TX, at: '2026-11-20T11:52:15.000Z', settled: true, payer: '0x376a832d9827b157c9e7502e11af1e45c8224a88', ours: true }, read_at: '2026-11-21T11:59:00.000Z' })
+check('one sale of our own: the count, the transaction linked on BaseScan, its day, and that no one else has bought one', /<b>1<\/b><span>settlement sent on Base, one per pass sold/.test(ours) && ours.includes(`<a href="https://basescan.org/tx/${TX}">0xf6d0…fc64</a> on BaseScan, 20 Nov 2026, paid by our own test wallet. No one else has bought a pass yet.`), ours.match(/Latest settlement[^<]*<a[^>]*>[^<]*<\/a>[^<]*/)?.[0])
+const theirs = sold({ settlement_transactions: 3, latest: { transaction: TX, at: '2026-11-21T08:00:00.000Z', settled: true, payer: PAYER, ours: false } })
+check('a customer\'s sale: the payer is linked by address, never called ours, and the count is plural', /<b>3<\/b><span>settlements sent/.test(theirs) && theirs.includes(`paid by <a href="https://basescan.org/address/${PAYER}">0xabab…abab</a>.`) && !/our own test wallet|No one else/.test(theirs))
+check('...a later sale of ours after customers does not claim no one else bought', !/No one else/.test(sold({ settlement_transactions: 4, latest: { transaction: TX, at: null, settled: true, payer: PAYER, ours: true } })))
+const reverted = sold({ settlement_transactions: 2, latest: { transaction: TX, at: '2026-11-21T08:00:00.000Z', settled: false, payer: null, ours: false } })
+check('a settlement that reverted says it paid nothing out', reverted.includes('it was sent and reverted, so it paid nothing out') && !/paid by/.test(reverted))
+check('none sold yet says so; before the first read the block shows no count at all', sold({ settlement_transactions: 0, latest: null }).includes('No pass has been sold yet.') && !/st-use-tile/.test(sold(null).split('Paid passes')[1] || '') && !/settlement sent|settlements sent/.test(sold(null)))
+const forged = sold({ settlement_transactions: 1, latest: { transaction: '"><script>x</script>', settled: true, payer: '"><i>zz', ours: false } })
+check('...a transaction or payer that is not one is never linked or printed', !/<script>x|<i>zz/.test(forged) && !/Latest settlement/.test(forged))
+
+// Readings below the registry (outside review, 21.11: "90 of 415" read as 22% coverage): the row says the recorder
+// reads only minted tokens and how many of the listed ones have supply; with no supply count (Robinhood) it says nothing.
+console.log('readings against the registry')
+const row = (o) => statusPage({ chains: { base: { registry_records: 415, registry_age_s: 10, readings_tokens: 90, newest_reading_age_s: 60, impostors_listed: 1, impostors_age_s: 60, ...o } }, now: 0, version: '0', assets: { css: 'a', docsCss: 'b' } })
+check('the registry row says how many of the listed are minted, only when fewer are', row({ registry_minted: 90 }).includes('415 tokens listed, 90 minted (tradable on this chain)') && !/minted \(tradable/.test(row({ registry_minted: 415 })) && !/minted \(tradable/.test(row({ registry_minted: null })))
+check('fewer readings than listed tokens: the page says only minted tokens are read, and how many have supply', row({ registry_minted: 90 }).includes('90 tokens tracked, every 15 min. Only minted tokens have a price to read: 90 of the 415 listed have supply'))
+check('...every listed token minted, or no supply count: no such sentence', !/Only minted/.test(row({ registry_minted: 415 })) && !/Only minted/.test(row({ registry_minted: null })) && !/Only minted/.test(row({})))
+
 console.log(`\n${passed} passed, ${failed} failed`)
 if (failed) { console.log(failures.join('\n')); process.exit(1) }

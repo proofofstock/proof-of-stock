@@ -113,5 +113,20 @@ node examples/demo.mjs
 An agent is handed an impostor of SNDKc. It refuses it, checks the issuer-listed contract, and would proceed. It is a
 dry run: nothing is traded.
 
+### The whole buy, from the user's sentence to an unsigned swap
+
+```bash
+node examples/agent-buy.mjs                                    # "buy $20 of SNDK on Base", handed a look-alike
+node examples/agent-buy.mjs "buy $20 of NVDA on Base" --from 0xYourWallet
+```
+
+The user asks for $20 of SNDK and the agent is handed a look-alike. The guard refuses it and names the issuer's
+contract; the agent checks that one, reads its passport (minted, not paused, the issuer's reference price), asks a
+public DEX aggregator (KyberSwap, no key) for a USDC quote, and refuses the quote unless it is for the very contract it
+checked and sits within 3% of the reference. It then prints a KyberSwap link with that contract already filled in,
+so a person can make the same swap in the browser without searching by name. With `--from` it builds the swap for that
+wallet, to KyberSwap's router only. It never signs and never sends: the transaction is printed for the user's own wallet to review. Anything it
+cannot read stops the buy (exit 3). Tests with every answer faked: `node examples/agent-buy.test.mjs`.
+
 Facts with their time and source; not investment advice. No affiliation with Coinbase or Robinhood; their names and
 tickers are their trademarks.

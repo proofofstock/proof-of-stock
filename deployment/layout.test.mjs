@@ -130,6 +130,13 @@ console.log('the units that write our data')
   check('the unit that holds the key never reads our data roots: it needs the manifest hash, not the rows', values(mirror, 'Environment').every((e) => !e.startsWith('STOCKS_ROOT_')))
   const web = units['stp-web.service']
   check('stp-web: reads our data only, writes only its own counter', values(web, 'Environment').filter((e) => e.startsWith('STOCKS_ROOT_')).join() === 'STOCKS_ROOT_BASE=/var/lib/pos/base,STOCKS_ROOT_ROBINHOOD=/var/lib/pos/robinhood' && words(web, 'ReadWritePaths').join() === '/var/lib/stp-analytics')
+  // The port held across restarts (deploy 502s, 20.11): the socket listens exactly where the server would bind, hands
+  // over to this service, and the service only orders itself after it, so disabling the socket is a real way back.
+  const sock = fs.readFileSync(path.join(UNITS_DIR, 'stp-web.socket'), 'utf8')
+  const webAt = `${values(web, 'Environment').find((e) => e.startsWith('STOCKS_WEB_HOST='))?.split('=')[1]}:${values(web, 'Environment').find((e) => e.startsWith('STOCKS_WEB_PORT='))?.split('=')[1]}`
+  check('stp-web.socket listens where stp-web would bind, and hands over to it', values(sock, 'ListenStream').join() === webAt && webAt === '127.0.0.1:3005' && values(sock, 'Service').join() === 'stp-web.service' && values(sock, 'WantedBy').join() === 'sockets.target', `${values(sock, 'ListenStream')} vs ${webAt}`)
+  check('...stp-web is ordered after it and does not pull it in', values(web, 'After').includes('stp-web.socket') && !/stp-web\.socket/.test([...values(web, 'Wants'), ...values(web, 'Requires'), ...values(web, 'BindsTo')].join(' ')))
+  check('...and the server takes a socket only through the protocol, never a fixed descriptor', /systemdListenFd\(\)/.test(fs.readFileSync(path.join(ROOT, 'apps', 'stocks-web.mjs'), 'utf8')))
   const health = units['stp-health.service']
   check('stp-health: our roots, the token datasets, and the backup status', /^Environment=POS_TOKEN_DATASET_BASE=\/var\/lib\/stp\/base$/m.test(health) && /^Environment=POS_TOKEN_DATASET_ROBINHOOD=\/var\/lib\/stp\/robinhood$/m.test(health) && /^Environment=POS_BACKUP_STATUS=\/var\/lib\/pos-backup\/status\.json$/m.test(health))
   for (const name of ['stp-health.service', 'stp-alert@.service']) {

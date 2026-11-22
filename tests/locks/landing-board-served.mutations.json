@@ -1,0 +1,22 @@
+{
+  "_finding": "The outside review (21.11) read \"Loading the case archive.\" over an empty table: the look-alike board came only from app.js, so a reader that runs no script (a search engine, an agent, a judge's AI helper) saw nothing where a browser saw 24 rows. The server writes the same board into the page, the script redraws it, and the two must say the same thing. A creator's symbol and name are escaped text in a cell.",
+  "target": "apps/stocks-web.mjs",
+  "runner": [
+    "node",
+    "apps/stocks-web.test.mjs"
+  ],
+  "mutations": [
+    {
+      "name": "the landing is served without the board",
+      "find": "}), landingBoard()))",
+      "replace": "}), null))",
+      "expect": "FAIL the landing arrives with the week's cases written in, not \"Loading\""
+    },
+    {
+      "name": "the board ignores the page's hidden Robinhood Chain",
+      "find": "{ now: now(), hideRh })",
+      "replace": "{ now: now(), hideRh: false })",
+      "expect": "FAIL the landing arrives with the week's cases written in, not \"Loading\""
+    }
+  ]
+}

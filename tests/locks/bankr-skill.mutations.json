@@ -14,8 +14,8 @@
     },
     {
       "name": "the look-alike's own symbol is printed",
-      "find": "and it imitates ${imp.imitates_symbol ? safe(imp.imitates_symbol, 16) : \"the issuer's naming\"}.`]",
-      "replace": "and it imitates ${imp.imitates_symbol ? safe(imp.imitates_symbol, 16) : \"the issuer's naming\"}. It calls itself ${b.symbol}.`]",
+      "find": "and it imitates ${SYMBOL.test(String(imp.imitates_symbol ?? '')) ? imp.imitates_symbol : \"the issuer's naming\"}.`]",
+      "replace": "and it imitates ${SYMBOL.test(String(imp.imitates_symbol ?? '')) ? imp.imitates_symbol : \"the issuer's naming\"}. It calls itself ${b.symbol}.`]",
       "expect": "FAIL ...and the token's own words never reach the output"
     },
     {

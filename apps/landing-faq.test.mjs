@@ -35,7 +35,7 @@ check('a data block, not a script: the CSP needs no change', /script-src 'self'/
 console.log('the answers keep to the code')
 const all = shown.map(([q, a]) => q + ' ' + a).join(' ')
 check('independence is said, and no answer frames the site around one issuer', /Proof of Stock is independent/.test(all) && !/Coinbase|Robinhood/.test(all))
-check('read-only, no sign-in, no transaction for a caller', /no wallet, no sign-in/.test(all) && /signs or sends a transaction/.test(all))
+check('read-only, no sign-in, no transaction for a caller', /never touches your wallet: no sign-in/.test(all) && /signs or sends a transaction/.test(all))
 // The keys we do have are said here, in the answer about safety, and not only in a document nobody opens: once they
 // exist, "no key" or "one key" would be a false claim, and the whole product is that we do not make those (spec H4).
 check('...and both keys we hold are disclosed where the question is asked', /two keys/.test(all) && /value zero/.test(all) && /cannot change who is paid or how much/.test(all))
@@ -49,14 +49,14 @@ console.log('the footer: the project\'s own profiles')
 {
   const foot = (html.match(/<footer class="foot">[\s\S]*?<\/footer>/) || [''])[0]
   const links = [...foot.matchAll(/<a class="foot-ic" href="([^"]+)"([^>]*)>/g)].map((m) => [m[1], m[2]])
-  check('X and Telegram, in that order; the email is not in the footer (owner, 11.11: spam)', JSON.stringify(links.map(([h]) => h)) === JSON.stringify(['https://x.com/proofofstock', 'https://t.me/proofofstock1']) && !/mailto:/.test(foot))
+  check('X and Telegram, in that order; the email is not in the footer (owner, 11.11: spam)', JSON.stringify(links.map(([h]) => h)) === JSON.stringify(['https://x.com/proofofstock', 'https://t.me/proofofstockchannel']) && !/mailto:/.test(foot))
   check('each has a label a screen reader says, and its icon is hidden from it', links.every(([, at]) => /aria-label="[^"]+"/.test(at)) && (foot.match(/class="i i-(x|tg)" aria-hidden="true"/g) || []).length === 2)
   check('the outside ones open apart and pass no opener or referrer', links.filter(([h]) => h.startsWith('https:')).every(([, at]) => /target="_blank"/.test(at) && /rel="me noopener noreferrer"/.test(at)))
   const css = fs.readFileSync(new URL('./stocks-web/style.css', import.meta.url), 'utf8')
   const iconSrc = (k) => decodeURIComponent((css.match(new RegExp('\\.i-' + k + ' \\{ --i: url\\("data:image/svg\\+xml,([^"]+)"\\)')) || [])[1] || '')
   check('the icons are drawn here in the site\'s style: inline masks on the 16-unit grid, no image file, no third party', ['x', 'tg'].every((k) => /viewBox='0 0 16 16'/.test(iconSrc(k)) && /stroke-linecap='round'/.test(iconSrc(k))))
   const { PROFILES } = await import('./stocks-seo.mjs')
-  check('the organisation names the same profiles as sameAs', JSON.stringify(PROFILES) === JSON.stringify(['https://x.com/proofofstock', 'https://t.me/proofofstock1']))
+  check('the organisation names the same profiles as sameAs', JSON.stringify(PROFILES) === JSON.stringify(['https://x.com/proofofstock', 'https://t.me/proofofstockchannel']))
 }
 
 console.log('switching chains does not repeat a question')
@@ -67,14 +67,34 @@ console.log('switching chains does not repeat a question')
   check('...a failure is never kept, and every caller gets its own copy', /p\.catch\(\(\) => kept\.delete\(path\)\)/.test(js) && (js.match(/structuredClone\(b\)/g) || []).length === 2)
 }
 
+console.log('examples and captions say what they are')
+{
+  // Outside review, 21.11: a price with no stock ("$188.42") and two squares captioned "Seal" and "Record now" read as
+  // unexplained. The example names its token; each mosaic says which seal it is.
+  check('the price example names its token', /<span class="faint">NVDAc, for example<\/span> \$188\.42/.test(html))
+  check('...and the two seal mosaics say which is the seal of the day and which is the record as shown', html.includes('<figcaption>Sealed that day</figcaption>') && html.includes('<figcaption>Seal of the record as shown</figcaption>'))
+}
+
+console.log('Bankr in the connect list')
+{
+  // The Bankr skill was nowhere on the site (owner, 21.11). It is in review at Bankr, so the page says so and links the
+  // submission, never "available in Bankr" before it is.
+  const agents = (html.match(/<section class="agents"[\s\S]*?<\/section>/) || [''])[0]
+  check('the agents section names the Bankr skill, says it is in review, and links the submission', /<li><b>Bankr:<\/b>/.test(agents) && /in review/.test(agents) && agents.includes('href="https://github.com/BankrBot/skills/pull/860"'))
+}
+
 console.log('the wall of findings')
 {
   const board = (html.match(/<section class="board"[\s\S]*?<\/section>/) || [''])[0]
   check('it sits between what it checks and why it matters, reachable as #findings', html.indexOf('class="checks"') < html.indexOf('class="board"') && html.indexOf('class="board"') < html.indexOf('class="why"') && /id="findings"/.test(board) && /aria-labelledby="board-title"/.test(board))
-  check('...says what it is and is not, and has an honest empty state', /A claim with evidence, not a verdict\./.test(board) && /No new look-alikes flagged in the last 7 days\./.test(board))
+  check('...says what it is and is not', /A claim with evidence, not a verdict\./.test(board))
   check('...links nowhere outside the site: it must not advertise a fake', !/href="https?:/.test(board))
   const js = fs.readFileSync(new URL('./stocks-web/app.js', import.meta.url), 'utf8')
   const fn = (js.match(/async function findingsBoard \(\) \{[\s\S]*?\n {2}\}\n/) || [''])[0]
+  // A reader that runs no script (a search engine, an agent, a judge's crawler) takes a hidden sentence as a claim: on
+  // 21.11 it read "No new look-alikes" in the page while the board showed 24 rows. The page says nothing about the
+  // count; the script writes the empty state, and only when the 7-day window came back empty.
+  check('...the empty state is written by the script, only for an empty window, never by the page', !/No new look-alikes|nothing flagged|no look-alikes/i.test(board) && /empty\.textContent = ev\.length \? '' : 'No new look-alikes flagged in the last 7 days\.'/.test(fn))
   check('...fills its rows as text only, from the 7-day case window, and shows our misses', fn && !/innerHTML|insertAdjacentHTML/.test(fn) && /api\/history\/cases\?limit=\d+/.test(fn) && /later listed by the issuer: we were early or wrong/.test(js))
   // Most look-alikes copy the listed company's NAME, not its ticker, so a row that shows only symbols reads as
   // arbitrary: "CHIPSTER copies NVDA" is true because that contract calls itself NVIDIA. Owner asked, 13.11.
@@ -293,7 +313,7 @@ console.log('connecting from Claude and ChatGPT')
   // Three lines, one each, and each one short: the column stood taller than the card beside it, and a reader who has
   // already decided to connect does not read a paragraph about it (owner, 15.11). The exact steps are not lost - the
   // card below carries the whole ChatGPT path and the tutorial carries the plans and the @ step, both checked here.
-  check('Claude, ChatGPT, then the clients that copy from the card, one short line each', items.length === 3 && items[0].startsWith('<b>Claude:</b>') && gpt.startsWith('<b>ChatGPT</b>') && /^<b>Claude Code, other clients, npm:<\/b>/.test(items[2]) && items.every((t) => t.replace(/<[^>]*>/g, '').length < 135), items.map((t) => t.replace(/<[^>]*>/g, '').length).join())
+  check('Claude, ChatGPT, the clients that copy from the card, then Bankr, one short line each', items.length === 4 && items[0].startsWith('<b>Claude:</b>') && gpt.startsWith('<b>ChatGPT</b>') && /^<b>Claude Code, other clients, npm:<\/b>/.test(items[2]) && items[3].startsWith('<b>Bankr:</b>') && items.every((t) => t.replace(/<[^>]*>/g, '').length < 135), items.map((t) => t.replace(/<[^>]*>/g, '').length).join())
   // The rest of the path is one link away, so the link has to point at a page that exists and is the one checked at
   // the end of this block for the plans and the @ step (Codex, 15.11: an href proves nothing on its own).
   const tutHref = (gpt.match(/href="(docs\/tutorials\/[^"]+)"/) || [])[1]

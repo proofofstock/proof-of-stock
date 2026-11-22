@@ -81,6 +81,27 @@ reaches the numbers above.
 Three days is a decision for the site's first weeks, to see how it is used. The honest end of it is to stop keeping
 the requested link at all, not to make the window longer.
 
+## Who our servers talk to
+
+Our servers send nothing about a visitor to anyone. To do their work they read from, and in three cases write to,
+these services; each is named so that a reader can check what leaves our host:
+
+- **the issuers**: Coinbase's tokenized-stocks API and Robinhood's assets and prices APIs, for the lists and the
+  reference prices;
+- **market data**: DexScreener and GeckoTerminal, for pools and for the symbol search that finds look-alikes;
+- **the chains**: public Base and Robinhood Chain nodes, to read pools, contracts and the issuers' factories, and to
+  send our daily anchor (one transaction to our own address on each chain) and, when someone buys a paid pass, the
+  settlement of the payment they signed;
+- **witnesses of the anchor**: independent nodes (publicnode, dRPC, Tenderly) that confirm our anchor transactions,
+  so the seal does not rest on the node we sent through;
+- **Bitcoin**: the OpenTimestamps calendars, to stamp the day's hash, and mempool.space and blockstream.info, to check
+  the block a proof points to;
+- **GitHub**: the latest report of the public exam, at most every 30 minutes;
+- **Telegram**: alerts about our own service, to us.
+
+Cloudflare serves the site. The fonts come from this site too, not from Google Fonts, so a page view tells no font host
+who is reading. Nothing else on the page reaches a third party.
+
 ## Contact
 
 hello@proofofstock.xyz

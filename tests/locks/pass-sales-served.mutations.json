@@ -1,0 +1,16 @@
+{
+  "_finding": "The outside review (21.11) read the paid passes as unproven. The payment state served at /api/status/payments carries the sales read from Base, the same that /status shows. The scenario stands in for the payment module, so it runs in CI and in a worktree, where that host file is absent.",
+  "target": "apps/stocks-web.mjs",
+  "runner": [
+    "node",
+    "apps/stocks-web.test.mjs"
+  ],
+  "mutations": [
+    {
+      "name": "the payment state leaves the sales out",
+      "find": "sales: passSales.snapshot()",
+      "replace": "sales: null",
+      "expect": "FAIL the payment state carries the sales as Base has them: the count of the wallet and its latest settlement"
+    }
+  ]
+}

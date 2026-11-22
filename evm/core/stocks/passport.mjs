@@ -143,6 +143,7 @@ export function buildPassport ({ address, chainId, registry, readings = [], iden
     issuer: {
       name: rec.issuer, symbol: rec.symbol, token_name: rec.name ?? null, isin: rec.isin, minted: mintedOf(rec),
       multiplier: latest ? latest.multiplier : rec.multiplier, multiplier_pending: pending ?? null,
+      multiplier_pending_at: pending != null ? (rec.multiplier_pending_at ?? null) : null,
       paused: latest ? latest.paused : rec.paused,
       rights: 'set by the issuer\'s prospectus, not by the token contract',
     },

@@ -20,7 +20,7 @@ curl -s 'https://proofofstock.xyz/api/passport?chain=base&address=0xaaaaaaaaaaaa
   "resembles": null,
   "issuer": {
     "name": "coinbase", "symbol": "NVDAc", "token_name": "NVIDIA", "isin": "US67066G1040", "minted": true,
-    "multiplier": 1.011, "multiplier_pending": null, "paused": [],
+    "multiplier": 1.011, "multiplier_pending": null, "multiplier_pending_at": null, "paused": [],
     "rights": "set by the issuer's prospectus, not by the token contract"
   },
   "identity": { "symbol": "NVDAc", "name": "NVIDIA" },
@@ -183,6 +183,7 @@ Present only when `in_registry` is `true`.
 | `minted` | boolean or null | | Robinhood: always `null`, because its API reports no supply. Base: `false` when Coinbase reports no supply, else `true` | `true` |
 | `multiplier` | number or null | shares per token | the issuer gave none. Taken from the latest reading when one falls in the window, else from the registry | `1.011` |
 | `multiplier_pending` | number or null | shares per token | no change announced. Coinbase never sets it | `1.02` |
+| `multiplier_pending_at` | string (ISO 8601) or null | | no change announced, or the issuer gives no time. Robinhood announces it; until then the token trades on its old multiplier | `"2026-11-20T14:30:00.000Z"` |
 | `paused` | string[] | | never null. Coinbase: its `paused_features`. Robinhood: the asset status when it is not `ASSET_STATUS_ACTIVE` | `[]` |
 | `rights` | string | | constant | `"set by the issuer's prospectus, not by the token contract"` |
 

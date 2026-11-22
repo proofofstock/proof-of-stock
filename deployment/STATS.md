@@ -12,7 +12,16 @@ that day counts with it; everything else is **discovery**. The split is behaviou
 would go stale the day a new crawler appears, and a crawler can send any name, so the name is kept as a label in "Who
 connected" only. A probe that happens to call a tool counts as use, and the card says so.
 
-It fits one desktop screen: six tiles on top, then tabs (Overview, Visits, MCP, Recorder, Exam, Days) made of radio
+### The Agents tab: the same, without the checkers
+
+The owner asked to see it without the catalogues (21.11), so the **Agents** tab hides every client that names itself a
+checker: a name with probe, check, health, liveness, uptime, catalog, registry, census, scan, review, rank and similar
+words, plus the few catalogues with none (`isCheckerName` in `scripts/stocks/analytics-report.mjs`). One row of the day
+with such a name hides the whole agent. It is a view beside the split, never the split itself: the MCP tab still goes
+by behaviour, and a checker that calls a tool is still use there. A name is what a client chose to send, so the view
+can only undercount checkers: one with a plain name, or with no name, still shows as an agent.
+
+It fits one desktop screen: six tiles on top, then tabs (Overview, Visits, MCP, Agents, Recorder, Exam, Days) made of radio
 inputs and CSS, and histograms drawn on the server as inline SVG. On a phone it is one column and scrolls. It does
 not refresh itself (a reload would reset the open tab); reload it to see new numbers.
 

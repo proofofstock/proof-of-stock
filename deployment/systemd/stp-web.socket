@@ -1,0 +1,19 @@
+# deployment/systemd/stp-web.socket: the port of the public site (stp-web.service), held by systemd rather than by the
+# server process. Measured on the host, 20.11: the server reads both issuer registries before it listens, about 9 s,
+# and during every deploy restart nginx found 127.0.0.1:3005 closed and answered 502. With this socket the port stays
+# open across `systemctl restart stp-web`: a request in the gap waits in the kernel's queue and the new process answers
+# it (nginx waits up to proxy_read_timeout, 25 s). The server takes the socket by apps/stocks-web.mjs systemdListenFd,
+# and still binds the port itself when started without it.
+#
+# Installed once, in this order (the service holds the port until it is stopped): deployment/CUTOVER.md
+# "Restarts without a gap".
+[Unit]
+Description=Stock Token Passport: the public site's port, kept open across restarts
+
+[Socket]
+ListenStream=127.0.0.1:3005
+# The service is restarted, not the socket: queued connections survive a restart and are served by the new process.
+Service=stp-web.service
+
+[Install]
+WantedBy=sockets.target

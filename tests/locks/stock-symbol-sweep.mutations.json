@@ -26,14 +26,14 @@
     },
     {
       "name": "a 429 does not end GeckoTerminal for the run",
-      "find": "if (e && e.status === 429) break;",
-      "replace": "",
+      "find": "if (e && e.status === 429) { stopped = true; return null } return 0",
+      "replace": "return 0",
       "expect": "FAIL a 429 from GeckoTerminal ends it for the run, and the cursor stays on the symbol not answered"
     },
     {
       "name": "GeckoTerminal is asked for every symbol",
-      "find": "  for (let n = 0; n < Math.min(geckoBudget, queries.length); n++) {",
-      "replace": "  for (let n = 0; n < queries.length; n++) {",
+      "find": "  for (let n = 0; n < queries.length && budget > 0 && !stopped; n++) {",
+      "replace": "  for (let n = 0; n < queries.length && !stopped; n++) {",
       "expect": "FAIL GeckoTerminal only within its budget, from the cursor, wrapping around"
     },
     {
@@ -71,6 +71,24 @@
       "find": "  for (let i = 0; i < Math.min(dsBudget, queries.length); i++) {",
       "replace": "  for (let i = 0; i < queries.length; i++) {",
       "expect": "FAIL a registry longer than the DexScreener budget is walked in rotation, from the cursor"
+    },
+    {
+      "name": "a capped DexScreener answer is not seen as crowded",
+      "find": "      if (body && Array.isArray(body.pairs) && body.pairs.length >= DS_SEARCH_CAP) crowded.push(q)",
+      "replace": "",
+      "expect": "FAIL a symbol whose DexScreener answer hit the cap is crowded"
+    },
+    {
+      "name": "only the first page of a crowded symbol is read",
+      "find": "      if (n == null || n < GECKO_SEARCH_PAGE) break",
+      "replace": "      break",
+      "expect": "FAIL ...so the copy on the third page is found"
+    },
+    {
+      "name": "no page limit on a crowded symbol",
+      "find": "    for (let page = 1; page <= GECKO_MAX_SWEEP_PAGES && budget > 0; page++) {",
+      "replace": "    for (let page = 1; budget > 0; page++) {",
+      "expect": "FAIL ...never past 5 pages of one symbol"
     }
   ]
 }
