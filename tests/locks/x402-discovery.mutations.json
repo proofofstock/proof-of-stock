@@ -17,6 +17,12 @@
       "find": "input: { type: 'http', method: 'GET' }",
       "replace": "input: { type: 'http', method: 'POST' }",
       "expect": "FAIL ...with the Bazaar extension: a GET with no input, and a JSON pass as its output"
+    },
+    {
+      "name": "the OpenAPI document names no contact",
+      "find": "      contact: { name: 'Proof of Stock', email: CONTACT_EMAIL, url: origin },\n",
+      "replace": "",
+      "expect": "FAIL ...with our public contact email, which x402scan reads to verify ownership"
     }
   ]
 }

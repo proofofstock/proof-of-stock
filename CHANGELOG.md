@@ -33,6 +33,7 @@ The version is in `package.json`, and the site footer, the MCP `serverInfo.versi
 - Tests hold every MCP error to at most 64 characters of the caller's own tool, method or argument name, on the HTTP and the stdio server. The cut was already there; nothing held it.
 
 ### Fixed
+- x402scan listing: `/openapi.json` names our contact (`info.contact.email`), which x402scan reads to verify ownership; the page description has no apostrophe, which catalogues that do not decode HTML showed as `&#39;`, and now says the service is built for AI agents.
 - Bankr skill: the catalog demo named the look-alike 0x35b7…f703 as Coinbase's own SNDKc; it now names the listed contract 0xb200…10c5, and a test holds that the demo never calls a known look-alike "own". A 402 (the free minute used up where passes are sold) now reads as the rate limit, like a 429, instead of a failed check.
 - Stats: an empty **Who called a tool** says why: only checkers called a tool that day (with how many, hidden here), or no tool call at all, instead of a bare "none". A day written before the Agents view keeps "none".
 - Bankr skill, after two outside audits: a contract the issuer removed from its list answers DELISTED (exit 1), never ISSUER-LISTED; a listing on one chain while the other could not be read is exit 3, not a clean yes; no redirect is followed; the ticker query is never printed back; symbols, names and ISINs from an answer print only in their own shape; a ticker search on one chain ignores the other; duplicate or unknown options are refused.

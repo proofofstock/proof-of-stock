@@ -8,6 +8,9 @@
 // The free routes are not listed: a catalogue of paid routes probes every route it is given and expects a 402, and the
 // free ones answer 200. They are documented at /docs/reference/http-api.md and /llms.txt.
 
+/** The one public contact, the address on every page and in security.txt. */
+export const CONTACT_EMAIL = 'hello@proofofstock.xyz'
+
 /** What GET /api/pass answers once paid, as the example both documents show. */
 export function passExample ({ passMinutes, passRate }) {
   return { pass: { active: true, until: '2026-11-22T12:10:00.000Z', minutes: passMinutes, units_per_minute: passRate } }
@@ -63,6 +66,8 @@ export function openApiOf ({ origin, priceUsd, passMinutes, passRate, version })
     info: {
       title: 'Proof of Stock pass',
       version: String(version || '0'),
+      // x402scan reads the contact email to verify ownership and to let users reach the provider (22.11).
+      contact: { name: 'Proof of Stock', email: CONTACT_EMAIL, url: origin },
       description: `Proof of Stock checks tokenized stocks on Base against the issuer's own list, free within 60 units a minute. A pass lifts that to ${passRate} units a minute for ${passMinutes} minutes, for ${priceUsd} USDC on Base over x402. The free API is at ${origin}/docs/reference/http-api.md.`,
     },
     servers: [{ url: origin }],

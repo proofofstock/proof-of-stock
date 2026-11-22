@@ -8,7 +8,8 @@
 // chose; it goes into an HTML attribute, so it is escaped here and nowhere else.
 
 export const SITE_TITLE = 'Proof of Stock'
-export const SITE_DESCRIPTION = 'Tokenized stocks (RWA): check whether a token is the issuer\'s stock token and how far its on-chain price is from the issuer price, on Base.'
+// No apostrophe: escaped as &#39; it is shown raw by readers that do not decode entities (x402scan, 22.11).
+export const SITE_DESCRIPTION = 'Tokenized stocks (RWA) on Base: check that a token is on the issuer list of its stock tokens, and how far its on-chain price is from the issuer price. Built for AI agents.'
 const CHAIN_LABEL = Object.freeze({ base: 'Base', robinhood: 'Robinhood Chain' })
 const ISSUER_LABEL = Object.freeze({ coinbase: 'Coinbase', robinhood: 'Robinhood' })
 
