@@ -34,40 +34,40 @@ export const HTTP_ROUTES = Object.freeze([
     ask: 'A token\'s whole passport: the listing, the issuer\'s price and its age, the on-chain premium and 24 hours of its history.',
     example: (o) => `curl -s '${o}/api/passport?chain=base&address=${EXAMPLE_ADDRESS}'` },
   { id: 'overview', path: '/api/overview', params: 'chain', cost: 1, doc: 'route-overview',
-    ask: 'Per chain, the tokens whose on-chain price sits furthest from the issuer\'s right now.',
+    ask: 'Per chain, the tokens whose on-chain price sits furthest from the issuer\'s, as of the latest reading (every 15 minutes, not a live quote).',
     example: (o) => `curl -s '${o}/api/overview?chain=base'` },
   { id: 'impostors', path: '/api/impostors', params: 'chain, limit', cost: 1, doc: 'route-impostors',
-    ask: 'Tokens that copy an issuer token\'s symbol or name, first flagged in the last 7 days, each with the real address.',
+    ask: 'Look-alikes (impostors): tokens that copy an issuer token\'s symbol or name, first seen in the last 7 days, each with the issuer\'s real address.',
     example: (o) => `curl -s '${o}/api/impostors?chain=base&limit=5'` },
   { id: 'matrix', path: '/api/matrix', params: '', cost: 1, doc: 'route-matrix',
-    ask: 'Shares listed on both chains we cover: each venue\'s premium over its own issuer, and the gap between them.',
+    ask: 'Shares listed on both chains we cover: each chain\'s premium over its own issuer, and the gap between the two premiums (not a price difference to trade on).',
     example: (o) => `curl -s '${o}/api/matrix'` },
   { id: 'history-cases', path: '/api/history/cases', params: 'chain, event, since, limit', cost: 1, doc: 'route-history',
-    ask: 'The case archive: every look-alike opened, changed, listed or gone, dated and never rewritten.',
+    ask: 'The case log of the last 7 days, up to 50 events: each look-alike opened, changed, listed or gone, dated. Older cases are kept and given on request.',
     example: (o) => `curl -s '${o}/api/history/cases?chain=base&limit=5'` },
   { id: 'history-registry', path: '/api/history/registry', params: 'chain, date', cost: 1, doc: 'route-history',
     ask: 'The issuer list as it changed, or the one in force at the end of a given day.',
     example: (o) => `curl -s '${o}/api/history/registry?chain=base'` },
   { id: 'archive-at', path: '/api/archive/at', params: 'chain, address, date', cost: 1, doc: 'route-archive-at',
-    ask: 'What one address was on one past day, from what was recorded that day.',
+    ask: 'What one address was on a given day, from what was recorded that day. Today is answered too, marked partial: true until midnight UTC.',
     example: (o) => `curl -s '${o}/api/archive/at?chain=base&address=${EXAMPLE_ADDRESS}&date=2026-11-15'` },
   { id: 'list', path: '/api/list/<hex>', params: '', cost: 1, doc: 'route-list',
-    ask: 'The exact issuer list a verdict names, by the SHA-256 in its list_proof; /addresses gives the addresses alone. Hash it and compare.',
-    example: (o) => `curl -fsS ${o}/api/list/<registry_hash> | sha256sum` },
+    ask: 'The exact issuer list a verdict names. <hex> is registry_hash from its list_proof without "sha256:"; the SHA-256 of what this returns must equal <hex>. /api/list/<hex>/addresses gives the addresses alone.',
+    example: (o) => `curl -fsS ${o}/api/list/<hex> | sha256sum    # must print <hex>` },
   { id: 'status', path: '/api/status', params: '', cost: 1, doc: 'route-status',
     ask: 'Is the data fresh: each issuer list\'s age, the newest price reading, the impostor list.',
     example: (o) => `curl -s '${o}/api/status'` },
   { id: 'exam', path: '/api/exam', params: '', cost: 1, doc: 'route-exam',
-    ask: 'The latest public exam: every question whose right answer comes from the issuers, and every wrong answer counted.',
+    ask: 'The latest public exam, run daily: questions whose right answers come from the issuers\' own lists, and how many we got wrong.',
     example: (o) => `curl -s '${o}/api/exam'` },
   { id: 'badge', path: '/badge.svg', params: 'chain, address', cost: 0, doc: 'route-badge',
     ask: 'A badge for your own page: issuer-listed, a look-alike, not listed. Cached at the edge and outside the limit.',
     example: (o) => `<img src="${o}/badge.svg?chain=base&address=${EXAMPLE_ADDRESS}" alt="Proof of Stock">` },
   { id: 'anchors', path: '/anchors/', params: '', cost: 0, doc: 'route-anchors',
-    ask: 'The daily manifests of our data files and their OpenTimestamps proofs in Bitcoin: /anchors/<file> serves each one.',
+    ask: 'A daily record of our data files, timestamped in Bitcoin (OpenTimestamps) so it cannot be rewritten later: the manifests and their proofs; /anchors/<file> serves each one.',
     example: (o) => `curl -s '${o}/anchors/'` },
   { id: 'payments', path: '/api/status/payments', params: '', cost: 0, doc: 'route-status',
-    ask: 'The state of paid passes, for monitoring: on or off, and the settlement wallet\'s latest work.',
+    ask: 'The state of paid passes, for monitoring: on or off, who settles them, and the latest settlement.',
     example: (o) => `curl -s '${o}/api/status/payments'` },
 ])
 
@@ -77,8 +77,8 @@ export const TOOL_INFO = Object.freeze({
   list_stock_tokens: { cost: 1, ask: 'The whole issuer list for one chain, in one answer.', args: { chain: 'base' } },
   stock_passport: { cost: 'passport', ask: 'One token\'s passport: listing, the issuer\'s price and its age, the premium and its history.', args: { chain: 'base', address: EXAMPLE_ADDRESS } },
   verify_stock_tokens: { cost: 'batch', ask: 'Check up to {freeBatch} addresses before a buy, against the issuer\'s own list.', args: { chain: 'base', addresses: [EXAMPLE_ADDRESS] } },
-  recent_impostors: { cost: 1, ask: 'Look-alikes first flagged in the last 7 days, each with the token it imitates.', args: { chain: 'base' } },
-  compare_venues: { cost: 1, ask: 'The same share on both chains we cover: each venue\'s premium and the gap.', args: { symbol: 'NVDA' } },
+  recent_impostors: { cost: 1, ask: 'Look-alikes (impostors) first seen in the last 7 days, each with the token it imitates.', args: { chain: 'base' } },
+  compare_venues: { cost: 1, ask: 'The same share on both chains we cover: each chain\'s premium over its own issuer, and the gap between the two.', args: { symbol: 'NVDA' } },
   verify_anchor: { cost: 1, ask: 'Proof that a day\'s record has not changed: its Bitcoin proof and the mirror transactions.', args: {} },
 })
 
@@ -142,7 +142,7 @@ export function apiPage ({ origin, version, assets, tools, limits, pass = null }
       <div class="ap-list">
       <article class="ap-route ap-paid" id="r-pass">
         <div class="ap-route-head"><span class="ap-m">GET</span><code class="ap-path">/api/pass</code><span class="ap-cost paid">${esc(usdc(pass.priceUsd))}</span></div>
-        <p class="ap-ask">Buy a pass before you need one. Unpaid it answers 402 with the offer (x402 v1 in the body, v2 in the PAYMENT-REQUIRED header); paid, 200 with the pass and when it ends. It takes no unit of the free minute.</p>
+        <p class="ap-ask">Buy a pass before you need one. Without a live pass it answers 402 with the offer, as x402 v2 in the PAYMENT-REQUIRED header and in the body; pay with PAYMENT-SIGNATURE (v2) or X-PAYMENT (v1). Paid, or with a pass already live, it answers 200 with the pass and when it ends. It takes no unit of the free minute.</p>
         <p class="ap-params"><span>pass</span> ${esc(String(pass.passMinutes))} min · ${esc(String(pass.passRate))} units/min · about ${esc(String(passBuys))} passports a minute</p>
         ${codeBlock(`curl -i '${origin}/api/pass'`)}
         <a class="ap-doc" href="docs/how-to/pay-per-call.md">How to pay<span class="i i-arrow" aria-hidden="true"></span></a>
@@ -150,13 +150,13 @@ export function apiPage ({ origin, version, assets, tools, limits, pass = null }
       <article class="ap-route ap-paid" id="r-verify-big">
         <div class="ap-route-head"><span class="ap-m">GET</span><code class="ap-path">/verify</code><span class="ap-variant">${esc(String(freeBatch + 1))} to ${esc(String(paidBatch))} addresses</span><span class="ap-cost paid">with a pass</span></div>
         <p class="ap-ask">A batch bigger than the free ${esc(String(freeBatch))}, up to ${esc(String(paidBatch))} addresses in one call (⌈n/10⌉ units of the pass). Without a live pass the answer is the pass's 402, saying why. Only the size is paid for, never the verdict.</p>
-        ${codeBlock(`curl -s '${origin}/verify?chain=base&addresses=<${freeBatch + 1} to ${paidBatch} addresses, comma-separated>'`)}
+        ${codeBlock(`curl -s "${origin}/verify?chain=base&addresses=$ADDRS"   # ADDRS: ${freeBatch + 1} to ${paidBatch} addresses, comma-separated`)}
         <a class="ap-doc" href="docs/reference/http-api.md#route-verify">Reference<span class="i i-arrow" aria-hidden="true"></span></a>
       </article>
       <article class="ap-route ap-paid ap-wide" id="r-any">
         <div class="ap-route-head"><span class="ap-m any">ANY</span><code class="ap-path">every route above, and /mcp</code><span class="ap-cost paid">over the free minute</span></div>
         <p class="ap-ask">A client past ${esc(String(perMinute))} units in 60 seconds gets the same offer as a 402 instead of a plain 429. Pay it, retry the request with X-PAYMENT (v1) or PAYMENT-SIGNATURE (v2), and the call is served with the pass started.</p>
-        <p class="ap-params"><span>for catalogues</span> <a href="openapi.json"><code>/openapi.json</code></a> describes the paid route, its price and its 402</p>
+        <p class="ap-params"><span>for catalogues</span> <a href="openapi.json"><code>/openapi.json</code></a> describes <code>/api/pass</code>, its price and its 402</p>
         <a class="ap-doc" href="docs/reference/http-api.md#paid-passes">Reference<span class="i i-arrow" aria-hidden="true"></span></a>
       </article>
       </div>
@@ -192,7 +192,7 @@ export function apiPage ({ origin, version, assets, tools, limits, pass = null }
       <h1>Every call, <em>with its price</em></h1>
       <p class="ap-lede">One read-only service, three ways in: an HTTP API for code, an MCP server for agents, and a pass over x402 for when the free minute is not enough. No key, no account, no cookies. Every answer carries its time and its source.</p>
       <div class="ap-tiers">
-        <div class="ap-tier free"><span class="ap-tier-k">Free</span><b>${esc(String(perMinute))} units</b><span>a minute per client, HTTP and MCP together. A call is 1 unit, a passport ${esc(String(passportUnits))}, a batch of n addresses ⌈n/10⌉.</span></div>
+        <div class="ap-tier free"><span class="ap-tier-k">Free</span><b>${esc(String(perMinute))} units</b><span>a minute per client (one IP address; IPv6 by its /56), HTTP and MCP together. A call costs 1 unit, a passport ${esc(String(passportUnits))}, a batch of n addresses ⌈n/10⌉ (${esc(String(freeBatch))} addresses: ${esc(String(Math.ceil(freeBatch / 10)))} units).</span></div>
         ${tierPass}
         <div class="ap-tier mcp"><span class="ap-tier-k">MCP</span><b>${esc(String(tools.length))} tools</b><span>read-only, on the same limit and the same pass, at <code>${esc(origin)}/mcp</code>.</span></div>
       </div>

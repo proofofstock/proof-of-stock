@@ -38,6 +38,7 @@ The version is in `package.json`, and the site footer, the MCP `serverInfo.versi
 - Tests hold every MCP error to at most 64 characters of the caller's own tool, method or argument name, on the HTTP and the stdio server. The cut was already there; nothing held it.
 
 ### Fixed
+- `/api`: texts held to the API reference after a review: the case log is the last 7 days (up to 50 events), impostors are "first seen", the archive answers today as partial, the pass card says its 402 is v2 in the body too, `/openapi.json` describes `/api/pass`, the overview is as of the latest reading, the matrix gap is not a price to trade on, and the free tier says a client is an IP address. The list and big-batch examples now run as written.
 - x402scan listing: `/openapi.json` names our contact (`info.contact.email`), which x402scan reads to verify ownership; the page description has no apostrophe, which catalogues that do not decode HTML showed as `&#39;`, and now says the service is built for AI agents.
 - Bankr skill: the catalog demo named the look-alike 0x35b7…f703 as Coinbase's own SNDKc; it now names the listed contract 0xb200…10c5, and a test holds that the demo never calls a known look-alike "own". A 402 (the free minute used up where passes are sold) now reads as the rate limit, like a 429, instead of a failed check.
 - Stats: an empty **Who called a tool** says why: only checkers called a tool that day (with how many, hidden here), or no tool call at all, instead of a bare "none". A day written before the Agents view keeps "none".
@@ -64,6 +65,7 @@ The version is in `package.json`, and the site footer, the MCP `serverInfo.versi
 - **The landing says agents can pay for themselves.** A block before the questions: over the free limit the API answers 402, the agent pays 0.01 USDC on Base over x402 and gets 10 minutes at ten times the rate; the free tier stays as it was. It links to the how-to and to the first settled payment, and the server leaves it out where paid passes are off.
 
 ### Changed
+- The landing footer no longer repeats the tabs: Docs, Methodology, API and History are in the bar at the top of every page. It keeps MCP tools, llms.txt, the Status dot and the exam.
 - x402 v2 payments are settled by Coinbase's x402 facilitator (CDP) where the host has its key; v1 payments keep our settlement wallet.
 - Landing: the "on-chain vs issuer" ticker moves from the top of the page to under the terminal, as a band the width of the page; the tabs take the top. A click on a token still opens its passport in the terminal.
 - **The symbol sweep reads crowded symbols deeper.** A symbol whose DexScreener search filled its 30-pair cap has more pools than that search shows; it now goes to GeckoTerminal first and is read page by page (up to 5 pages), and GeckoTerminal gets 12 pages a run instead of 3. Two vanity-address ANTc copies hid on the third page.

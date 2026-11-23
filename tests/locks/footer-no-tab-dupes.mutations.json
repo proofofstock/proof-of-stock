@@ -1,0 +1,22 @@
+{
+  "_finding": "Owner, 23.11: the footer repeated the tabs (Docs, Methodology, API and prices, History) that the bar at the top of every page already carries. The footer keeps what the bar does not: MCP tools, llms.txt, the Status dot and the exam.",
+  "target": "apps/stocks-web/index.html",
+  "runner": [
+    "node",
+    "apps/site-tabs.test.mjs"
+  ],
+  "mutations": [
+    {
+      "name": "the footer repeats the API tab",
+      "find": "        <a class=\"foot-link\" href=\"docs/reference/tools.md\">MCP tools</a>\n",
+      "replace": "        <a class=\"foot-link\" href=\"api\">API and prices</a>\n        <a class=\"foot-link\" href=\"docs/reference/tools.md\">MCP tools</a>\n",
+      "expect": "FAIL the footer repeats none of the tabs: no Docs, Methodology, API or History link there"
+    },
+    {
+      "name": "the footer repeats the History tab",
+      "find": "        <a class=\"foot-link\" href=\"docs/reference/tools.md\">MCP tools</a>\n",
+      "replace": "        <a class=\"foot-link\" href=\"docs/reference/tools.md\">MCP tools</a>\n        <a class=\"foot-link\" href=\"history\">History</a>\n",
+      "expect": "FAIL the footer repeats none of the tabs: no Docs, Methodology, API or History link there"
+    }
+  ]
+}

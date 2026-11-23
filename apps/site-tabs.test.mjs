@@ -45,7 +45,9 @@ console.log('the landing: tabs on top, the ticker under the terminal')
   check('the ticker is still on the page (moved, not removed): after the terminal, before the three checks', tape > 0 && term > 0 && tape > term && tape < checks, `tape ${tape}, terminal ends ${term}, checks ${checks}`)
   check('the ticker keeps what app.js fills: #tape inside a .tape-track', /<div class="tape-track"><div id="tape" class="tape-run"><\/div><\/div>/.test(html) && read('./stocks-web/app.js').includes("$('#tape')"))
   check('Robinhood Chain stays hidden on the landing', /<body class="no-rh">/.test(html))
-  check('the footer links to the API page too', html.includes('<a class="foot-link" href="api">'))
+  // The footer does not repeat the tabs (owner, 23.11): Docs, Methodology, API and History are in the bar above.
+  const foot = (html.match(/<nav class="foot-nav"[\s\S]*?<\/nav>/) || [''])[0]
+  check('the footer repeats none of the tabs: no Docs, Methodology, API or History link there', foot.length > 0 && !/href="(docs\/|docs\/explanation\/methodology\.md|api|history)"/.test(foot) && /href="status"/.test(foot) && /href="llms\.txt"/.test(foot), foot.slice(0, 200))
   check('on a phone the bar scrolls away and the tabs wrap, so the current one is always in view', /@media \(max-width: 760px\) \{\n  \.site-bar, \.site-bar\.has-extra \{ position: static;/.test(css) && /\.site-tabs \{ flex-wrap: wrap;/.test(css))
   check('docs: the sticky sidebar starts below the two-row bar between a tablet and a phone', /@media \(max-width: 1000px\) and \(min-width: 761px\) \{ \.dx-side \{ top: 98px;/.test(docsCss))
 }

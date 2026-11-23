@@ -66,7 +66,14 @@ console.log('the prices are the server\'s')
   check('what a minute buys is the limiter\'s arithmetic', onPage.includes(`<b>${Math.floor(PER_MINUTE / PASSPORT_UNITS)}</b><span>passports`) && onPage.includes(`<b>${Math.floor(PER_MINUTE / Math.ceil(MAX_VERIFY_BATCH / 10)) * MAX_VERIFY_BATCH}</b><span>addresses checked`))
   check('with passes on: the pass\'s price, length and rate are the payment module\'s', costOf(card(onPage, 'r-pass')) === '0.01 USDC' && onPage.includes('0.01 USDC on Base buys 10 minutes at 600 units a minute') && card(onPage, 'r-pass').includes('curl -i &#39;https://proofofstock.xyz/api/pass&#39;'))
   check('…another price is printed as given, not as 0.01', render({ priceUsd: 0.05, passMinutes: 30, passRate: 900 }).includes('0.05 USDC on Base buys 30 minutes at 900 units a minute'))
-  check('…and it says both x402 versions are taken', /x402, version 1 or 2/.test(onPage) && /v1[^<]*v2/.test(card(onPage, 'r-pass')))
+  check('…and it says both x402 versions are taken', /x402, version 1 or 2/.test(onPage) && /\(v1\)/.test(card(onPage, 'r-pass')) && /\(v2\)/.test(card(onPage, 'r-pass')))
+  // Review 23.11: /api/pass answers its 402 as v2 in the body too, so the card never says the body is v1.
+  check('…and the pass card says its 402 is v2, in the header and the body, never that the body is v1', /as x402 v2 in the PAYMENT-REQUIRED header and in the body/.test(card(onPage, 'r-pass')) && !/v1 in the body/.test(card(onPage, 'r-pass')))
+  // The claims a reviewer found past the docs (23.11): each now matches docs/reference/http-api.md.
+  check('the case log says its window: the last 7 days, up to 50 events', /The case log of the last 7 days, up to 50 events/.test(onPage) && !/never rewritten/.test(onPage))
+  check('the list example names <hex> and what the digest must equal, never registry_hash pasted as is', /must print &lt;hex&gt;/.test(onPage) && !/api\/list\/&lt;registry_hash&gt;/.test(onPage))
+  check('the big batch example runs as written: a shell variable, no brackets or spaces in the URL', /addresses=\$ADDRS/.test(onPage) && !/addresses=&lt;\d+ to \d+ addresses/.test(onPage))
+  check('the free tier says who a client is and works one batch cost through', /per client \(one IP address; IPv6 by its \/56\)/.test(onPage) && /\(50 addresses: 5 units\)/.test(onPage))
   check('with passes off: no price, no pass card, and it says so', !offPage.includes('USDC') && !card(offPage, 'r-pass') && /Paid passes<\/h2><span class="ap-badge off">off here/.test(offPage))
 }
 

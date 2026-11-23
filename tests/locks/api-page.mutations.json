@@ -29,6 +29,18 @@
       "find": "const batchMinute = Math.floor(perMinute / Math.ceil(freeBatch / 10)) * freeBatch",
       "replace": "const batchMinute = perMinute * freeBatch",
       "expect": "FAIL what a minute buys is the limiter's arithmetic"
+    },
+    {
+      "name": "the case log claims more than its 7-day window",
+      "find": "ask: 'The case log of the last 7 days, up to 50 events:",
+      "replace": "ask: 'The case archive, never rewritten:",
+      "expect": "FAIL the case log says its window: the last 7 days, up to 50 events"
+    },
+    {
+      "name": "the pass card says its body is v1",
+      "find": "it answers 402 with the offer, as x402 v2 in the PAYMENT-REQUIRED header and in the body;",
+      "replace": "it answers 402 with the offer (x402 v1 in the body, v2 in the PAYMENT-REQUIRED header);",
+      "expect": "FAIL …and the pass card says its 402 is v2, in the header and the body, never that the body is v1"
     }
   ]
 }
