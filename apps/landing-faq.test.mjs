@@ -345,5 +345,19 @@ check('...and the npm line installs the published package, which the page says h
   check('...the tutorial gives the same ChatGPT plans and steps as the card, install and @ included, with the public URL', /\*\*Plugins\*\*/.test(tutGpt) && /\*\*Add custom MCP server\*\*/.test(tutGpt) && /`https:\/\/proofofstock\.xyz\/mcp`/.test(tutGpt) && /\*\*No authentication\*\*/.test(tutGpt) && /\*\*Create as a plugin\*\*/.test(tutGpt) && /Pro, Business or Enterprise\/Edu/.test(tutGpt) && /Install the plugin\. In a new chat, type `@` and pick it/.test(tutGpt))
 }
 
+// Fable's review (21.11): "units" is our internal word. The FAQ says calls, in the page and in its FAQ markup alike,
+// and the README puts the exam score beside its title from the live site, never as a number written into git.
+console.log('plain words, and the exam beside the README title')
+{
+  const faq = (html.match(/<section class="faq"[\s\S]*?<\/section>/) || [''])[0]
+  const ld = (html.match(/<script type="application\/ld\+json" id="faq-ld">([\s\S]*?)<\/script>/) || [, ''])[1]
+  const said = 'each client gets 60 calls in any 60 seconds across both: a passport counts as 3 calls, so about 20 passports a minute, and a batch of up to 10 addresses as one.'
+  check('the FAQ says calls, not units, and the page and its FAQ markup say the same', faq.includes(said) && ld.includes(said) && !/\bunits?\b/.test(faq) && !/\bunits?\b/.test(ld))
+  const readme = fs.readFileSync(new URL('../README.md', import.meta.url), 'utf8')
+  const head = readme.split('\n## ')[0]
+  check('the README shows the public exam beside its title, read live from the site', head.includes('https://img.shields.io/endpoint?url=https%3A%2F%2Fproofofstock.xyz%2Fapi%2Fexam%2Fbadge.json') && head.includes('](https://github.com/proofofstock/proof-of-stock/tree/exam)'))
+  check('...and writes no score into the repository', !/exam[^\n]*\b\d+\/\d+\b/i.test(head))
+}
+
 console.log(`\n${passed} passed, ${failed} failed`)
 if (failed) { for (const x of failures) console.log(x); process.exit(1) }

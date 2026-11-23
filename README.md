@@ -2,6 +2,7 @@
 
 [![CI](https://github.com/proofofstock/proof-of-stock/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/proofofstock/proof-of-stock/actions/workflows/ci.yml)
 [![Licence: MIT](https://img.shields.io/badge/licence-MIT-blue)](LICENSE)
+[![Public exam](https://img.shields.io/endpoint?url=https%3A%2F%2Fproofofstock.xyz%2Fapi%2Fexam%2Fbadge.json)](https://github.com/proofofstock/proof-of-stock/tree/exam)
 
 ## At a glance
 

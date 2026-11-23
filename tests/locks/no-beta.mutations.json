@@ -1,0 +1,16 @@
+{
+  "_finding": "Owner, 23.11: the site is out of beta. The landing footer and every docs page header carried a 'beta' tag; neither does now.",
+  "target": "apps/stocks-docs.mjs",
+  "runner": [
+    "node",
+    "apps/site-tabs.test.mjs"
+  ],
+  "mutations": [
+    {
+      "name": "the docs header says beta again",
+      "find": "<span class=\"dx-ver\">v${esc(version)}",
+      "replace": "<span class=\"dx-ver\"><span class=\"beta-tag\">beta</span>v${esc(version)}",
+      "expect": "FAIL no page says beta: not the landing footer, not the docs header"
+    }
+  ]
+}

@@ -485,6 +485,32 @@
     return h('a', { class: 'pool-link', href: `https://www.geckoterminal.com/${chain}/pools/${id.toLowerCase()}`, target: '_blank', rel: 'noopener noreferrer nofollow', title: 'Open this pool on GeckoTerminal' }, name, h('span', { class: 'i i-ext', 'aria-hidden': 'true' }))
   }
   const fold = (title, ...body) => h('details', { class: 'more' }, h('summary', null, title), h('div', { class: 'inner' }, ...body))
+
+  // Embed this badge (owner, 23.11: "how would someone who wants to embed it ever see it?"). The badge for this very
+  // token, as it renders, and the code to put it on a page or a README. Built from the chain and the checked address
+  // only, never from the token's own symbol or name, which are its creator's words. Text nodes throughout.
+  function embedFold (p) {
+    const q = `?chain=${encodeURIComponent(p.chain)}&address=${encodeURIComponent(p.address)}`
+    const src = new URL('badge.svg' + q, location.href).href
+    const page = new URL(q, location.href).href
+    const snippet = (label, code) => {
+      const text = h('code', null, code)
+      const btn = h('button', { type: 'button', class: 'embed-copy' }, 'copy')
+      btn.addEventListener('click', async () => {
+        try { await navigator.clipboard.writeText(code); btn.textContent = 'copied'; softClick() } catch (_) {
+          const r = document.createRange(); r.selectNodeContents(text); const sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(r); btn.textContent = 'press Ctrl+C'
+        }
+      })
+      return h('div', { class: 'embed-code' }, h('span', { class: 'embed-k' }, label), text, btn)
+    }
+    return fold('embed this badge',
+      h('div', { class: 'embed' },
+        h('img', { class: 'embed-preview', src, alt: 'The Proof of Stock badge for this token', loading: 'lazy' }),
+        snippet('HTML', `<a href="${page}"><img src="${src}" alt="Proof of Stock verdict"></a>`),
+        snippet('Markdown', `[![Proof of Stock verdict](${src})](${page})`),
+        h('p', { class: 'faint' }, 'Put this on your page or README: it shows this token\'s verdict and when it was checked, never a price, and changes by itself if the issuer\'s list does. Free, outside the rate limit. ',
+          h('a', { class: 'inline-link', href: 'docs/how-to/embed-a-badge.md' }, 'How to embed a badge'))))
+  }
   const table = (head, rows) => h('table', { class: 'tbl' }, h('thead', null, h('tr', null, head.map((x) => h('th', null, x)))), h('tbody', null, rows))
   // One output, several blocks (a chain each): one table, not one per block. A table sizes its columns from its own
   // rows, so two tables put the same column in two places and the list visibly steps sideways between the blocks
@@ -527,7 +553,8 @@
         p.impostor_listing ? line('On our look-alike list since ' + String(p.impostor_listing.first_seen_at).slice(0, 10) + '.', 'faint') : null,
         caseLine(p.case),
         r && r.registry_address ? h('div', { class: 'actions' }, h('button', { type: 'button', class: 'btn', onclick: () => passport(p.chain, r.registry_address, 'the issuer\'s ' + (r.registry_symbol || r.ticker)) }, 'open the issuer\'s ' + (r.registry_symbol || r.ticker), h('span', { class: 'i i-arrow', 'aria-hidden': 'true' }))) : null,
-        impostorLinks(p, r ? (r.registry_symbol || r.ticker || 'stock token') : null, strong))
+        impostorLinks(p, r ? (r.registry_symbol || r.ticker || 'stock token') : null, strong),
+        embedFold(p))
       return card
     }
     const i = p.issuer, ref = p.reference, l = p.latest
@@ -584,6 +611,7 @@
       listedCase,
       officialLinks(p),
       ...folds,
+      embedFold(p),
       line('Listed says which contract is the issuer\'s, not that its price is fair or that it is safe to buy. Holder rights are set by the issuer\'s prospectus. This is not advice.', 'faint'))
   }
 

@@ -150,7 +150,7 @@ export function createDocsRenderer ({ docs, version, released, assets, sourceUrl
   <div class="dx-shell">
     <aside class="dx-side" aria-label="Documentation">${side}</aside>
     <main class="dx-main">
-      <div class="dx-crumbs">${section ? esc(section.label) : 'Docs'}<span class="dx-ver"><span class="beta-tag">beta</span>v${esc(version)} · ${esc(released)}</span></div>
+      <div class="dx-crumbs">${section ? esc(section.label) : 'Docs'}<span class="dx-ver">v${esc(version)} · ${esc(released)}</span></div>
       <article class="prose">${body}</article>
       ${pager}
       <footer class="dx-foot"><span>© 2026 Proof of Stock. Code under the MIT licence.</span><span><a href="${href('legal.md')}">Not investment advice</a> · <a href="?format=md">View as markdown</a></span>${socials}</footer>

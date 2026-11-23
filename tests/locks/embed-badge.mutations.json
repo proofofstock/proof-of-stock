@@ -1,0 +1,22 @@
+{
+  "_finding": "Owner, 23.11: nobody could find the badge; it lived only in the API reference and on /api. Every passport now offers the badge it renders and its HTML and Markdown, built from the chain and the checked address only.",
+  "target": "apps/stocks-web/app.js",
+  "runner": [
+    "node",
+    "apps/embed-badge.test.mjs"
+  ],
+  "mutations": [
+    {
+      "name": "the outside-the-list card loses the embed",
+      "find": "        impostorLinks(p, r ? (r.registry_symbol || r.ticker || 'stock token') : null, strong),\n        embedFold(p))",
+      "replace": "        impostorLinks(p, r ? (r.registry_symbol || r.ticker || 'stock token') : null, strong))",
+      "expect": "FAIL both passport cards carry it: the issuer's token and one outside the list"
+    },
+    {
+      "name": "the badge URL takes the token's own symbol",
+      "find": "const q = `?chain=${encodeURIComponent(p.chain)}&address=${encodeURIComponent(p.address)}`",
+      "replace": "const q = `?chain=${encodeURIComponent(p.chain)}&address=${encodeURIComponent(p.address)}&s=${encodeURIComponent(p.identity && p.identity.symbol || '')}`",
+      "expect": "FAIL ...and never from the token's own symbol or name"
+    }
+  ]
+}

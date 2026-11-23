@@ -61,7 +61,7 @@ export const HTTP_ROUTES = Object.freeze([
     ask: 'The latest public exam, run daily: questions whose right answers come from the issuers\' own lists, and how many we got wrong.',
     example: (o) => `curl -s '${o}/api/exam'` },
   { id: 'badge', path: '/badge.svg', params: 'chain, address', cost: 0, doc: 'route-badge',
-    ask: 'A badge for your own page: issuer-listed, a look-alike, not listed. Cached at the edge and outside the limit.',
+    ask: 'A badge for your own page: issuer-listed, a look-alike, not listed. Cached at the edge and outside the limit. Every token\'s passport offers its badge to copy: see docs/how-to/embed-a-badge.md.',
     example: (o) => `<img src="${o}/badge.svg?chain=base&address=${EXAMPLE_ADDRESS}" alt="Proof of Stock">` },
   { id: 'anchors', path: '/anchors/', params: '', cost: 0, doc: 'route-anchors',
     ask: 'A daily record of our data files, timestamped in Bitcoin (OpenTimestamps) so it cannot be rewritten later: the manifests and their proofs; /anchors/<file> serves each one.',

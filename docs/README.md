@@ -40,6 +40,8 @@ Recipes for one task each.
   prove months later why a token was or was not listed.
 - [Check that our data existed on a given day](how-to/verify-an-anchor.md): the daily OpenTimestamps anchors at
   `/anchors/`.
+- [Embed a badge](how-to/embed-a-badge.md): the verdict for one token as an image on your page or README,
+  from the token's passport or by hand.
 
 ## Reference
 

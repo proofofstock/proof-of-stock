@@ -13,6 +13,7 @@ The version is in `package.json`, and the site footer, the MCP `serverInfo.versi
 ## [Unreleased]
 
 ### Added
+- Embed a badge: every token's passport has **embed this badge**, the badge as it renders and its HTML and Markdown to copy in one click; a how-to (`docs/how-to/embed-a-badge.md`), and the /api badge card points at it.
 - `/api`: every call the service offers with its price, on one server-rendered page: the free HTTP routes (method, path, what each answers, its cost in units of the free minute, a copyable example, a link to its reference), the paid pass over x402 with the payment module's own terms (shown only where passes are sold), the MCP tools as the server lists them, and what a free minute buys. Every figure comes from the server's own constants; `apps/api-page.test.mjs` checks the page against `docs/reference/http-api.md`, the MCP tool list and the live limiter. The only script, `api.js`, adds copy buttons.
 - Tabs at the top of every page (Home, Methodology, Proofs, API, Status, History, Docs), the current one marked, from one function (`apps/stocks-nav.mjs`) for the landing, `/status`, `/history`, `/api` and the docs. Proofs opens the how-to on checking a day's anchor. Sticky on a desktop; on a phone the bar scrolls away and the tabs wrap into two rows. The docs search box moves into the bar.
 - An address that starts like the issuer's own is said not to be the issuer's: every Coinbase stock token starts `0xb2` and twenty zeros, and other tokens on Base can too (22.11: $BINT, a memecoin paired with ANTc). `/verify`, the passport, MCP `verify_stock_tokens` and the page say so in words (`issuer_like_address`); it is not called an impostor for its address alone. The shared start is read from the issuer's list.
@@ -65,6 +66,8 @@ The version is in `package.json`, and the site footer, the MCP `serverInfo.versi
 - **The landing says agents can pay for themselves.** A block before the questions: over the free limit the API answers 402, the agent pays 0.01 USDC on Base over x402 and gets 10 minutes at ten times the rate; the free tier stays as it was. It links to the how-to and to the first settled payment, and the server leaves it out where paid passes are off.
 
 ### Changed
+- The FAQ says calls, not units: 60 calls in any 60 seconds, a passport counts as 3. The README shows the public exam beside its title, read live from `/api/exam/badge.json` (a shields.io endpoint), so no score is written into the repository.
+- Out of beta: the landing footer and the docs page header no longer carry a beta tag.
 - The landing footer no longer repeats the tabs: Docs, Methodology, API and History are in the bar at the top of every page. It keeps MCP tools, llms.txt, the Status dot and the exam.
 - x402 v2 payments are settled by Coinbase's x402 facilitator (CDP) where the host has its key; v1 payments keep our settlement wallet.
 - Landing: the "on-chain vs issuer" ticker moves from the top of the page to under the terminal, as a band the width of the page; the tabs take the top. A click on a token still opens its passport in the terminal.

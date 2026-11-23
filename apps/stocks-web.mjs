@@ -1140,6 +1140,16 @@ export function createStocksWeb ({
     if (sub === '/api/status') {
       return send(res, 200, statusNumbers(), undefined, { 'cache-control': 'no-store' })
     }
+    // The exam as a shields.io endpoint badge (Fable's review, 21.11: put the score beside the README title). The score is
+    // read here at every request, so no number is ever written into the repository.
+    if (sub === '/api/exam/badge.json') {
+      const r = exam.get()
+      const ok = r.status === 200 && Number.isInteger(r.body?.passed) && Number.isInteger(r.body?.total) && r.body.total > 0
+      const badge = ok
+        ? { schemaVersion: 1, label: 'public exam', message: `${r.body.passed}/${r.body.total}`, color: r.body.passed === r.body.total ? 'brightgreen' : 'orange' }
+        : { schemaVersion: 1, label: 'public exam', message: 'unavailable', color: 'lightgrey' }
+      return send(res, 200, badge, undefined, { 'access-control-allow-origin': '*', 'cache-control': ok ? 'public, max-age=300' : 'no-store' })
+    }
     if (sub === '/api/exam') {
       const r = exam.get()
       return send(res, r.status, r.body, undefined, { 'access-control-allow-origin': '*', 'cache-control': r.status === 200 ? 'public, max-age=300' : 'no-store' })

@@ -118,6 +118,16 @@ console.log('the recorder\'s private copies of third-party answers are never ser
   check('the recorder may write there, outside the backed-up /var/lib/pos, and is not switched on by its unit', /^ReadWritePaths=(.* )?-\/var\/lib\/stp-raw$/m.test(pegUnit) && !/^Environment=.*STP_RAW_SNAPSHOTS=1/m.test(pegUnit))
 }
 
+console.log('the exam as a badge for the README')
+{
+  // shields.io reads this (Fable's review, 21.11): always its schema; the score when the exam is read, else unavailable.
+  // Its own client address: a unit taken here from the shared test client would run a later check into the limit.
+  const r = await get('/stocks/api/exam/badge.json', { headers: { 'x-real-ip': '198.51.100.90' } })
+  const b = await r.json()
+  check('the exam badge is a shields.io endpoint: schema 1, its label, a message and a colour, open to any origin', r.status === 200 && b.schemaVersion === 1 && b.label === 'public exam' && typeof b.message === 'string' && typeof b.color === 'string' && r.headers.get('access-control-allow-origin') === '*', JSON.stringify(b))
+  check('...and with no exam read it says unavailable, never a made-up score', b.message === 'unavailable' || /^\d+\/\d+$/.test(b.message))
+}
+
 console.log('the page')
 {
   const r = await get('/stocks/')

@@ -45,6 +45,8 @@ console.log('the landing: tabs on top, the ticker under the terminal')
   check('the ticker is still on the page (moved, not removed): after the terminal, before the three checks', tape > 0 && term > 0 && tape > term && tape < checks, `tape ${tape}, terminal ends ${term}, checks ${checks}`)
   check('the ticker keeps what app.js fills: #tape inside a .tape-track', /<div class="tape-track"><div id="tape" class="tape-run"><\/div><\/div>/.test(html) && read('./stocks-web/app.js').includes("$('#tape')"))
   check('Robinhood Chain stays hidden on the landing', /<body class="no-rh">/.test(html))
+  // Owner, 23.11: out of beta. Neither the landing's footer nor a docs page's header says beta any more.
+  check('no page says beta: not the landing footer, not the docs header', !/beta-tag|>beta</i.test(html) && !/beta-tag|>beta</i.test(read('./stocks-docs.mjs')))
   // The footer does not repeat the tabs (owner, 23.11): Docs, Methodology, API and History are in the bar above.
   const foot = (html.match(/<nav class="foot-nav"[\s\S]*?<\/nav>/) || [''])[0]
   check('the footer repeats none of the tabs: no Docs, Methodology, API or History link there', foot.length > 0 && !/href="(docs\/|docs\/explanation\/methodology\.md|api|history)"/.test(foot) && /href="status"/.test(foot) && /href="llms\.txt"/.test(foot), foot.slice(0, 200))
