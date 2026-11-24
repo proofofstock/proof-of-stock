@@ -20,9 +20,9 @@
     },
     {
       "name": "a link may leave the file",
-      "find": "if (!/^#[\\w.-]+$/.test(m[2] ?? m[3])) return why('a link out of the file')",
-      "replace": "if (/^javascript:/.test(m[2] ?? m[3])) return why('a link out of the file')",
-      "expect": "FAIL refused: a link out by href"
+      "find": "for (const m of s.matchAll(/(?:^|\\s)(?:[\\w.-]+:)?href\\s*=\\s*(\"([^\"]*)\"|'([^']*)'|[^\\s>]*)/gi))",
+      "replace": "for (const m of s.matchAll(/(?:^|\\s)(?:xlink:)?href\\s*=\\s*(\"([^\"]*)\"|'([^']*)')/gi))",
+      "expect": "FAIL refused: a link out under another namespace prefix"
     },
     {
       "name": "a url() may leave the file",
@@ -65,6 +65,12 @@
       "find": "export const GLAMA_BADGE_CSP = \"default-src 'none'; style-src 'unsafe-inline'; img-src data:\"",
       "replace": "export const GLAMA_BADGE_CSP = \"default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:\"",
       "expect": "FAIL the badge is served under a CSP that runs no script and fetches nothing"
+    },
+    {
+      "name": "escapes and character references are let through",
+      "find": "  if (/[\\\\]|&#|image-set/i.test(s)) return why('an escape, a character reference or image-set')",
+      "replace": "  if (/image-set/i.test(s)) return why('an escape, a character reference or image-set')",
+      "expect": "FAIL refused: a CSS-escaped url("
     }
   ]
 }

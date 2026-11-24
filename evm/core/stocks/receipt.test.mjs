@@ -15,8 +15,10 @@ const check = (label, cond, detail) => {
 const A = '0x' + 'a'.repeat(40), B = '0x' + 'b'.repeat(40), Z = '0x' + 'f'.repeat(40)
 const listText = [A, B].sort().map((x) => x + '\n').join('')
 const listSha = crypto.createHash('sha256').update(listText).digest('hex')
-const proof = { issuer: 'coinbase', addresses: 2, addresses_sha256: listSha, addresses_url: 'https://x.test/api/list/h/addresses', list_url: 'https://x.test/api/list/h', read_at: '2026-11-12T22:00:00Z', stale: false }
-const serve = (text) => async (url) => (String(url) === proof.addresses_url ? new Response(text) : new Response('', { status: 404 }))
+const H = 'd'.repeat(64)
+const proof = { issuer: 'coinbase', addresses: 2, addresses_sha256: listSha, addresses_url: `https://x.test/api/list/${H}/addresses`, list_url: `https://x.test/api/list/${H}`, read_at: '2026-11-12T22:00:00Z', stale: false }
+// Our archive names a frozen list's chain in a header (LIST_CHAIN_HEADER); the body is the hashed list itself.
+const serve = (text, chain = 'base') => async (url) => (String(url) === proof.addresses_url ? new Response(text, { headers: { 'x-pos-chain': chain } }) : new Response('', { status: 404 }))
 
 console.log('making one')
 const listed = makeReceipt({ body: { chain: 'base', address: A, listed: true, symbol: 'NVDAc', impostor: null, issuer_factory: { created: true, block: 1 } }, proof, appVersion: '0.5.1', at: Date.parse('2026-11-12T22:01:00Z') })
@@ -29,9 +31,29 @@ check('...an impostor\'s verdict is impostor', stranger.verdict === 'impostor' &
 console.log('checking one')
 {
   const ok = await checkReceipt(listed, { fetchImpl: serve(listText), origins: ORIGINS })
-  check('an untouched receipt holds: its hash, the frozen list\'s hash, and the verdict from that list', ok.ok && ok.checks.length === 3, JSON.stringify(ok.checks))
+  check('an untouched receipt holds: its hash, its fields, the list\'s chain, the frozen list\'s hash, and the verdict from that list', ok.ok && ok.checks.length === 5, JSON.stringify(ok.checks))
   const okNot = await checkReceipt(stranger, { fetchImpl: serve(listText), origins: ORIGINS })
-  check('...so does a "not listed" one', okNot.ok)
+  check('...so does a "not listed" one, and an impostor verdict is said to be the service\'s own finding, not re-derived', okNot.ok && /service's own finding/.test(okNot.checks.find((c) => c.check === 'impostor')?.detail || ''))
+  // Outside review, 24.11: a receipt is a file anybody can write and rehash. Its fields must agree with each other, and
+  // the list it names must be the archive's list for the receipt's own chain.
+  const cross = await checkReceipt(listed, { fetchImpl: serve(listText, 'robinhood'), origins: ORIGINS })
+  check('a Base receipt over a list our archive serves as Robinhood\'s fails on the list\'s chain', !cross.ok && cross.checks.find((c) => c.check === 'list chain').ok === false)
+  const noChain = await checkReceipt(listed, { fetchImpl: async () => new Response(listText), origins: ORIGINS })
+  check('...and so does one whose list comes with no chain named', !noChain.ok && noChain.checks.find((c) => c.check === 'list chain').ok === false)
+  const forge = (over) => { const x = { ...listed, ...over }; x.sha256 = receiptHash(x); return x }
+  for (const [what, over] of [
+    ['an impostor verdict over a listed field', { verdict: 'impostor', listed: true }],
+    ['an impostor verdict with no impostor finding', { verdict: 'impostor', listed: false, impostor: null }],
+    ['a verdict that is no verdict', { verdict: 'scam', listed: false }],
+    ['an address that is not one', { address: A + '\u001b[2Jgenuine' }],
+    ['a chain we do not check', { chain: 'ethereum' }],
+  ]) {
+    const r = await checkReceipt(forge(over), { fetchImpl: async () => { throw new Error('no fetch expected') }, origins: ORIGINS })
+    check(`a rehashed receipt with ${what} fails on its fields before anything is fetched`, !r.ok && r.checks.find((c) => c.check === 'fields').ok === false && !r.checks.some((c) => c.check === 'frozen list'))
+  }
+  const offPath = forge({ list: { ...listed.list, addresses_url: 'https://x.test/api/history/registry?chain=base' } })
+  const op = await checkReceipt(offPath, { fetchImpl: serve(listText), origins: ORIGINS })
+  check('a list URL on our origin but outside the frozen lists fails', !op.ok && /not our archive/.test(op.checks.find((c) => c.check === 'frozen list')?.detail || ''))
   const edited = { ...listed, verdict: 'not_listed', listed: false }
   const e = await checkReceipt(edited, { fetchImpl: serve(listText), origins: ORIGINS })
   check('an edited receipt fails on its own hash', !e.ok && e.checks.find((c) => c.check === 'receipt hash').ok === false)

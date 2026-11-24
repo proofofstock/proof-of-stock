@@ -8,7 +8,7 @@
   "mutations": [
     {
       "name": "a receipt may name any archive it likes",
-      "find": "  if (!isOurs(r.list && r.list.addresses_url, origins)) {",
+      "find": "  if (!isOurs(r.list && r.list.addresses_url, origins) || !FROZEN_PATH.test(new URL(String(r.list.addresses_url)).pathname)) {",
       "replace": "  if (false) {",
       "expect": "FAIL a receipt pointing anywhere but our archive fails, and nothing of the author is fetched"
     },
@@ -17,6 +17,24 @@
       "find": "  return u.protocol === 'https:' && !u.username && !u.password && origins.includes(u.origin)",
       "replace": "  return origins.some((o) => String(url).includes(new URL(o).hostname))",
       "expect": "FAIL ...and the pin is the site itself by default, over https only"
+    },
+    {
+      "name": "a list URL on our origin but outside the frozen lists is accepted",
+      "find": "  if (!isOurs(r.list && r.list.addresses_url, origins) || !FROZEN_PATH.test(new URL(String(r.list.addresses_url)).pathname)) {",
+      "replace": "  if (!isOurs(r.list && r.list.addresses_url, origins)) {",
+      "expect": "FAIL a list URL on our origin but outside the frozen lists fails"
+    },
+    {
+      "name": "the list chain is not checked",
+      "find": "    add('list chain', listChain === r.chain,",
+      "replace": "    add('list chain', true,",
+      "expect": "FAIL a Base receipt over a list our archive serves as Robinhood's fails on the list's chain"
+    },
+    {
+      "name": "the receipt fields are not checked",
+      "find": "  if (!fieldsOk) return { ok: false, checks }",
+      "replace": "  if (false) return { ok: false, checks }",
+      "expect": "FAIL a rehashed receipt with an impostor verdict over a listed field fails on its fields before anything is fetched"
     }
   ]
 }

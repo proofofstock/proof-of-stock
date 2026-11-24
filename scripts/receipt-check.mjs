@@ -16,6 +16,9 @@ if (isEntryPoint(import.meta.url)) {
   try { r = JSON.parse(fs.readFileSync(file, 'utf8')); if (r && r.receipt && !r.format) r = r.receipt } catch (e) { console.error('cannot read ' + file + ': ' + e.message); process.exit(2) }
   const res = await checkReceipt(r)
   for (const c of res.checks) console.log(`${c.ok ? 'ok  ' : 'FAIL'}  ${c.check}: ${c.detail}`)
-  console.log(res.ok ? `\nThe receipt holds: ${r.address} on ${r.chain} was ${r.verdict} by the issuer list it names (${r.issued_at}).` : '\nThe receipt does not hold.')
+  // Every field printed here passed checkReceipt's own form checks first (address, chain, verdict), so nothing of the
+  // receipt's author reaches the terminal beyond what those allow.
+  const what = r.verdict === 'listed' ? 'on' : r.verdict === 'impostor' ? 'not on (and flagged by the service as an impostor at the time)' : 'not on'
+  console.log(res.ok ? `\nThe receipt holds: ${r.address} on ${r.chain} was ${what} the issuer list it names.` : '\nThe receipt does not hold.')
   process.exitCode = res.ok ? 0 : 1
 }

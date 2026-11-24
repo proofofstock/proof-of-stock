@@ -11,8 +11,8 @@ attacking here is the claim itself.
 Nothing of yours. There are no accounts, no sessions, no cookies, no personal data, no custody, no approvals and no
 transaction we can send on your behalf. If this server were taken over completely, nobody's tokens would move.
 
-The project holds two private keys. Both live on the host, in root-only files under `/etc/pos`, and each reaches
-exactly one systemd unit through `LoadCredential`; no unit can read `/etc/pos` itself.
+The project holds two private keys and two other credentials. All live on the host, in root-only files under
+`/etc/pos`, and each reaches exactly one systemd unit through `LoadCredential`; no unit can read `/etc/pos` itself.
 
 - **The anchor key** (`stp-anchor-mirror`) signs one kind of transaction: to its own address, value zero, carrying
   the day's manifest hash as text.
@@ -21,7 +21,21 @@ exactly one systemd unit through `LoadCredential`; no unit can read `/etc/pos` i
   Base. The buyer's signature fixes the payee, the amount and a one-time nonce, so the key cannot change who is paid,
   how much, or reuse a payment; the USDC goes to the payee address, which is a separate wallet this key does not
   control. The server sends it only after checking that the payee and the amount are exactly the ones its own 402
-  named. It holds no USDC and no token of anyone's.
+  named. It holds no USDC and no token of anyone's. It settles x402 v1 payments, and v2 ones only where the next
+  credential is absent.
+- **The facilitator API key** (`stp-web`, where v2 payments are settled through Coinbase's x402 facilitator). We check
+  a v2 payment ourselves first (payee, amount, asset, network, window, one-time nonce), then hand it to the
+  facilitator, and the pass is granted on the facilitator's answer. On that path the answer that the payment settled
+  is **Coinbase's word**, not a receipt we read from the chain ourselves: Coinbase is one of the two issuers this
+  service checks, and this is the one place where we take its word for something. Stolen, the key lets someone call
+  the facilitator in our name; it moves no money of ours or of anyone's.
+- **The Telegram bot token** (`stp-tg-bot`). It lets whoever holds it speak as @ProofofStockBot. The bot holds no
+  key, reads only our own API on the loopback, and sends fixed words with every value escaped.
+
+The settlement key and the facilitator key sit in `stp-web` for as long as it runs, which is the process that faces
+the internet: the "thirty seconds a day" below is the anchor key's exposure, not theirs. What keeps that acceptable is
+the same as for the anchor key: the settlement wallet holds gas only, and neither key can move a buyer's money beyond
+the one payment that buyer signed.
 
 What either key can do if stolen: spend its own gas, and sign transactions from its own address. Neither can move a
 caller's tokens, a buyer's funds beyond the one payment that buyer signed, or the payments already received. The
@@ -36,9 +50,16 @@ quiet while something changes (a drift that is never recorded, an alert nobody r
 
 ## The parties we do not trust
 
-**You, the caller.** Every argument is validated before it reaches a reader, and no text from a request is ever put
-into a sentence the service says. A ticker you searched for comes back as data, never inside the lead sentence that
-agents are told to quote.
+**You, the caller.** Every argument is validated before it reaches a reader. Text from a request reaches a sentence
+the service says only where it has passed a strict pattern first: a ticker or ISIN you compared across venues
+(letters, digits, a dot or a dash, at most 16 characters), an address (0x and 40 hex digits), a date. A free-text
+search comes back as data, never inside the lead sentence that agents are told to quote. An error message may repeat
+up to 64 characters of what you sent, to you alone.
+
+**Somebody else's picture.** The footer shows our connector's score badge from Glama. The server fetches it, at most
+hourly, and serves it from our own origin, so a reader's browser never asks Glama; the file is accepted only as
+plain shapes and text with links to its own parts (no script, no handler, no link or `url()` out, no escape), and it is
+served under a policy that runs nothing even when it is opened on its own.
 
 **The token.** A symbol and a name are text their creator chose. They are shown as short labels, never interpreted,
 never put into our sentences, and every answer carries a line saying so (`untrusted_text`).
@@ -46,7 +67,10 @@ never put into our sentences, and every answer carries a line saying so (`untrus
 **The issuers whose lists we read.** They are the subject of the service, not a party to it. Every verdict names the
 list it was decided against by the SHA-256 of its sorted addresses, with the command that computes the same hash from
 the issuer's own API, and that exact list stays served by its hash after the issuer changes it. We never editorialise
-a list: if it cannot be read, the answer says it cannot verify, and never "not listed".
+a list: if it cannot be read, the answer says it cannot verify, and never "not listed". A list the issuer has not
+answered for 15 minutes counts as unreadable on every route (the passport, search, the list, the page, the board),
+not only on `/verify`; and an answer that is empty, or that lost more than half the list in one read, is treated as a
+failed read rather than as a mass delisting.
 
 **The chains' RPC endpoints, which those same issuers run.** `mainnet.base.org` is Coinbase's and
 `rpc.mainnet.chain.robinhood.com` is Robinhood's: the two companies this service checks. So an answer from them is
@@ -102,6 +126,15 @@ said last month.
   only ones in the signing path. We do not vendor them, and a malicious release of one would be a real problem.
 - **Your own agent.** If an agent ignores the answer it was given, nothing here can help it. The guard package exists
   for that, and it fails closed.
+- **Paid passes across a restart.** Passes and the ledger of settled payments are held in memory, so a deploy or a
+  restart ends every live pass early, and for the few minutes an already settled authorization stays inside its own
+  time window, a stranger who copies it from the chain could present it again and be granted a pass. Nobody's money
+  moves by it; the cost is a pass.
+- **Griefing the settlement breaker.** Three payments that a payer cancels between our check and our broadcast make
+  three failed settlements, and after three in a row selling pauses for 30 minutes. That costs the attacker three
+  transactions on Base each time. Failed payments are capped per client on every paid route.
+- **The badge is not metered.** `/badge.svg` answers without the per-client limit, because image proxies fetch it
+  from a handful of addresses. It says listed, look-alike or not listed per address, at the proxy's own rate.
 
 ## And now somebody depends on us
 
@@ -146,5 +179,6 @@ since anyone can read them from `tools/list` on the open endpoint. What it finds
 
 ## Telling us
 
-hello@proofofstock.xyz, or a private advisory on the repository. There is no bounty yet. If you find a claim this
-service makes that is not true, that is the finding we want most.
+hello@proofofstock.xyz, or a private advisory on the repository. A critical finding (a false "listed", a pass without
+its payment, somebody's text in a sentence of ours) earns 100 USD in USDC on Base; the terms are in `SECURITY.md`. If
+you find a claim this service makes that is not true, that is the finding we want most.

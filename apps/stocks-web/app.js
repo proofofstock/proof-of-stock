@@ -1002,3 +1002,80 @@
     if (!('ontouchstart' in window)) input.focus({ preventScroll: true })
   })
 })()
+
+// ---------- the hero's shield ----------
+// Alive (owner, 24.11): the shield turns a few degrees toward the pointer and eases back when it leaves; with no pointer
+// it sways very slowly. On a phone it follows the tilt of the device only where the browser gives that without asking
+// (an iPhone would ask for a permission, so there it only sways). With reduced motion nothing here runs at all and the
+// shield stays still. The script only writes --nx and --ny on the shield; style.css turns them into the tilt, the
+// raised emblem, the glare and the shadow. It runs only while the shield is on screen.
+;(function () {
+  function shieldMotion(el, win) {
+    const mq = el && win.matchMedia ? win.matchMedia('(prefers-reduced-motion: reduce)') : null
+    if (!mq || mq.matches) return null
+    const clamp = (v) => (v < -1 ? -1 : v > 1 ? 1 : v)
+    const area = (el.closest && el.closest('.hero')) || el
+    let x = 0, y = 0, aim = null, tilt = null, base = null, raf = 0, last = 0, onScreen = true, running = false
+    const frame = (t) => {
+      raf = 0
+      if (!running) return
+      const dt = last ? Math.min(t - last, 64) : 16
+      last = t
+      // The sway: about nine seconds side to side, a slower nod, three degrees at most. A pointer or the device wins.
+      const sway = { x: Math.sin(t / 1450) * 0.38, y: Math.sin(t / 2300) * 0.16 }
+      const goal = aim || (tilt ? { x: tilt.x + sway.x * 0.3, y: tilt.y + sway.y * 0.3 } : sway)
+      const k = 1 - Math.exp(-dt / (aim ? 140 : 420))
+      x += (goal.x - x) * k
+      y += (goal.y - y) * k
+      el.style.setProperty('--nx', x.toFixed(4))
+      el.style.setProperty('--ny', y.toFixed(4))
+      if (onScreen && !win.document.hidden) raf = win.requestAnimationFrame(frame)
+    }
+    const wake = () => { if (running && !raf && onScreen && !win.document.hidden) { last = 0; raf = win.requestAnimationFrame(frame) } }
+    const move = (e) => {
+      if (e.pointerType === 'touch') return
+      const r = el.getBoundingClientRect()
+      aim = { x: clamp((e.clientX - (r.left + r.width / 2)) / 380), y: clamp((e.clientY - (r.top + r.height / 2)) / 260) }
+      wake()
+    }
+    const leave = () => { aim = null }
+    // Device tilt, measured from how the phone is held: the rest angle follows it slowly, so a new grip recentres.
+    const orient = (e) => {
+      if (e.beta == null || e.gamma == null) return
+      if (!base) base = { b: e.beta, g: e.gamma }
+      base.b += (e.beta - base.b) * 0.01
+      base.g += (e.gamma - base.g) * 0.01
+      tilt = { x: clamp((e.gamma - base.g) / 18), y: clamp((e.beta - base.b) / 18) }
+    }
+    const DO = win.DeviceOrientationEvent
+    const sensor = !!DO && typeof DO.requestPermission !== 'function' && win.matchMedia('(pointer: coarse)').matches
+    const io = win.IntersectionObserver ? new win.IntersectionObserver((es) => { onScreen = es[es.length - 1].isIntersecting; wake() }) : null
+    const start = () => {
+      if (running) return
+      running = true
+      area.addEventListener('pointermove', move)
+      area.addEventListener('pointerleave', leave)
+      if (sensor) win.addEventListener('deviceorientation', orient)
+      if (io) io.observe(el)
+      win.document.addEventListener('visibilitychange', wake)
+      wake()
+    }
+    const stop = () => {
+      running = false
+      area.removeEventListener('pointermove', move)
+      area.removeEventListener('pointerleave', leave)
+      win.removeEventListener('deviceorientation', orient)
+      if (io) io.disconnect()
+      win.document.removeEventListener('visibilitychange', wake)
+      if (raf) win.cancelAnimationFrame(raf)
+      raf = 0; aim = tilt = base = null; x = y = 0
+      el.style.removeProperty('--nx')
+      el.style.removeProperty('--ny')
+    }
+    // The setting can change while the page is open: turning reduced motion on stops the shield at once.
+    if (mq.addEventListener) mq.addEventListener('change', (e) => (e.matches ? stop() : start()))
+    start()
+    return { stop }
+  }
+  shieldMotion(document.querySelector('.hero-shield'), window)
+})()

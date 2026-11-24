@@ -249,6 +249,56 @@ console.log('the history archive')
       check('after a failed read the proof keeps the last good digest and says stale, uncached; a good read clears it', before.stale === false && during.stale === true && during.addresses_sha256 === before.addresses_sha256 && r1.headers.get('cache-control') === 'no-store' && after.stale === false, JSON.stringify([before.stale, during?.stale, r1.headers.get('cache-control'), after.stale]))
     }
     {
+      // A list the issuer has not answered for longer than REGISTRY_FRESH_S is no list on ANY route (outside review,
+      // 24.11): before, only /verify said so, and the passport, find, list, the page and the board kept answering
+      // ISSUER-LISTED from the old copy for as long as the issuer was unreachable.
+      let down = false, t = NOW
+      const st = createStocksWeb({ roots: { base: baseRoot, robinhood: rhRoot }, fetchImpl: (u) => (down && String(u).startsWith(COINBASE_URL) ? Promise.reject(new Error('down')) : fetchImpl(u)), now: () => t, log: () => {}, analytics: { enabled: false }, exam: { url: null }, glama: { url: null } })
+      const { port: sp } = await st.start(0, '127.0.0.1')
+      const g = (u, init = {}) => fetch(`http://127.0.0.1:${sp}/stocks${u}`, { ...init, headers: { 'x-real-ip': '198.51.100.61', ...(init.headers || {}) } })
+      const call = async (name, args) => (await (await g('/mcp', { method: 'POST', headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream' }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args } }) })).json()).result
+      const fresh = await g(`/api/passport?chain=base&address=${A}`)
+      down = true; t = NOW + 16 * 60e3; await st.refreshAll()
+      const pass = await g(`/api/passport?chain=base&address=${A}`)
+      const passBody = await pass.json()
+      const find = await g('/api/find?chain=base&q=NVDA')
+      const mp = await call('stock_passport', { chain: 'base', address: A })
+      const ml = await call('list_stock_tokens', { chain: 'base' })
+      const mf = await call('find_stock_token', { chain: 'base', query: 'NVDA' })
+      const page = await (await g(`/?chain=base&address=${A}`, { headers: { accept: 'text/html' } })).text()
+      const ver = await g(`/api/verify?chain=base&address=${A}`)
+      down = false; t = NOW + 17 * 60e3; await st.refreshAll()
+      const back = await g(`/api/passport?chain=base&address=${A}`)
+      await st.stop()
+      check('a fresh list answers the passport', fresh.status === 200)
+      check('a list older than 15 minutes: the passport is 503 and says why, never ISSUER-LISTED', pass.status === 503 && /not been read in the last 15 minutes/.test(passBody.error) && passBody.registry_age_s >= 900, JSON.stringify(passBody).slice(0, 160))
+      check('...the HTTP find has no list to search', find.status === 503)
+      check('...the MCP passport, list and find answer an error, not a verdict', mp.isError === true && !/ISSUER-LISTED/.test(JSON.stringify(mp)) && ml.isError === true && mf.isError === true, JSON.stringify(mp).slice(0, 120))
+      check('...the page names no listed token from the old copy', !/NVDAc/.test((page.match(/<title>[^<]*<\/title>/) || [''])[0]), (page.match(/<title>[^<]*<\/title>/) || [''])[0])
+      check('...and /verify stays 503 as before', ver.status === 503)
+      check('a good read brings every route back', back.status === 200)
+    }
+    {
+      // An empty answer, or one that lost more than half the list in one read, is a failed read, not a mass delisting
+      // (outside review, 24.11): the last good list stays, nothing is marked delisted, and the error is recorded.
+      const tok = (a, sym) => ({ contract_address: a, symbol: sym, name: sym, isin: 'US0000000000', multiplier: '1', nav_price: '1', nav_price_updated_at: '2026-11-06T21:00:00Z', total_supply: '5' })
+      const B2 = '0x' + 'b2'.repeat(20), B3 = '0x' + 'b3'.repeat(20)
+      let tokens = [tok(A, 'NVDAc'), tok(B2, 'AAAc'), tok(B3, 'BBBc')], t = NOW
+      const em = createStocksWeb({ roots: { base: baseRoot, robinhood: rhRoot }, fetchImpl: (u) => (String(u).startsWith(COINBASE_URL) ? Promise.resolve({ ok: true, status: 200, json: async () => ({ tokens }) }) : fetchImpl(u)), now: () => t, log: () => {}, analytics: { enabled: false }, exam: { url: null }, glama: { url: null } })
+      const { port: ep } = await em.start(0, '127.0.0.1')
+      const v = async (a) => (await fetch(`http://127.0.0.1:${ep}/stocks/api/verify?chain=base&address=${a}`, { headers: { 'x-real-ip': '198.51.100.62' } })).json()
+      tokens = []; t += 60e3; await em.refreshAll()
+      const afterEmpty = await v(A)
+      tokens = [tok(A, 'NVDAc')]; t += 60e3; await em.refreshAll()
+      const afterShrink = await v(B2)
+      tokens = [tok(A, 'NVDAc'), tok(B2, 'AAAc')]; t += 60e3; await em.refreshAll()
+      const afterOne = await v(B3)
+      await em.stop()
+      check('an empty issuer answer is refused: the genuine token is still listed and not marked delisted', afterEmpty.listed === true && !afterEmpty.delisted_at, JSON.stringify(afterEmpty).slice(0, 160))
+      check('a list that lost more than half in one read is refused the same way', afterShrink.listed === true && !afterShrink.delisted_at, JSON.stringify(afterShrink).slice(0, 160))
+      check('...while one token leaving is an ordinary read: it is delisted', afterOne.listed === false && Boolean(afterOne.delisted_at), JSON.stringify(afterOne).slice(0, 160))
+    }
+    {
       // Spec 1.3: the exact list by its hash, so a forwarded verdict stays checkable after the issuer's list changes.
       const crypto = await import('node:crypto')
       const sha = (s) => crypto.createHash('sha256').update(s).digest('hex')
@@ -472,6 +522,16 @@ if (!x402mod) {
     const lockBody = await lockedOut.json()
     const lockS = Number(lockedOut.headers.get('retry-after'))
     check('...the lockout names its wait: exact minutes in the text, the same seconds in the body as in Retry-After', lockS > 0 && lockS <= 600 && lockBody.retry_after_s === lockS && new RegExp(`try again in ${Math.ceil(lockS / 60)} minutes?$`).test(lockBody.error || '') && !/few minutes/.test(lockBody.error || ''), JSON.stringify(lockBody))
+    {
+      // The same cap on the free routes' payment path (outside review, 24.11): a client over its free minute could send
+      // failed payments without end and keep the settlement queue busy, because only passGate counted them.
+      const ip5 = { 'x-real-ip': '203.0.113.48' }
+      for (let i = 0; i < 61; i++) await hit('/stocks/api/find?chain=base&q=nvda', { headers: ip5 })
+      const free = []
+      let last
+      for (let i = 0; i < 6; i++) { last = await hit('/stocks/api/find?chain=base&q=nvda', { headers: { ...ip5, 'x-payment': forged } }); free.push(last.status) }
+      check('on a free route over its minute, five failed payments are refused as payments; the sixth is a 429 before any verification', free.slice(0, 5).every((x) => x === 402) && free[5] === 429 && /too many failed payments/.test((await last.json()).error || ''), free.join(','))
+    }
     // x402 v2 end to end with the real module (22.11): the offer read from /api/pass's PAYMENT-REQUIRED is what the
     // payer echoes back as accepted; the module verifies and settles it like v1, and the receipt is v2.
     if (typeof x402mod.acceptsBodyV2 === 'function') {
@@ -1338,6 +1398,28 @@ console.log('search engines, AI crawlers and link previews')
     // by the CDN without a version, and showed the old icon for hours after 0.5.0 (12.11).
     const css = ['style.css', 'docs.css'].map((f) => fs.readFileSync(new URL('./stocks-web/' + f, import.meta.url), 'utf8'))
     check('...and the brand marks carry it inline, never as an unversioned file', css.every((s) => !/url\("?favicon\.svg/.test(s)) && css.every((s) => [...s.matchAll(/data:image\/svg\+xml,([^"]+)"/g)].some((m) => decodeURIComponent(m[1]).includes(SHIELD) && decodeURIComponent(m[1]).includes(EMBLEM))))
+    // The hero draws the same icon inline so its layers can move (owner, 24.11): every shape of shield.svg, unchanged.
+    const hero = ((await (await g('/stocks/', { accept: 'text/html' })).text()).match(/<span class="hero-shield"[\s\S]*?<\/svg><\/span>/) || [''])[0]
+    const shapes = [...icon.matchAll(/ (d|transform)="([^"]+)"/g)].map((m) => m[0])
+    check('...the hero\'s live shield is that icon, every shape and placement as drawn', shapes.length >= 5 && shapes.every((a) => hero.includes(a)) && hero.includes('class="shield-emblem"') && hero.includes('class="shield-glare"'), JSON.stringify(shapes.filter((a) => !hero.includes(a))))
+    {
+      // Reduced motion: the script starts nothing (no listener, no frame, no property) and the stylesheet pins it flat.
+      const js = fs.readFileSync(new URL('./stocks-web/app.js', import.meta.url), 'utf8')
+      const src = (js.match(/\n  function shieldMotion\(el, win\) \{[\s\S]*?\n  \}\n/) || [''])[0]
+      const shieldMotion = src ? new Function(src + '\nreturn shieldMotion')() : null
+      const run = (reduce) => {
+        const calls = []
+        const rec = (what) => (...a) => { calls.push(what + ':' + a[0]); return 1 }
+        const el = { closest: () => null, style: { setProperty: rec('set'), removeProperty: rec('remove') }, getBoundingClientRect: () => ({ left: 0, top: 0, width: 80, height: 92 }), addEventListener: rec('listen'), removeEventListener: rec('unlisten') }
+        const win = { matchMedia: (q) => ({ matches: q.includes('reduce') ? reduce : false, addEventListener: rec('media') }), requestAnimationFrame: rec('frame'), cancelAnimationFrame: rec('cancel'), addEventListener: rec('listen'), removeEventListener: rec('unlisten'), document: { hidden: false, addEventListener: rec('listen'), removeEventListener: rec('unlisten') } }
+        return { out: shieldMotion(el, win), calls }
+      }
+      const still = shieldMotion && run(true), live = shieldMotion && run(false)
+      check('the shield does not move with reduced motion: the script starts nothing', still && still.out === null && still.calls.length === 0, JSON.stringify(still && still.calls))
+      check('...and moves otherwise: it follows the pointer and asks for frames', live && live.out && live.calls.includes('listen:pointermove') && live.calls.some((c) => c.startsWith('frame:')), JSON.stringify(live && live.calls))
+      const css = fs.readFileSync(new URL('./stocks-web/style.css', import.meta.url), 'utf8')
+      check('...and the stylesheet pins every moving layer flat under reduced motion', /@media \(prefers-reduced-motion: reduce\) \{[^\n]*\.shield-3d, \.shield-emblem, \.shield-glare \{ transform: none;/.test(css))
+    }
     const png = Buffer.from(await (await g('/stocks/logo.png')).arrayBuffer())
     check('...and its PNG is 512 px', png.readUInt32BE(16) === 512 && png.readUInt32BE(20) === 512)
   }

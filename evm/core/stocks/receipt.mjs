@@ -43,6 +43,14 @@ export function makeReceipt ({ body, proof, appVersion, at }) {
 
 // The archive a receipt can be checked against. A self-hosted instance passes its own through `origins`.
 export const LIST_ORIGINS = Object.freeze(['https://proofofstock.xyz'])
+// What a receipt may say, and the header our archive names a frozen list's chain by (the body is the hashed list, so the
+// chain cannot ride inside it). Outside review, 24.11: a receipt that pointed at another chain's list, or that said
+// "impostor" while its own listed field said otherwise, was printed as holding.
+export const RECEIPT_CHAINS = Object.freeze(['base', 'robinhood'])
+export const LIST_CHAIN_HEADER = 'x-pos-chain'
+const RECEIPT_ADDRESS = /^0x[0-9a-f]{40}$/
+const VERDICTS = Object.freeze(['listed', 'impostor', 'not_listed'])
+const FROZEN_PATH = /^\/api\/list\/[0-9a-f]{64}\/addresses$/
 /** Whether a URL is served by one of those origins, over https, with no credentials and no port games. */
 export function isOurs (url, origins = LIST_ORIGINS) {
   let u
@@ -59,12 +67,18 @@ export async function checkReceipt (r, { fetchImpl = fetch, origins = LIST_ORIGI
   const add = (check, ok, detail) => checks.push({ check, ok: Boolean(ok), detail })
   if (!r || r.format !== RECEIPT_FORMAT) { add('format', false, `not a ${RECEIPT_FORMAT} receipt`); return { ok: false, checks } }
   add('receipt hash', receiptHash(r) === r.sha256, receiptHash(r) === r.sha256 ? 'the receipt is as it was issued' : 'the receipt was changed after it was issued')
+  // The fields a reader is told about must be well-formed and agree with each other before anything is printed from them:
+  // a free-form address, chain or verdict once reached the "The receipt holds:" line as written by whoever made it.
+  const fieldsOk = RECEIPT_ADDRESS.test(String(r.address)) && RECEIPT_CHAINS.includes(r.chain) && VERDICTS.includes(r.verdict) &&
+    typeof r.listed === 'boolean' && (r.verdict === 'listed') === r.listed && (r.verdict === 'impostor') === (r.impostor != null)
+  add('fields', fieldsOk, fieldsOk ? 'the address, the chain and the verdict are well-formed and agree with each other' : 'the address, chain or verdict is malformed, or the verdict contradicts listed or impostor')
+  if (!fieldsOk) return { ok: false, checks }
   // ⚠ THE LIST URL IS TAKEN FROM THE RECEIPT, AND A RECEIPT IS A FILE SOMEBODY HANDED YOU. Its own hash proves only
   // that it was not edited after whoever made it made it: anyone can write a receipt, serve a list that hashes to
   // what it claims, and recompute the receipt's hash. The one thing that ties it to us is WHERE that list is served
   // from, so the origin is pinned here. Without this, `receipt-check` printed "The receipt holds" over an impostor's
   // own bytes, and fetched the author's URL from the reader's machine while it was at it (audit, 14.11).
-  if (!isOurs(r.list && r.list.addresses_url, origins)) {
+  if (!isOurs(r.list && r.list.addresses_url, origins) || !FROZEN_PATH.test(new URL(String(r.list.addresses_url)).pathname)) {
     add('frozen list', false, `${String(r.list && r.list.addresses_url).slice(0, 80)} is not our archive: a receipt can only be checked against ${origins.join(' or ')}`)
     return { ok: false, checks }
   }
@@ -76,6 +90,9 @@ export async function checkReceipt (r, { fetchImpl = fetch, origins = LIST_ORIGI
     const res = await fetchImpl(r.list.addresses_url, { signal: AbortSignal.timeout(20_000), redirect: 'error' })
     if (!res.ok) throw new Error('HTTP ' + res.status)
     text = await res.text()
+    // The chain our archive says this list is from: a Robinhood list cannot stand behind a Base verdict.
+    const listChain = res.headers && typeof res.headers.get === 'function' ? res.headers.get(LIST_CHAIN_HEADER) : null
+    add('list chain', listChain === r.chain, listChain === r.chain ? `the archive serves this list as ${r.chain}'s` : `the archive serves this list as ${String(listChain).slice(0, 20)}'s, not ${r.chain}'s`)
   } catch (e) { add('frozen list', false, 'could not fetch ' + r.list.addresses_url + ': ' + String(e && e.message || e).slice(0, 80)) }
   if (text != null) {
     const got = sha256(text)
@@ -84,6 +101,9 @@ export async function checkReceipt (r, { fetchImpl = fetch, origins = LIST_ORIGI
       const lines = text.split('\n').filter(Boolean)
       const inList = lines.includes(String(r.address).toLowerCase())
       add('verdict', inList === r.listed, `${r.address} is ${inList ? '' : 'not '}in that list of ${lines.length}, and the receipt says ${r.listed ? 'listed' : 'not listed'}`)
+      // What the list can show is listed or not. "Impostor" is the service's own finding at issued_at (the symbol or
+      // name copied a listed token), so it is said as that, never as something this check re-derived.
+      if (r.verdict === 'impostor') add('impostor', true, 'the impostor flag is the service\'s own finding at issued_at; the list shows only that the address was not on it')
     }
   }
   return { ok: checks.every((c) => c.ok), checks }

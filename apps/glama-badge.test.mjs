@@ -35,6 +35,11 @@ const bad = {
   'an anchor element': BADGE.replace('<text', '<a href="#g0"><text').replace('</text>', '</text></a>'),
   'two documents glued together': BADGE + BADGE.replace('<title>', '<script>1</script><title>'),
   'not an svg at all': '<html><body>hi</body></html>',
+  'a link out under another namespace prefix': BADGE.replace('<use href="#g0" x="10"/>', '<use xmlns:x="http://www.w3.org/1999/xlink" x:href="https://x.example/a.svg#g0" x="10"/>'),
+  'an unquoted link out': BADGE.replace('href="#g0"', 'href=https://x.example/a.svg#g0'),
+  'a CSS-escaped url(': BADGE.replace('<rect ', '<rect style="fill:u\\72l(https://x.example/a)" '),
+  'a character reference': BADGE.replace('<title>', '<title>&#106;avascript'),
+  'image-set in a style': BADGE.replace('<rect ', '<rect style="fill:image-set(\'https://x.example/a\' 1x)" '),
   'nothing': '',
 }
 for (const [what, s] of Object.entries(bad)) check(`refused: ${what}`, !checkBadgeSvg(s).ok, checkBadgeSvg(s).why)

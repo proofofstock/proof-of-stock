@@ -31,8 +31,16 @@ From [the repository](https://github.com/proofofstock/proof-of-stock); Node 20 o
    is fetched. Without that check the whole exercise is circular: anyone could write a receipt saying `listed`, serve
    a list that hashes to what it claims, rehash the receipt, and watch every other check go green on their own bytes;
 2. the receipt's own hash: an edited receipt fails here;
-3. the frozen list's hash against the one the receipt names: a different list fails here;
-4. the verdict again, from that list: a receipt rehashed after its verdict was changed fails here.
+3. its fields: the address, the chain and the verdict must be well-formed and agree with each other (a verdict of
+   `impostor` with `listed: true` fails here, before anything is fetched or printed);
+4. the list's chain: this site names the chain of every frozen list it serves (the `x-pos-chain` header), and a Base
+   receipt over a Robinhood list fails here;
+5. the frozen list's hash against the one the receipt names: a different list fails here;
+6. the verdict again, from that list: a receipt rehashed after its verdict was changed fails here.
+
+What the list can show is whether the address was on it. A verdict of `impostor` says more: that the token's symbol
+or name copied a listed one. That part is our finding at the time of the check, and the checker says so rather than
+claiming to have derived it again.
 
 Our daily [anchors](verify-an-anchor.md) put the archive's files in Bitcoin's timeline, so the frozen lists can also be
 shown to have existed on their day. A receipt carries no signature: what makes it checkable is the hashes.

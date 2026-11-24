@@ -102,7 +102,8 @@ hash is on BaseScan, and anyone can check the payment there.
 | 429, `this payment is being settled` | the same authorization is in flight already; send it again in a few seconds |
 | 429, `a pass was bought here recently` | purchase pacing: one broadcast purchase per client and per payer every 5 minutes |
 | 429, `paid passes are paused` | several settlements in a row failed on chain; selling stops for a while |
-| 429, `too many failed payments from this client; try again in N minutes` | five refused payments on the big-batch route within 10 minutes; the body's `retry_after_s` and `Retry-After` give the same wait in seconds |
+| 429, `a purchase from here is being settled` | another payment from the same client or the same payer is in flight; wait for its answer instead of signing a second one |
+| 429, `too many failed payments from this client; try again in N minutes` | five refused payments within 10 minutes, on any route that takes a payment; a payment that is only pending does not count. The body's `retry_after_s` and `Retry-After` give the same wait in seconds |
 | 429, `your pass is active` | you are over even 600 units a minute; slow down, `Retry-After: 5` |
 
 Prices and pass shape are decided by the server code, not by the client: the only amount accepted is the one the 402
@@ -125,7 +126,10 @@ record of that transaction (pending, then the pass), however late it arrives, fo
 
 ## Before your agent pays any 402 (ours included)
 
-The 402 body is not signed; anything between the agent and the server can change it. Before signing:
+The 402 body is not signed; anything between the agent and the server can change it. **Set a hard ceiling in the
+client, not in the prompt: never sign more than 0.01 USDC (`10000` atomic units) for one of our passes without a
+person confirming it.** That is our only price, and a 402 that asks for more is not ours, or not the service this page
+describes. A client that takes its price from the 402 alone has no ceiling at all. Before signing:
 
 - check `payTo`, `asset`, the network and the EIP-712 domain against values you got another way (for us: this page,
   and `payTo` is the same on every 402 we send);

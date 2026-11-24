@@ -1,5 +1,5 @@
 {
-  "_finding": "Owner, 23.11: a Telegram bot without a language model. Its guarantees are the fixed words: an unreadable check is never 'listed', the creator's symbol never reaches a reply, a restart never floods the alert channel, a backfilled case is not news, and the chat is paced.",
+  "_finding": "Owner, 23.11: a Telegram bot without a language model. Its guarantees are the fixed words: an unreadable check is never 'listed', the creator's symbol never reaches a reply, a restart never floods the alert channel, a backfilled case is not news, and the chat is paced. Since 24.11 the replies are Telegram HTML: our own tags only, every value escaped, every address a code span to copy in one tap.",
   "target": "scripts/stocks/tg-bot.mjs",
   "runner": [
     "node",
@@ -8,8 +8,8 @@
   "mutations": [
     {
       "name": "an unanswered check reads as listed",
-      "find": "  if (!b || typeof b.listed !== 'boolean') return { state: 'unavailable',",
-      "replace": "  if (!b || typeof b.listed !== 'boolean') return { state: 'listed',",
+      "find": "  if (!b || typeof b.listed !== 'boolean') return out('unavailable',",
+      "replace": "  if (!b || typeof b.listed !== 'boolean') return out('listed',",
       "expect": "FAIL an API that does not answer is UNAVAILABLE, never listed"
     },
     {
@@ -38,9 +38,33 @@
     },
     {
       "name": "replies go out with a link preview",
-      "find": "      try { await tg('sendMessage', { chat_id: m.chat.id, text, disable_web_page_preview: true }) }",
-      "replace": "      try { await tg('sendMessage', { chat_id: m.chat.id, text }) }",
-      "expect": "FAIL each message is answered in its own chat, as plain text with no link preview"
+      "find": "      try { await tg('sendMessage', { chat_id: m.chat.id, text, parse_mode: 'HTML', disable_web_page_preview: true }) }",
+      "replace": "      try { await tg('sendMessage', { chat_id: m.chat.id, text, parse_mode: 'HTML' }) }",
+      "expect": "FAIL each message is answered in its own chat, as Telegram HTML with no link preview"
+    },
+    {
+      "name": "esc lets markup through",
+      "find": "export const esc = (v) => String(v).replace(/[&<>\"]/g,",
+      "replace": "export const esc = (v) => String(v).replace(/[&\"]/g,",
+      "expect": "FAIL esc turns the four markup characters into entities"
+    },
+    {
+      "name": "an address is no longer a code span, so it cannot be copied in one tap",
+      "find": "const code = (a) => (ADDRESS_RE.test(String(a)) ? `<code>${a.toLowerCase()}</code>` : '?')",
+      "replace": "const code = (a) => (ADDRESS_RE.test(String(a)) ? a.toLowerCase() : '?')",
+      "expect": "FAIL ...the address in a code span, copied in one tap, and no markup but ours"
+    },
+    {
+      "name": "a company name is taken whatever it holds",
+      "find": "return /^[A-Za-z0-9 .,&'()-]{1,60}$/.test(t) ? t : null }",
+      "replace": "return t || null }",
+      "expect": "FAIL a company name with anything like markup in it is left out, not escaped into the reply"
+    },
+    {
+      "name": "a 402 or 503 from the API is read as an answer again",
+      "find": "    if (r.status !== 200) throw new Error(r.status === 429 ? 'busy' : `HTTP ${r.status}`)",
+      "replace": "    if (r.status === 429) throw new Error('busy')",
+      "expect": "FAIL a 402 from the API makes a ticker search UNAVAILABLE, never \"no match\""
     }
   ]
 }

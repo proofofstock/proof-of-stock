@@ -59,7 +59,7 @@ import { robotsTxt, securityTxt, sitemapXml, sitemapUrls, docUrl, homeJsonLd, do
 import { createMcpHttp, SUPPORTED_VERSIONS, MAX_VERIFY_BATCH, toolsFor, freshnessOf, GAPS_LIMIT } from './stocks-mcp-http.mjs'
 import { siteBar } from './stocks-nav.mjs'
 import { apiPage } from './stocks-api-page.mjs'
-import { verifyToken, badgeSvg, badgeState, issuerPrefixOf, ISSUER_LABEL as VERIFY_ISSUER_LABEL } from '../evm/core/stocks/verify.mjs'
+import { verifyToken, badgeSvg, badgeState, issuerPrefixOf, ISSUER_LABEL as VERIFY_ISSUER_LABEL, REGISTRY_FRESH_S } from '../evm/core/stocks/verify.mjs'
 import { mintedOf } from '../evm/core/stocks/registries.mjs'
 import { createDocsRenderer } from './stocks-docs.mjs'
 import { stampList, listProof, listBytes } from '../evm/core/stocks/list-proof.mjs'
@@ -69,7 +69,7 @@ import { statusPage, usageOf, appsSentenceHtml, withApps } from './stocks-status
 import { archiveAt } from './stocks-archive.mjs'
 import { statsPage, lastRuns, STATS_GATE } from './stocks-stats.mjs'
 import { ANCHOR_FILE_RE, anchorDays, anchorFor } from '../scripts/stocks/anchor.mjs'
-import { makeReceipt } from '../evm/core/stocks/receipt.mjs'
+import { makeReceipt, LIST_CHAIN_HEADER } from '../evm/core/stocks/receipt.mjs'
 import { dailySummaries } from '../scripts/stocks/analytics-report.mjs'
 import { createHistoryStore, historyPage, BULK_WINDOW_DAYS, BULK_MAX, FULL_ARCHIVE } from './stocks-history.mjs'
 import { createAnalytics, parseHit } from './stocks-analytics.mjs'
@@ -405,6 +405,12 @@ export function createStocksWeb ({
     try {
       const records = await C.read(fetchImpl, { chainId: C.chainId })
       const prev = registries.get(chain)?.records
+      // A well-formed answer that is empty, or that lost more than half the list in one read, is a fault at the issuer
+      // or on the way, not a mass delisting: taken as the list it would mark every genuine token "removed by the issuer"
+      // at once. It is refused like any failed read, so the last good list stays until REGISTRY_FRESH_S runs out and
+      // the answers then say they cannot verify (outside review, 24.11). A real shrink that size is confirmed by hand.
+      if (!records.length) throw new Error(`${chain}: the issuer answered an empty list`)
+      if (prev && records.length * 2 < prev.length) throw new Error(`${chain}: the issuer list shrank from ${prev.length} to ${records.length} in one read`)
       if (prev) {
         const kept = new Set(records.map((r) => r.address)), gone = delisted.get(chain)
         for (const r of prev) if (!kept.has(r.address) && !gone.has(r.address)) gone.set(r.address, { at: now(), symbol: r.symbol })
@@ -478,7 +484,7 @@ export function createStocksWeb ({
     if (!ADDRESS.test(a)) {
       for (const k of Object.keys(CHAINS)) {
         const sym = String(url.searchParams.get(k) || '').toLowerCase()
-        const rec = sym ? registries.get(k)?.records?.find((r) => String(r.symbol).toLowerCase() === sym) : null
+        const rec = sym ? freshRecords(k)?.find((r) => String(r.symbol).toLowerCase() === sym) : null
         if (rec) { c = k; a = rec.address; break }
       }
     }
@@ -486,7 +492,7 @@ export function createStocksWeb ({
     let record = null, impostor = null
     const named = Boolean(CHAINS[c] && ADDRESS.test(a))
     if (named) {
-      record = registries.get(c)?.records?.find((r) => r.address === a) || null
+      record = freshRecords(c)?.find((r) => r.address === a) || null
       const latest = record ? windows[c].get().window?.byToken.get(a)?.latest : null
       impostor = record ? null : impostors.get(c)?.byAddress?.get(a) || null
       meta = metaFor({ chain: c, record, latest, impostor })
@@ -588,12 +594,22 @@ export function createStocksWeb ({
     res.end(res.req.method === 'HEAD' ? undefined : buf)
   }
 
-  // Every chain whose registry has loaded, with its readings window. A chain still loading is left out and named.
+  // A chain's issuer list, only while it is fresh: read within REGISTRY_FRESH_S, the rule /verify has always kept. A list
+  // the issuer has not answered for longer is no list: every answer built on it (passport, find, list, the page, the
+  // board) says it cannot verify, never "listed" or "not listed" from an old copy. Before 24.11 only /verify held this,
+  // and a stale copy kept saying ISSUER-LISTED on the other routes for as long as the issuer was unreachable (outside
+  // review, 24.11). The copy itself is kept, for /status and for the next read's delisting diff.
+  function freshRecords (c) {
+    const r = registries.get(c)
+    return r?.records && r.at != null && now() - r.at <= REGISTRY_FRESH_S * 1000 ? r.records : null
+  }
+
+  // Every chain whose registry has loaded and is fresh, with its readings window. Any other chain is left out and named.
   function loaded () {
     const byChain = {}, missing = []
     for (const c of Object.keys(CHAINS)) {
-      const r = registries.get(c)
-      if (r?.records) byChain[c] = { records: r.records, window: windows[c].get().window }; else missing.push(c)
+      const records = freshRecords(c)
+      if (records) byChain[c] = { records, window: windows[c].get().window }; else missing.push(c)
     }
     return { byChain, missing }
   }
@@ -603,6 +619,7 @@ export function createStocksWeb ({
     if (!CHAINS[chain]) return { status: 400, body: { error: `chain must be one of ${Object.keys(CHAINS).join(', ')}` } }
     const reg = registries.get(chain)
     if (!reg?.records) return { status: 503, body: { error: 'the issuer registry is not loaded yet', detail: reg?.error ?? null } }
+    if (!freshRecords(chain)) return { status: 503, body: { error: `the issuer registry has not been read in the last ${REGISTRY_FRESH_S / 60} minutes, so no verdict is given`, registry_age_s: reg.at != null ? Math.round((now() - reg.at) / 1000) : null, detail: reg.error ?? null } }
     if (!ADDRESS.test(String(address || ''))) return { status: 400, body: { error: 'address must be 0x followed by 40 hex characters' } }
     const addr = String(address).toLowerCase()
     const hours = Math.min(PUBLIC_HOURS, windowH, Math.max(1, Number(hoursArg) || PUBLIC_HOURS))
@@ -796,8 +813,8 @@ export function createStocksWeb ({
     maxHours: Math.min(PUBLIC_HOURS, windowH),
     find: (c, q) => { const { byChain } = loaded(); if (!byChain[c]) throw unavailable(`the ${c} registry is not loaded yet`); return { ...findAcross({ [c]: byChain[c] }, q), ...sourceOf(c) } },
     list: (c) => {
-      const recs = registries.get(c)?.records
-      if (!recs) throw unavailable(`the ${c} registry is not loaded yet`)
+      const recs = freshRecords(c)
+      if (!recs) throw unavailable(`the ${c} registry has not been read in the last ${REGISTRY_FRESH_S / 60} minutes; no list is given`)
       const tokens = recs.map((r) => ({ symbol: r.symbol, name: r.name ?? null, address: r.address, isin: r.isin, multiplier: r.multiplier, has_reference_price: r.reference?.price_usd > 0, minted: mintedOf(r) }))
       return { chain: c, issuer: CHAINS[c].issuer, ...sourceOf(c), count: tokens.length, minted: tokens.some((t) => t.minted == null) ? null : tokens.filter((t) => t.minted).length, with_reference_price: tokens.filter((t) => t.has_reference_price).length, tokens }
     },
@@ -872,6 +889,25 @@ export function createStocksWeb ({
    * purchase settles on chain, this request is then served under the pass's rate, and the settle receipt rides out in
    * `X-PAYMENT-RESPONSE`. Returns true when it has answered, false when the caller may proceed.
    */
+  // Failed purchases are counted per client and capped, on every route that takes a payment. Each failed one costs us a
+  // parse, a keccak and an ECDSA recovery, and a valid signature from an empty wallet also takes a settlement queue slot
+  // and several RPC calls before it is refused. The cap was on passGate only, on the reasoning that limitGate reaches a
+  // purchase only for a client the limiter already refused; but staying refused costs nothing, so one client could keep
+  // the queue busy for real buyers (security review, 19.11; outside review, 24.11). A settled purchase clears the count.
+  function failCapped (key) {
+    const f = passFails.get(key)
+    if (!(f && now() - f.since < PASS_FAIL_WINDOW_MS && f.n >= PASS_FAIL_MAX)) return null
+    const waitS = Math.max(1, Math.ceil((PASS_FAIL_WINDOW_MS - (now() - f.since)) / 1000)), waitM = Math.ceil(waitS / 60)
+    return { waitS, error: `too many failed payments from this client; try again in ${waitM} minute${waitM === 1 ? '' : 's'}` }
+  }
+  function failNoted (key) {
+    const old = passFails.get(key)
+    const f = old && now() - old.since < PASS_FAIL_WINDOW_MS ? old : { since: now(), n: 0 }
+    f.n++
+    passFails.set(key, f)
+    if (passFails.size > 10000) for (const [k, v] of passFails) if (now() - v.since >= PASS_FAIL_WINDOW_MS) passFails.delete(k)
+  }
+
   async function limitGate (req, res, { units = 1, cors = {}, headers = {}, mcp = false } = {}) {
     const ip = clientIp(req)
     if (!limited(ip, units)) return false
@@ -889,13 +925,20 @@ export function createStocksWeb ({
       send(res, 402, x402.accepts({ resource, error }), undefined, { ...headers, ...cors, ...noStore, ...offerHeaders({ resource, error }) })
       return true
     }
+    const capped = failCapped(key)
+    if (capped) {
+      send(res, 429, mcp ? { jsonrpc: '2.0', id: null, error: { code: -32000, message: capped.error } } : { error: capped.error, retry_after_s: capped.waitS }, undefined, { ...headers, ...cors, ...noStore, 'retry-after': String(capped.waitS) })
+      return true
+    }
     const r = await x402.purchase(pay.header, key)
     if (!r.ok) {
+      if (!r.pending) failNoted(key)
       const body = mcp ? { jsonrpc: '2.0', id: null, error: { code: -32000, message: r.error } } : { error: r.error, ...(r.pending ? { pending: true } : {}) }
       // A pending settlement carries its transaction in the receipt header, as x402 v2's settlement_pending does.
       send(res, r.status || 402, body, undefined, { ...headers, ...cors, ...noStore, ...PAY_EXPOSE, ...receiptHeaders(r, pay.version), ...(r.retryAfterS ? { 'retry-after': String(r.retryAfterS) } : {}) })
       return true
     }
+    passFails.delete(key)
     for (const [h, v] of Object.entries({ ...PAY_EXPOSE, ...receiptHeaders(r, pay.version) })) res.setHeader(h, v)
     if (limited(ip, units)) { send(res, 429, mcp ? { jsonrpc: '2.0', id: null, error: { code: -32000, message: TOO_MANY.error } } : TOO_MANY, undefined, { ...headers, ...cors, ...noStore, 'retry-after': '10' }); return true }
     return false
@@ -919,23 +962,16 @@ export function createStocksWeb ({
       send(res, 402, v2 || x402.accepts({ resource, error }), undefined, { ...cors, ...noStore, ...offerHeaders({ resource, error, extensions }) })
       return true
     }
-    // limitGate only reaches a purchase for a client the limiter already refused; this route reaches it for anyone, so
-    // failed attempts are counted per client and capped (security review, 19.11: each bad header costs us a parse, a
-    // keccak and an ECDSA recovery). A settled purchase clears the count.
-    const fails = passFails.get(key)
-    if (fails && now() - fails.since < PASS_FAIL_WINDOW_MS && fails.n >= PASS_FAIL_MAX) {
-      // The refusal names the wait it means: the same seconds as Retry-After, and in minutes for a person reading it.
-      const waitS = Math.max(1, Math.ceil((PASS_FAIL_WINDOW_MS - (now() - fails.since)) / 1000))
-      const waitM = Math.ceil(waitS / 60)
-      send(res, 429, { error: `too many failed payments from this client; try again in ${waitM} minute${waitM === 1 ? '' : 's'}`, retry_after_s: waitS }, undefined, { ...cors, ...noStore, 'retry-after': String(waitS) })
+    // Failed attempts are capped per client (failCapped). The refusal names the wait it means: the same seconds as
+    // Retry-After, and in minutes for a person reading it.
+    const capped = failCapped(key)
+    if (capped) {
+      send(res, 429, { error: capped.error, retry_after_s: capped.waitS }, undefined, { ...cors, ...noStore, 'retry-after': String(capped.waitS) })
       return true
     }
     const r = await x402.purchase(pay.header, key)
     if (!r.ok) {
-      const f = fails && now() - fails.since < PASS_FAIL_WINDOW_MS ? fails : { since: now(), n: 0 }
-      f.n++
-      passFails.set(key, f)
-      if (passFails.size > 10000) for (const [k, v] of passFails) if (now() - v.since >= PASS_FAIL_WINDOW_MS) passFails.delete(k)
+      if (!r.pending) failNoted(key)
       send(res, r.status || 402, { error: r.error, ...(r.pending ? { pending: true } : {}) }, undefined, { ...cors, ...noStore, ...PAY_EXPOSE, ...receiptHeaders(r, pay.version), ...(r.retryAfterS ? { 'retry-after': String(r.retryAfterS) } : {}) })
       return true
     }
@@ -1061,7 +1097,9 @@ export function createStocksWeb ({
       if (!hit) return send(res, 404, { error: 'no list with this hash: neither read recently nor in the archive' }, undefined, { 'access-control-allow-origin': '*', 'cache-control': 'public, max-age=60' })
       const bytes = listBytes(hit.canonical, lm[1])
       if (!bytes) { log(`[list] ${hit.chain} ${lm[1]}: the stored list does not hash to its name`); return send(res, 500, { error: 'internal error' }, undefined, { 'access-control-allow-origin': '*', 'cache-control': 'no-store' }) }
-      const imm = { 'access-control-allow-origin': '*', 'cache-control': 'public, max-age=31536000, immutable', 'x-robots-tag': 'noindex' }
+      // The chain this list is from, in a header: the body is the hashed list itself, and a receipt check needs to know a
+      // Robinhood list from a Base one (evm/core/stocks/receipt.mjs LIST_CHAIN_HEADER, outside review, 24.11).
+      const imm = { 'access-control-allow-origin': '*', 'access-control-expose-headers': LIST_CHAIN_HEADER, [LIST_CHAIN_HEADER]: hit.chain, 'cache-control': 'public, max-age=31536000, immutable', 'x-robots-tag': 'noindex' }
       return lm[2] ? send(res, 200, bytes.addresses, 'text/plain; charset=utf-8', imm) : send(res, 200, bytes.body, 'application/json; charset=utf-8', imm)
     }
     if (sub === '/verify' || sub === '/api/verify') {

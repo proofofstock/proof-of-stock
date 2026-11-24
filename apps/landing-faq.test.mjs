@@ -50,6 +50,8 @@ console.log('the footer: the project\'s own profiles')
   const foot = (html.match(/<footer class="foot">[\s\S]*?<\/footer>/) || [''])[0]
   const links = [...foot.matchAll(/<a class="foot-ic" href="([^"]+)"([^>]*)>/g)].map((m) => [m[1], m[2]])
   check('X, Telegram, then the bot, in that order; the email is not in the footer (owner, 11.11: spam)', JSON.stringify(links.map(([h]) => h)) === JSON.stringify(['https://x.com/proofofstock', 'https://t.me/proofofstockchannel', 'https://t.me/ProofofStockBot']) && !/mailto:/.test(foot))
+  // Where somebody looking for how to report a hole looks first: the footer, beside Legal (24.11).
+  check('the footer links the security contact, security.txt, beside Legal', /<a class="foot-legal" href="docs\/legal\.md">Legal<\/a>\s*<a class="foot-legal" href="\.well-known\/security\.txt"[^>]*>Security<\/a>/.test(foot))
   check('each has a label a screen reader says, and its icon is hidden from it', links.every(([, at]) => /aria-label="[^"]+"/.test(at)) && (foot.match(/class="i i-(x|tg|bot)" aria-hidden="true"/g) || []).length === 3)
   check('the outside ones open apart and pass no opener or referrer', links.filter(([h]) => h.startsWith('https:')).every(([, at]) => /target="_blank"/.test(at) && /rel="me noopener noreferrer"/.test(at)))
   const css = fs.readFileSync(new URL('./stocks-web/style.css', import.meta.url), 'utf8')

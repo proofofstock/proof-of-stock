@@ -13,7 +13,9 @@
 //
 // ⚠ NO CREATOR TEXT, EVER. A token outside the issuer's list carries a symbol and a name its creator chose. The bot never
 //   repeats them, and never parses the API's free text into a message: every word it sends is ours or the issuer's list
-//   (the symbol it imitates, the issuer's own address). Messages go out with no parse_mode, so nothing in them is markup.
+//   (the symbol it imitates, the issuer's own address). Messages go out as Telegram HTML (24.11, owner: "serious,
+//   convenient, an address copied in one tap"): the markup is ours, a fixed set of tags (b, i, code, a), and every value
+//   put into it passes esc() first, after the checks above (an address is 0x and 40 hex, a symbol letters and digits).
 // ⚠ THE TOKEN IS A SECRET. It is read from a file ($CREDENTIALS_DIRECTORY/tg-bot, systemd LoadCredential, or
 //   STP_TG_BOT_FILE), KEY=VALUE with TG_BOT_TOKEN; never an argument, never logged, never in git.
 //
@@ -36,13 +38,31 @@ const sym = (s) => (SYMBOL_RE.test(String(s ?? '')) ? String(s) : null)
 const pct = (x) => (Number.isFinite(x) ? `${x >= 0 ? '+' : ''}${(x * 100).toFixed(2)}%` : null)
 const ago = (s) => (!Number.isFinite(s) ? null : s < 90 ? 'just now' : s < 5400 ? `${Math.round(s / 60)} min ago` : `${Math.round(s / 3600)} h ago`)
 const passportUrl = (chain, address) => `${SITE}/?chain=${chain}&address=${address.toLowerCase()}`
+const CHAIN_NAME = { base: 'Base', robinhood: 'Robinhood Chain' }
+const EXPLORER = { base: (a) => `https://basescan.org/token/${a}` }
+// Telegram HTML: the four characters that could open markup or end an attribute, escaped in every value we insert.
+export const esc = (v) => String(v).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]))
+// An address as a code span: Telegram copies it in one tap. Only a checked address gets here.
+const code = (a) => (ADDRESS_RE.test(String(a)) ? `<code>${a.toLowerCase()}</code>` : '?')
+const link = (href, label) => `<a href="${esc(href)}">${esc(label)}</a>`
+const linksFor = (chain, address) => [link(passportUrl(chain, address), 'Passport'), ...(EXPLORER[chain] ? [link(EXPLORER[chain](address.toLowerCase()), 'BaseScan')] : [])].join('  ·  ')
+const MARK = { listed: '✅', impostor: '⛔', delisted: '⚠️', not_listed: '⚠️', unavailable: '⏳' }
+const HEAD = { listed: 'ISSUER-LISTED', impostor: 'LOOK-ALIKE', delisted: 'DELISTED', not_listed: 'NOT ON THE ISSUER\'S LIST', unavailable: 'UNAVAILABLE' }
+const NOT_ADVICE = '<i>Registry data, not advice. Listed says whose contract it is, not that its price is fair.</i>'
+// An issuer's own company name, from its list: letters, digits and plain punctuation only, else left out.
+const companyOf = (n) => { const t = String(n ?? '').replace(/\s+Robinhood Token$/i, '').replace(/\s+/g, ' ').trim(); return /^[A-Za-z0-9 .,&'()-]{1,60}$/.test(t) ? t : null }
 
 export const HELP = [
-  'Proof of Stock checks a tokenized stock against the issuer\'s own list (Coinbase on Base, Robinhood on Robinhood Chain).',
+  '<b>Proof of Stock</b>',
+  'Checks a tokenized stock against the issuer\'s own list: Coinbase on Base, Robinhood on Robinhood Chain.',
   '',
-  'Send a contract address (0x…) to check it, or a ticker or company name (NVDA, Tesla) to get the issuer\'s own contract.',
-  'Registry data, not advice: listed says whose contract it is, not that its price is fair.',
-  `${SITE}`,
+  '<b>Send</b>',
+  '•  a contract address, <code>0x…</code>, to check it',
+  '•  a ticker or company name, e.g. <code>NVDA</code> or <code>Tesla</code>, for the issuer\'s own contract',
+  '',
+  'Tap an address in a reply to copy it.',
+  NOT_ADVICE,
+  link(SITE, 'proofofstock.xyz'),
 ].join('\n')
 
 /** Read the bot token from its credential file. Returns null when there is none. */
@@ -55,19 +75,21 @@ export function loadToken (env = process.env) {
   return t
 }
 
-/** One chain's /verify answer as fixed words (the issuer's symbol and address only). */
+/** One chain's /verify answer as fixed words (the issuer's symbol and address only), as HTML lines under the chain. */
 function verdictLine (chain, b) {
   const who = CHAIN_ISSUER[chain]
-  if (!b || typeof b.listed !== 'boolean') return { state: 'unavailable', text: `${chain}: UNAVAILABLE, the check could not be made just now. Do not treat it as listed.` }
-  if (b.delisted_at) return { state: 'delisted', text: `${chain}: DELISTED. ${who} removed this contract from its list. It is no longer the issuer's token.` }
-  if (b.listed) return { state: 'listed', text: `${chain}: ISSUER-LISTED. ${who} lists this exact contract${sym(b.symbol) ? ` as ${sym(b.symbol)}` : ''}.` }
+  const head = `<b>${CHAIN_NAME[chain]}  ·  ${who}</b>`
+  const out = (state, ...lines) => ({ state, text: [head, ...lines].join('\n') })
+  if (!b || typeof b.listed !== 'boolean') return out('unavailable', 'The check could not be made just now. Do not treat it as listed.')
+  if (b.delisted_at) return out('delisted', `${who} removed this contract from its list. It is no longer the issuer's token.`)
+  if (b.listed) return out('listed', `${who} lists this exact contract${sym(b.symbol) ? ` as <b>${esc(sym(b.symbol))}</b>` : ''}.`)
   const imp = b.impostor
   if (imp && Array.isArray(imp.kinds)) {
     const target = sym(imp.imitates_symbol)
-    return { state: 'impostor', text: `${chain}: LOOK-ALIKE. Not on ${who}'s list, and it imitates ${target || 'the issuer\'s naming'}.${ADDRESS_RE.test(imp.listed_address || '') ? `\nThe issuer's own contract: ${imp.listed_address.toLowerCase()}` : ''}` }
+    return out('impostor', `Not on ${who}'s list. It imitates ${target ? `<b>${esc(target)}</b>` : 'the issuer\'s naming'}.`,
+      ...(ADDRESS_RE.test(imp.listed_address || '') ? ['The issuer\'s own contract:', code(imp.listed_address)] : []))
   }
-  const alike = b.issuer_like_address ? ` Its address starts like ${who}'s, which proves nothing.` : ''
-  return { state: 'not_listed', text: `${chain}: NOT ON ${who.toUpperCase()}'S LIST. It is not ${who}'s stock token here.${alike}` }
+  return out('not_listed', `Not on ${who}'s list: not ${who}'s stock token here.${b.issuer_like_address ? ` Its address starts like ${who}'s, which proves nothing.` : ''}`)
 }
 
 /**
@@ -98,11 +120,11 @@ export async function replyFor (text, { api }) {
         const p = await api(`/api/passport?chain=${listedOn}&address=${address}`)
         const l = p && p.latest
         const gap = l ? pct(l.premium) : null
-        if (gap) lines.push(`On-chain vs issuer price: ${gap} (read ${ago(l.age_s) || 'recently'}).`)
+        if (gap) lines[states.indexOf('listed')] += `\nOn-chain vs issuer price: <b>${esc(gap)}</b>, read ${esc(ago(l.age_s) || 'recently')}`
       } catch (_) { /* the verdict stands without the price */ }
     }
-    const head = states.includes('listed') ? 'ISSUER-LISTED' : states.includes('impostor') ? 'LOOK-ALIKE' : states.includes('delisted') ? 'DELISTED' : states.every((s) => s === 'unavailable') ? 'UNAVAILABLE' : 'NOT ON THE ISSUER\'S LIST'
-    return [`Proof of Stock: ${head}`, address, '', ...lines, '', `Passport: ${passportUrl(listedOn || 'base', address)}`, 'Registry data, not advice.'].join('\n')
+    const state = ['listed', 'impostor', 'delisted'].find((x) => states.includes(x)) || (states.every((x) => x === 'unavailable') ? 'unavailable' : 'not_listed')
+    return [`${MARK[state]}  <b>${HEAD[state]}</b>`, code(address), '', lines.join('\n\n'), '', linksFor(listedOn || 'base', address), NOT_ADVICE].join('\n')
   }
   if (!TICKER_RE.test(q)) return 'Send a contract address (0x followed by 40 hex characters) or a ticker.'
   let r
@@ -112,9 +134,12 @@ export async function replyFor (text, { api }) {
   // Base first, as the landing; Robinhood's only when Base has none.
   const m = (all.some((x) => x.chain === 'base') ? all.filter((x) => x.chain === 'base') : all).slice(0, 6)
   if (!m.length) return 'No issuer-listed token matches that. A token by that name elsewhere is not the issuer\'s.'
-  return [`Issuer-listed contracts${r.match === 'exact' ? '' : ' (closest matches)'}:`,
-    ...m.map((x) => `${sym(x.symbol) || '?'} on ${x.chain} (${ISSUER[x.issuer] || CHAIN_ISSUER[x.chain]}): ${x.address.toLowerCase()}`),
-    '', 'Only these exact addresses are the issuer\'s. Send one to check it.'].join('\n')
+  const blocks = m.map((x) => {
+    const company = companyOf(x.name)
+    return [`<b>${esc(sym(x.symbol) || '?')}</b>${company ? `  ·  ${esc(company)}` : ''}`, `${CHAIN_NAME[x.chain]}  ·  ${ISSUER[x.issuer] || CHAIN_ISSUER[x.chain]}`, code(x.address), linksFor(x.chain, x.address)].join('\n')
+  })
+  return [`<b>${r.match === 'exact' ? 'Issuer-listed contracts' : 'Closest matches on the issuer lists'}</b>`, '', blocks.join('\n\n'), '',
+    'Only these exact addresses are the issuer\'s. Tap one to copy it, or send it here for a full check.'].join('\n')
 }
 
 /**
@@ -130,9 +155,9 @@ export function alertsFrom (events, seen, { prime = false } = {}) {
     seen.add(key)
     if (prime || e.source === 'backfilled') continue
     const target = sym(e.imitates_symbol)
-    out.push([`New look-alike on Base${target ? `: imitates ${target}` : ''}`, e.address.toLowerCase(), 'Not on Coinbase\'s list.',
-      ...(ADDRESS_RE.test(e.listed_address || '') ? [`Coinbase's own${target ? ` ${target}` : ''}: ${e.listed_address.toLowerCase()}`] : []),
-      `Passport: ${passportUrl('base', e.address)}`].join('\n'))
+    out.push([`⛔  <b>New look-alike on Base</b>${target ? `, imitates <b>${esc(target)}</b>` : ''}`, code(e.address), 'Not on Coinbase\'s list.',
+      ...(ADDRESS_RE.test(e.listed_address || '') ? [`Coinbase's own${target ? ` ${esc(target)}` : ''}:`, code(e.listed_address)] : []),
+      linksFor('base', e.address)].join('\n'))
   }
   return out
 }
@@ -159,7 +184,9 @@ export function createBot ({ token, apiBase = 'http://127.0.0.1:3005/stocks', al
   }
   const api = async (p) => {
     const r = await fetchImpl(apiBase + p, { headers: { accept: 'application/json', 'user-agent': 'proofofstock-tg-bot/1' }, signal: AbortSignal.timeout(15_000) })
-    if (r.status === 429) throw new Error('busy')
+    // Anything but 200 is no answer: a 402 (the free minute spent, passes on) or a 503 read as data once made the
+    // ticker search say a real ticker did not exist, and an alert pass prime itself on nothing (outside review, 24.11).
+    if (r.status !== 200) throw new Error(r.status === 429 ? 'busy' : `HTTP ${r.status}`)
     return r.json()
   }
   const allow = pacer(CHAT_PER_MIN, now)
@@ -176,7 +203,7 @@ export function createBot ({ token, apiBase = 'http://127.0.0.1:3005/stocks', al
       const m = u.message
       if (!m || !m.chat || typeof m.text !== 'string') continue
       const text = allow(m.chat.id) ? await replyFor(m.text, { api }) : 'Too many checks from this chat; try again in a minute.'
-      try { await tg('sendMessage', { chat_id: m.chat.id, text, disable_web_page_preview: true }) } catch (e) { log(`[tg-bot] send failed: ${e.message}`) }
+      try { await tg('sendMessage', { chat_id: m.chat.id, text, parse_mode: 'HTML', disable_web_page_preview: true }) } catch (e) { log(`[tg-bot] send failed: ${e.message}`) }
     }
     return (updates || []).length
   }
@@ -187,7 +214,7 @@ export function createBot ({ token, apiBase = 'http://127.0.0.1:3005/stocks', al
     try { c = await api('/api/history/cases?chain=base&event=opened&limit=50') } catch (e) { log(`[tg-bot] cases unavailable: ${e.message}`); return 0 }
     const posts = alertsFrom(c && c.events, seen, { prime: !primed })
     primed = true
-    for (const text of posts) { try { await tg('sendMessage', { chat_id: alertChat, text, disable_web_page_preview: true }) } catch (e) { log(`[tg-bot] alert failed: ${e.message}`) } }
+    for (const text of posts) { try { await tg('sendMessage', { chat_id: alertChat, text, parse_mode: 'HTML', disable_web_page_preview: true }) } catch (e) { log(`[tg-bot] alert failed: ${e.message}`) } }
     save()
     return posts.length
   }

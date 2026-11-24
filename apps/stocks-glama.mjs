@@ -28,8 +28,12 @@ export function checkBadgeSvg (text) {
   if (/<[!?]/.test(s)) return why('a DOCTYPE, entity, comment or processing instruction')
   for (const m of s.matchAll(/<\/?\s*([a-zA-Z][\w:.-]*)/g)) if (!ELEMENTS.has(m[1].toLowerCase())) return why(`element ${m[1].slice(0, 30)}`)
   if (/\son[a-z]+\s*=/i.test(s)) return why('an event handler')
-  // Every link stays inside the file. An attribute value may not reach out either (url(...) to anything but #id).
-  for (const m of s.matchAll(/(?:^|\s)(?:xlink:)?href\s*=\s*("([^"]*)"|'([^']*)')/gi)) if (!/^#[\w.-]+$/.test(m[2] ?? m[3])) return why('a link out of the file')
+  // Every link stays inside the file, under any namespace prefix (x:href is xlink:href if x names that namespace). An
+  // attribute value may not reach out either (url(...) to anything but #id). A backslash is refused outright: CSS
+  // escapes (u\72l() and character references spell url( and href without the letters the checks look for, and a
+  // badge has no use for either (outside review, 24.11).
+  if (/[\\]|&#|image-set/i.test(s)) return why('an escape, a character reference or image-set')
+  for (const m of s.matchAll(/(?:^|\s)(?:[\w.-]+:)?href\s*=\s*("([^"]*)"|'([^']*)'|[^\s>]*)/gi)) if (!/^#[\w.-]+$/.test(m[2] ?? m[3] ?? m[1])) return why('a link out of the file')
   for (const m of s.matchAll(/url\(\s*['"]?([^)'"]*)/gi)) if (!/^#[\w.-]+$/.test(m[1])) return why('a url() out of the file')
   if (/javascript:|data:text|@import/i.test(s)) return why('a script or import url')
   return { ok: true, svg: s }
