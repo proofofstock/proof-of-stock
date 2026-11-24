@@ -161,8 +161,8 @@ console.log('the public exam on the landing')
   check('...and put everything in as text: no innerHTML anywhere in them', fns.every((f) => f && !/innerHTML|outerHTML|insertAdjacentHTML|document\.write/.test(f)))
   check('...the chip stays hidden without a report from the last 36 hours', /EXAM_MAX_AGE_S = 36 \* 3600/.test(js) && /if \(!fresh\(e\)\) \{ el\.hidden = true; return \}/.test(fns[0]))
   check('...the command is in help, prints the metrics, the set hash and how to rerun it', /\['exam', '[^']+'\]/.test(js) && /if \(cmd === 'exam'\) return examView\(input\)/.test(js) && /set SHA-256/.test(fns[1]) && /rerun it yourself: /.test(fns[1]) && /false "listed"/.test(fns[1]))
-  const exq = shown.find(([q]) => q === 'How do we know the answers are right?')
-  check('...and the FAQ says how the answers are checked: the daily public exam and its branch', exq && /public exam/.test(exq[1]) && /exam branch/.test(exq[1]) && /rerun/.test(exq[1]))
+  const exq = shown.find(([q]) => q === 'Has anyone audited it? Why trust it?')
+  check('...and the FAQ says how the answers are checked: the daily public exam and its branch, under the audit question, which says no audit has been published', exq && /public exam/.test(exq[1]) && /exam branch/.test(exq[1]) && /rerun/.test(exq[1]) && /^No independent audit has been published, and we do not claim one./.test(exq[1]))
 }
 
 console.log('the agent wire in the hero')
@@ -355,7 +355,7 @@ console.log('plain words, and the exam beside the README title')
 {
   const faq = (html.match(/<section class="faq"[\s\S]*?<\/section>/) || [''])[0]
   const ld = (html.match(/<script type="application\/ld\+json" id="faq-ld">([\s\S]*?)<\/script>/) || [, ''])[1]
-  const said = 'each client gets 60 calls in any 60 seconds across both: a passport counts as 3 calls, so about 20 passports a minute, and a batch of up to 10 addresses as one.'
+  const said = 'each client gets 60 calls in any 60 seconds across the API and MCP: a passport counts as 3 calls, so about 20 passports a minute, and a batch of up to 10 addresses as one.'
   check('the FAQ says calls, not units, and the page and its FAQ markup say the same', faq.includes(said) && ld.includes(said) && !/\bunits?\b/.test(faq) && !/\bunits?\b/.test(ld))
   const readme = fs.readFileSync(new URL('../README.md', import.meta.url), 'utf8')
   const head = readme.split('\n## ')[0]

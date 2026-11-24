@@ -80,6 +80,10 @@ try {
     const priv = fs.readFileSync(path.join(repo, '.github/workflows/ci.yml'), 'utf8')
     check('every action in both CIs is pinned to a commit', [...usesOf(ci), ...usesOf(priv)].length >= 3 && [...usesOf(ci), ...usesOf(priv)].every((u) => /@[0-9a-f]{40}$/.test(u)), JSON.stringify([...usesOf(ci), ...usesOf(priv)]))
     check('the public CI runs on hosted runners', /runs-on: ubuntu-latest/.test(ci) && !/self-hosted/i.test(ci))
+    // The private .gitignore is a map of what is worth taking (owner, 24.11): the public one is plain patterns only.
+    const ign = fs.readFileSync(path.join(r.dest, '.gitignore'), 'utf8')
+    const privIgn = fs.readFileSync(path.join(repo, '.gitignore'), 'utf8')
+    check('the public .gitignore is plain patterns: no comment, no host path, no money path, no claim', !/^#/m.test(ign) && !/\/etc\/|x402|glama|claim/i.test(ign) && /^node_modules\/$/m.test(ign) && /^\.env$/m.test(ign) && /^\*\.key$/m.test(ign) && /^data\/$/m.test(ign) && ign !== privIgn)
     for (const f of ['docs/stocks-truth-layer-tz.md', 'docs/stocks-passport-agent.md']) {
       const p = path.join(r.dest, f)
       check(f + ' is the stub', !fs.existsSync(p) || /^# Internal\n\nThis page is internal design notes/.test(fs.readFileSync(p, 'utf8')))

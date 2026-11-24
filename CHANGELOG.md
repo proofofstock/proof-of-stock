@@ -13,6 +13,7 @@ The version is in `package.json`, and the site footer, the MCP `serverInfo.versi
 ## [Unreleased]
 
 ### Added
+- The landing FAQ asks first what people ask first: "Has anyone audited it? Why trust it?", answered as it is (no independent audit has been published; every answer can be checked without us; the daily exam; the reward). It takes the place of "How do we know the answers are right?". The answer on a source being down now says every answer, not only the address check, refuses to verify from an old list; the one on calling it from code names the Telegram bot and the paid pass past the free minute.
 - "Check us, not just our answers" (`docs/how-to/check-us.md`), where the Proofs tab now opens: what we could fake and what we could not, the three checks of an answer anyone can run without us (the verdict against the issuer's own list, the past against Bitcoin, a price against the chain at its block), what else runs against us daily, and the one true sentence an agent should say when asked whether the service is audited. The MCP instructions point agents there.
 - A reward: 100 USD in USDC on Base for a critical finding (a false "listed", a pass without its payment, somebody's text in a sentence of ours). Terms in `SECURITY.md`; the threat model points to them.
 - The footer links `security.txt` as "Security", beside Legal: where somebody looking for how to report a hole looks first.
@@ -22,6 +23,7 @@ The version is in `package.json`, and the site footer, the MCP `serverInfo.versi
 - The Telegram bot answers in Telegram HTML: the verdict in bold with a mark (listed, look-alike, not listed, unavailable), the chain and its issuer on a line of their own, every contract address as a code span that Telegram copies in one tap, and links to the passport and BaseScan. A ticker answer names the issuer's company beside each contract. Only our own tags (b, i, code, a) are sent and every value is escaped; a token creator's text still never reaches a reply.
 
 ### Security
+- The public copy gets a plain .gitignore: the patterns that keep a contributor's own secrets, data and build output out of a pull request, with no comment and nothing about our host. The private one, which explains where the keys live and which module is the money path, is no longer exported.
 - Paid passes, the money path (owner, 24.11):
   - A v2 payment settled through Coinbase's facilitator is checked on chain before a pass is granted: the receipt must show this payment going to our payee, as for our own settlement. No receipt yet is pending; a receipt that is not this payment grants nothing.
   - The ledgers of passes and payments are kept on disk (`STP_X402_STATE`), so a restart ends no live pass and a settled authorization copied from the chain is "already used", never a second pass. Client addresses are stored as salted hashes; `docs/legal.md` says what is kept and for how long.

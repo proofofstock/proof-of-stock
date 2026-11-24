@@ -82,6 +82,42 @@ jobs:
       - run: npm run locks
 YML
 
+# .gitignore: the private one explains, file by file, what is kept off the repository and why: where the keys live on
+# the host, which module is the money path, where a claim of ownership is stored. That is a map of what is worth
+# taking, and a public reader needs none of it (owner, 24.11). The public copy gets the plain patterns that keep a
+# contributor's own secrets, data and build output out of a pull request, and nothing about our host.
+cat > "$DEST/.gitignore" <<'IGN'
+node_modules/
+coverage/
+dist/
+build/
+.env
+.env.*
+*.env
+!*.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+id_rsa*
+id_ed25519*
+.npmrc
+data/
+*.jsonl
+!tests/**/*.jsonl
+*.sqlite
+*.sqlite3
+*.db
+*.ots
+*.log
+*.tmp
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+.mutation-run-in-progress
+IGN
+
 # ---- refusal checks: every one runs, then a single verdict. Output is file names only. ----
 fail=0
 refuse() { echo "refusing: $*" >&2; fail=1; }
@@ -99,6 +135,9 @@ FILES=$(cd "$DEST" && find . -mindepth 1 -not -path './.git' -not -path './.git/
 
 # 1. No workflow may run on a self-hosted runner.
 if grep -rqi 'self-hosted' "$DEST/.github"; then refuse "a workflow still names a self-hosted runner"; fi
+
+# 1b. The public .gitignore is the plain one: no comment, nothing about the host or the money path.
+if grep -qE '^#|/etc/|x402|glama|claim' "$DEST/.gitignore"; then refuse ".gitignore is not the plain public one"; fi
 
 # 2. Every stubbed doc that is exported holds the stub and nothing else.
 for f in $STUBBED; do

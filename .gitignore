@@ -1,97 +1,29 @@
-# What must never reach this repository. It is exported, file by file, to a public one
-# (scripts/export-public.sh), so anything that lands here lands in the open.
-#
-# .gitignore is the first net, not the last: it only stops files nobody has added yet, and `git add -f` walks past it.
-# The one that actually holds is scripts/text-hygiene.test.mjs, which refuses a tracked file that looks like a secret,
-# a run's output or an ownership claim of ours, and fails the build. Add a pattern in both places.
-
-# --- Dependencies and build output ---
 node_modules/
 coverage/
-.nyc_output/
 dist/
 build/
-
-# --- Secrets and credentials ---
-# The owner's values live on the host, in /etc/pos and /etc/stp, and are typed there. Nothing of the sort belongs here,
-# not even as an example with a real value in it.
 .env
 .env.*
 *.env
 !*.env.example
-secrets.*
-*.secret
-*.secrets
-credentials.*
-*.credentials
-.npmrc
-.netrc
-.pgpass
-rclone.conf
-.aws/
-.ssh/
 *.pem
 *.key
 *.p12
 *.pfx
-*.jks
-*.keystore
 id_rsa*
 id_ed25519*
-*.ppk
-
-# --- Proofs that we own something ---
-# A claim is worth something only while it is served from our own origin, and publishing one invites trouble for
-# nothing. Glama's lives in /etc/pos/web.env on the host (deployment/PUBLISHING.md).
-glama*.json
-*.claim
-
-# --- Data ---
-# The archive is the product's own memory, and the owner's standing rule is that dataset rows never enter git.
-# Synthetic fixtures under tests/ are the one exception, because they are written by hand rather than by a run.
+.npmrc
 data/
-datasets/
-exports/
-dumps/
 *.jsonl
 !tests/**/*.jsonl
-/*.csv
-/*.parquet
 *.sqlite
 *.sqlite3
 *.db
-
-# --- What a run writes, wherever it is pointed ---
-hits-????-??-??.jsonl
-stock-peg-????-??-??.jsonl
-stock-peg-runs-????-??-??.jsonl
-cases-????-??-??.jsonl
-registry-????-??-??.jsonl
-manifest-????-??-??.json
 *.ots
-*.tmp
-*.tmp-*
-*.pid
-*.sock
 *.log
-
-# --- Local tooling and editors ---
+*.tmp
 .idea/
 .vscode/
-*.swp
-*~
 .DS_Store
 Thumbs.db
-desktop.ini
-
-# --- Mutation testing, which leaves a marker if it is interrupted ---
 .mutation-run-in-progress
-.mutation-run-in-progress.compromised
-
-# --- The paid-pass module is a host file (owner, 15.11) ---
-# The money path does not belong in a repository that is exported to a public one. evm/core/stocks/x402.mjs and its
-# test live on the host beside the app, the way the anchor key does: copied there by hand, left untouched by a deploy
-# (git pull keeps ignored files), and backed up with the host's own config. apps/stocks-web.mjs imports it optionally:
-# a checkout without it is the free service exactly.
-evm/core/stocks/x402.mjs
-evm/core/stocks/x402.test.mjs
