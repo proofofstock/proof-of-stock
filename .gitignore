@@ -76,9 +76,6 @@ manifest-????-??-??.json
 *.log
 
 # --- Local tooling and editors ---
-.claude/
-.zcode/
-.codex/
 .idea/
 .vscode/
 *.swp

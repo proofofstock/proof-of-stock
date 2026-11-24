@@ -38,6 +38,7 @@ short. The dated record is [CHANGELOG.md](CHANGELOG.md); in one line per release
 | 2026-11-14 | 0.6.0 | A written threat model; the guard published through CI, not from a laptop |
 | 2026-11-15 | 0.7.0 | Paid passes over the free rate, paid in USDC on Base over x402 |
 | 2026-11-20 | 0.8.0 | Payment alarms reach Telegram; look-alikes found by symbol search across DEX aggregators |
+| 2026-11-23 | live, unreleased | `/api`, every call with its price; tabs on every page; a badge to embed from each passport; paid passes over x402 v2 too; a Bankr skill in review |
 
 </details>
 
@@ -60,6 +61,7 @@ short. The dated record is [CHANGELOG.md](CHANGELOG.md); in one line per release
       <a href="https://proofofstock.xyz/history">/history</a> ·
       <a href="https://proofofstock.xyz/status">/status</a> ·
       <a href="https://proofofstock.xyz/anchors">/anchors</a> ·
+      <a href="https://proofofstock.xyz/api">/api</a> ·
       <a href="https://proofofstock.xyz/docs/">Docs</a><br><br>
       <b>MCP</b> <code>https://proofofstock.xyz/mcp</code><br>
       <b>MCP registry</b> <a href="https://registry.modelcontextprotocol.io/v0/servers?search=xyz.proofofstock"><code>xyz.proofofstock/proof-of-stock</code></a><br><br>
@@ -84,14 +86,17 @@ Live at **[proofofstock.xyz](https://proofofstock.xyz)**. Documentation: [proofo
 
 ## Use it
 
-No key and no sign-up for any of these.
+No key and no sign-up for any of these, within the free limit.
 
 | | |
 |---|---|
 | **Site** | [proofofstock.xyz](https://proofofstock.xyz): paste an address or type a ticker. |
-| **MCP server** | `https://proofofstock.xyz/mcp` (Streamable HTTP, stateless). Seven tools: `find_stock_token`, `list_stock_tokens`, `stock_passport`, `verify_stock_tokens`, `recent_impostors`, `compare_venues`, `verify_anchor`. |
-| **JSON API** | `GET /verify`, `GET /badge.svg`, `GET /api/passport` and more. See the [HTTP API reference](docs/reference/http-api.md). |
+| **Telegram bot** | [@ProofofStockBot](https://t.me/ProofofStockBot): send it a contract address for the verdict, or a ticker for the issuer's own contract. |
+| **MCP server** | `https://proofofstock.xyz/mcp` (Streamable HTTP, stateless). Ten tools: `find_stock_token`, `list_stock_tokens`, `stock_passport`, `verify_stock_tokens`, `recent_impostors`, `compare_venues`, `verify_anchor`, `largest_gaps`, `data_freshness`, `address_on_date`. |
+| **JSON API** | `GET /verify`, `GET /badge.svg`, `GET /api/passport` and more. Every route and tool with what it costs: [proofofstock.xyz/api](https://proofofstock.xyz/api). Reference: [HTTP API](docs/reference/http-api.md). |
 | **Guard** | `@proofofstock/guard`, a pre-trade check for Node agents, with a Coinbase AgentKit action. `npm install @proofofstock/guard`, no dependencies. It lives in [`packages/proofofstock-guard`](packages/proofofstock-guard/). |
+| **Bankr skill** | `proof-of-stock`, the same check for Bankr agents, in review for Bankr's skill catalog ([the submission](https://github.com/BankrBot/skills/pull/860)). It lives in [`packages/bankr-skill`](packages/bankr-skill/). |
+| **Past the free limit** | An agent can pay for itself: a short pass in USDC on Base over x402 (v1 or v2), no account. See [Pay per call](docs/how-to/pay-per-call.md). |
 
 Add the MCP server to Claude Code:
 
@@ -184,6 +189,7 @@ DexScreener and GeckoTerminal.
 | `evm/core/stocks/` | the logic, with no I/O: registries, impostors, premium, pool rules, NYSE calendar, passport, verify |
 | `apps/` | the site, the JSON API and the MCP server |
 | `packages/proofofstock-guard/` | the guard |
+| `packages/bankr-skill/` | the Bankr skill, as submitted to Bankr's catalog |
 | `scripts/stocks/` | the recorder (every 15 min), the impostor list (every 6 h), CLIs |
 | `schemas/v2/` | schemas of the recorded rows, checked on every write |
 | `tests/locks/` | the mutation locks |

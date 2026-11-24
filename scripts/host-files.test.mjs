@@ -70,7 +70,7 @@ console.log('what it refuses')
   write(path.join(base, 'host', 'a file.mjs'), 'x')
   const copy = run('copy', base, rel)
   // Refusing means saying so AND stopping with a status a deploy can see AND leaving nothing behind: a refusal that
-  // still copies, or that exits 0, is worse than no check at all (Codex, 16.11).
+  // still copies, or that exits 0, is worse than no check at all (outside review, 16.11).
   check('a host file whose name holds a space is refused, not guessed at', /REFUSED/.test(copy.out) && copy.status !== 0 && fs.readdirSync(rel).length === 0, `status ${copy.status}, left ${fs.readdirSync(rel).join()}`)
   const gone = run('copy', base, path.join(base, 'releases', 'no-such'))
   check('a release directory that is not there is refused', gone.status === 2 && /no release directory/.test(gone.out), gone.out.trim())
@@ -102,7 +102,7 @@ console.log('the deploy actually calls it, and before the gate')
   check('...before the gate runs, so the tests see what will run', carry < npmci && carry < gate, `copy ${carry}, ci ${npmci}, gate ${gate}`)
   check('...and the status of a host reports them, with a word when it cannot', /host-files\.sh" check/.test(deploy) && /COULD NOT BE READ/.test(deploy))
   // A release already on disk is reused as it is, so the copy cannot live only in the branch that builds one: a host
-  // file installed after that release was built would never reach it (Codex, 16.11).
+  // file installed after that release was built would never reach it (outside review, 16.11).
   const copies = (deploy.match(/host-files\.sh" copy/g) || []).length
   const buildEnd = deploy.indexOf('mv "$REL.tmp" "$REL"')
   check('...and a release reused from disk is carried into as well, not only a fresh build', copies === 2 && deploy.lastIndexOf('host-files.sh" copy') > buildEnd, `${copies} copy calls`)

@@ -689,3 +689,5 @@ html:has(.tape) { scroll-padding-top: 72px; } /* the landing only: docs headings
 .embed-copy { font: 600 12px var(--mono); color: var(--accent-hi); background: none; border: 1px solid var(--line); border-radius: 8px; padding: 4px 10px; cursor: pointer; }
 .embed-copy:hover, .embed-copy:focus-visible { border-color: var(--accent-hi); }
 @media (max-width: 560px) { .embed-code { grid-template-columns: 1fr; } }
+/* The Telegram bot (23.11): a robot head, so it reads as a bot and not as the channel beside it. */
+.i-bot { --i: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='2.6' y='5.2' width='10.8' height='8' rx='2.2'/%3E%3Cpath d='M8 5.2V3'/%3E%3Ccircle cx='8' cy='2.3' r='0.7'/%3E%3Cpath d='M6 8.6v0.9M10 8.6v0.9M6.3 11.3h3.4M1.2 8.4v2M14.8 8.4v2'/%3E%3C/svg%3E"); }

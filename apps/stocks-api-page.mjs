@@ -80,6 +80,9 @@ export const TOOL_INFO = Object.freeze({
   recent_impostors: { cost: 1, ask: 'Look-alikes (impostors) first seen in the last 7 days, each with the token it imitates.', args: { chain: 'base' } },
   compare_venues: { cost: 1, ask: 'The same share on both chains we cover: each chain\'s premium over its own issuer, and the gap between the two.', args: { symbol: 'NVDA' } },
   verify_anchor: { cost: 1, ask: 'Proof that a day\'s record has not changed: its Bitcoin proof and the mirror transactions.', args: {} },
+  largest_gaps: { cost: 1, ask: 'The landing board: the listed tokens whose on-chain price sits furthest from the issuer\'s, with when each was read.', args: { chain: 'base' } },
+  data_freshness: { cost: 1, ask: 'When each issuer list and pool price was last read, and whether it is late: the facts of /status.', args: {} },
+  address_on_date: { cost: 1, ask: 'What an address was on a past UTC day, from the archive recorded then; UNKNOWN when nothing was.', args: { chain: 'base', address: EXAMPLE_ADDRESS, date: '2026-11-20' } },
 })
 
 /** One call's price on the free minute, as words. */

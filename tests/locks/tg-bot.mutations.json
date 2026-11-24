@@ -1,0 +1,46 @@
+{
+  "_finding": "Owner, 23.11: a Telegram bot without a language model. Its guarantees are the fixed words: an unreadable check is never 'listed', the creator's symbol never reaches a reply, a restart never floods the alert channel, a backfilled case is not news, and the chat is paced.",
+  "target": "scripts/stocks/tg-bot.mjs",
+  "runner": [
+    "node",
+    "scripts/stocks/tg-bot.test.mjs"
+  ],
+  "mutations": [
+    {
+      "name": "an unanswered check reads as listed",
+      "find": "  if (!b || typeof b.listed !== 'boolean') return { state: 'unavailable',",
+      "replace": "  if (!b || typeof b.listed !== 'boolean') return { state: 'listed',",
+      "expect": "FAIL an API that does not answer is UNAVAILABLE, never listed"
+    },
+    {
+      "name": "the look-alike line takes the creator's own symbol",
+      "find": "    const target = sym(imp.imitates_symbol)\n    return",
+      "replace": "    const target = b.symbol || sym(imp.imitates_symbol)\n    return",
+      "expect": "FAIL a creator's own text never reaches the reply, whatever field it hides in"
+    },
+    {
+      "name": "the first pass posts what is already open",
+      "find": "    if (prime || e.source === 'backfilled') continue",
+      "replace": "    if (e.source === 'backfilled') continue",
+      "expect": "FAIL the first pass marks what is there and posts nothing, so a restart never floods the channel"
+    },
+    {
+      "name": "a backfilled case is posted as news",
+      "find": "    if (prime || e.source === 'backfilled') continue",
+      "replace": "    if (prime) continue",
+      "expect": "FAIL then each new case once: a backfilled one is not news, a seen one is not repeated"
+    },
+    {
+      "name": "the pacer lets a seventh check through",
+      "find": "    if (xs.length >= perMin) { seen.set(chat, xs); return false }",
+      "replace": "    if (xs.length > perMin) { seen.set(chat, xs); return false }",
+      "expect": "FAIL six checks a minute per chat; the seventh waits"
+    },
+    {
+      "name": "replies go out with a link preview",
+      "find": "      try { await tg('sendMessage', { chat_id: m.chat.id, text, disable_web_page_preview: true }) }",
+      "replace": "      try { await tg('sendMessage', { chat_id: m.chat.id, text }) }",
+      "expect": "FAIL each message is answered in its own chat, as plain text with no link preview"
+    }
+  ]
+}

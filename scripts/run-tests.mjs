@@ -1,5 +1,5 @@
 // Run every *.test.mjs in the repository (node_modules and dot-directories skipped); exit non-zero if any fails.
-// Dot-directories hold other checkouts (.claude/worktrees is a full copy of the repository) and tooling, never our suites.
+// Dot-directories hold other checkouts (a worktree is a full copy of the repository) and tooling, never our suites.
 import fs from 'node:fs'
 import path from 'node:path'
 import { spawnSync } from 'node:child_process'

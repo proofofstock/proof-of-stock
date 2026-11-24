@@ -121,7 +121,14 @@ console.log('the units that write our data')
   // by a host-only drop-in (deployment/PUBLISHING.md "Paid passes"), because a host without it must still start.
   const mirror = units['stp-anchor-mirror.service']
   const credentialed = Object.entries(units).filter(([, t]) => values(t, 'LoadCredential').length).map(([n]) => n)
-  check('exactly one unit is given a key, and it is the anchor mirror', credentialed.join() === 'stp-anchor-mirror.service', credentialed.join())
+  // The Telegram bot (23.11) is the one other unit given a credential, and it was let in by name: its token speaks for a
+  // chat bot, it signs nothing and moves nothing, so it goes by the same LoadCredential path rather than the environment.
+  // Any third unit still fails here.
+  check('exactly two units are given a credential: the anchor mirror (the key) and the Telegram bot (a chat token)', credentialed.sort().join() === 'stp-anchor-mirror.service,stp-tg-bot.service', credentialed.join())
+  const tg = units['stp-tg-bot.service']
+  check('stp-tg-bot: the token comes from the owner file, by name, never from the environment or a command line', values(tg, 'LoadCredential').join() === 'tg-bot:/etc/pos/tg-bot.env' && !/TG_BOT_TOKEN=/.test(tg.replace(/^#.*$/gm, '')))
+  check('...it reads none of our data roots and writes only its own state directory', values(tg, 'Environment').every((e) => !e.startsWith('STOCKS_ROOT_')) && !values(tg, 'ReadWritePaths').length && words(tg, 'StateDirectory').join() === 'stp-tg-bot' && words(tg, 'InaccessiblePaths').includes('-/var/lib/pos'))
+  check('...and it may only reach the network and name resolution: nothing group-readable, no other process visible', words(tg, 'RestrictAddressFamilies').sort().join() === 'AF_INET,AF_INET6,AF_UNIX' && /^UMask=0077$/m.test(tg) && /^ProtectProc=invisible$/m.test(tg) && /^SystemCallFilter=@system-service$/m.test(tg))
   check('stp-anchor-mirror: the key comes from the owner file, by name, never from the environment', values(mirror, 'LoadCredential').join() === 'anchor-key:/etc/pos/anchor.key' && !/anchor.key=|STP_ANCHOR_KEY=/.test(mirror))
   check('...it writes only the anchors directory and runs after the anchor itself', words(mirror, 'ReadWritePaths').join() === '/var/lib/stp-anchors' && /^After=stp-anchor\.service$/m.test(mirror))
   // AF_UNIX is name resolution (nss-resolve and nscd both answer over a unix socket), not a path of ours.

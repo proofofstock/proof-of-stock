@@ -268,3 +268,33 @@ A settle whose answer is lost may still have landed on chain: the module never s
 told to send the same payment again, and that retry asks the chain (the USDC `AuthorizationUsed` log) before anything
 else. Sales settled by CDP do not come from the settlement wallet, so the wallet's count on `/status` covers v1 only;
 the v2 ones are on x402scan.
+
+## The Telegram bot
+
+`scripts/stocks/tg-bot.mjs`, run by `deployment/systemd/stp-tg-bot.service`. Send it a contract address and it answers
+the issuer-list verdict (Base first; Robinhood Chain only where the address is listed there), the price gap and the
+passport link; send it a ticker and it answers the issuer's own contract. It uses no language model: every reply is
+fixed words with the issuer's symbol and address, and neither a token creator's text nor the chat's own message is
+ever sent back. It reads only the site's API on the loopback and talks only to `api.telegram.org`; it holds no wallet.
+Optionally it posts each newly opened look-alike case to a channel, once, in the issuer's words.
+
+The token is a credential for the bot account, so it is handled like the other host secrets: the owner types it on the
+host, it never passes through a chat with an agent, a commit or a command line.
+
+1. In Telegram, @BotFather → `/newbot`; pick the name and the username (it must end in `bot`). Set its description and
+   `/setcommands` → `check - check a contract address` there too.
+2. On the host, as root, type the token in without echo and lock the file:
+   ```bash
+   read -rs T && printf 'TG_BOT_TOKEN=%s\n' "$T" > /etc/pos/tg-bot.env && unset T
+   chown root:root /etc/pos/tg-bot.env && chmod 0600 /etc/pos/tg-bot.env
+   ```
+3. Alerts (optional): add the bot to the channel as an administrator allowed to post, then
+   `printf 'STP_TG_ALERT_CHAT=@<channel>\n' > /etc/pos/tg-bot-alerts.env` (root, 0600). Its first pass only marks the
+   cases already open, so a start or a restart never floods the channel.
+4. Install the unit by hand, like the others: copy it from the release to `/etc/systemd/system/`, then
+   `systemctl daemon-reload && systemctl enable --now stp-tg-bot` and `journalctl -u stp-tg-bot -n 20`: no token in it,
+   ever. Send the bot a listed address and a look-alike from `/history` and read both answers.
+5. The bot is `@ProofofStockBot`, already linked from the footer of `apps/stocks-web/index.html` (the robot icon, `.i-bot`).
+   A new username means changing that link and `apps/landing-faq.test.mjs`.
+
+Rotating the token: @BotFather → `/revoke`, repeat step 2, `systemctl restart stp-tg-bot`.

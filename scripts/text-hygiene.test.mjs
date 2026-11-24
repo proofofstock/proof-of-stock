@@ -45,6 +45,37 @@ check('no stray entry in the repository root', stray.length === 0, stray.join(',
 const OWNERSHIP_CLAIM = /glama_claim_[A-Za-z0-9_-]{16,}|_glama-claim\./
 const claims = files.filter((f) => !BINARY.test(f) && !/text-hygiene\.test\.mjs$/.test(f)).filter((f) => { try { return OWNERSHIP_CLAIM.test(fs.readFileSync(f, 'utf8')) } catch (_) { return false } })
 check('no ownership claim of ours is committed; those live on the host', claims.length === 0, claims.join(', '))
+// The public copy says what the service does, not which tools wrote or reviewed its code (owner, 24.11). A review is
+// credited as "outside review, <date>"; no co-author line, no tool's own directory, no tool named as a reviewer. The
+// product's own mentions stay (the clients an agent connects with, the crawlers robots.txt names): the patterns are
+// about credit and tooling, not names in general. The words are assembled here so this file passes itself; the same
+// patterns stop the export (scripts/public-deny.txt), which is not exported and is left out below.
+{
+  const w = (...p) => p.join('')
+  const T = [w('co', 'dex'), w('fa', 'ble'), w('zco', 'de')].join('|'), ANY = [w('clau', 'de'), w('co', 'dex'), w('fa', 'ble'), w('zco', 'de'), w('cop', 'ilot'), w('chat', 'gpt')].join('|')
+  const TRACES = [
+    new RegExp(`\\((${T})('s)?( review)?, \\d{1,2}\\.\\d{1,2}`, 'i'),
+    new RegExp(`\\b(${ANY})('s)? (review|audit)`, 'i'),
+    new RegExp(`\\b(${w('zco', 'de')}|${w('fa', 'ble')})\\b`, 'i'),
+    new RegExp(w('co-auth', 'ored-by'), 'i'),
+    new RegExp(`${w('gener', 'ated with')} \\[?${w('clau', 'de')}`, 'i'),
+    new RegExp(`(^|[\\s/~])\\.(${w('clau', 'de')}|${w('co', 'dex')}|${w('zco', 'de')})/`, 'i'),
+  ]
+  const skip = new Set(['scripts/public-deny.txt'])
+  const traced = []
+  for (const f of files) {
+    if (STUBBED.has(f) || skip.has(f) || BINARY.test(f)) continue
+    let text
+    try { text = fs.readFileSync(f, 'utf8') } catch (_) { continue }
+    text.split('\n').forEach((l, i) => { if (TRACES.some((re) => re.test(l))) traced.push(`${f}:${i + 1}`) })
+  }
+  check('no tool is credited for writing or reviewing the code, and no tool directory is named', traced.length === 0, traced.slice(0, 20).join(', '))
+  // The probes: each pattern catches the form it is for, and a product mention passes.
+  const caught = (s) => TRACES.some((re) => re.test(s))
+  check('...the probes: a dated credit, a named review, a co-author line and a tool directory are caught',
+    caught(`(${w('Co', 'dex')}, 16.11)`) && caught(`${w('Fa', 'ble')}'s review (21.11)`) && caught(`${w('Co-Auth', 'ored-By')}: x`) && caught(`ignore .${w('clau', 'de')}/`) && caught(`(${w('zco', 'de')} review, 13.11)`))
+  check('...and the product\'s own mentions pass: the clients an agent connects with', !caught('Claude, ChatGPT, Cursor and raw JSON-RPC are covered') && !caught("'codex-mcp-client': 'Codex'") && !caught('(outside review, 16.11)'))
+}
 // Numbers in prose, and how they are kept true. Two rules, because there are two kinds of number.
 //
 // A number that MOVES (how many tokens are listed, how many the factory made, how many questions the exam asked)

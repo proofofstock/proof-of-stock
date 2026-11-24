@@ -30,7 +30,7 @@ fi
 
 # The list is taken first, and a failure to take it stops everything. Inside a pipeline it would be swallowed: the
 # `while` at the end succeeds, and an unreadable host directory would look like a host with no host files, which is
-# the silence this whole script exists to end (Codex, 16.11).
+# the silence this whole script exists to end (outside review, 16.11).
 # Listed from inside the directory, so a name is relative without a pattern built out of the path itself: that path
 # can hold characters a regular expression reads (a Windows checkout of this repository runs these tests).
 LIST=$( cd "$SRC" && find . -type f ) || { echo "REFUSED: cannot list $SRC" >&2; exit 2; }

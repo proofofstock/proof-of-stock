@@ -1,0 +1,46 @@
+{
+  "_finding": "largest_gaps, data_freshness and address_on_date ask through MCP what the site already answers (23.11). The danger is a lead that says less than the page: a stopped list called fresh, a late part hidden behind an overall 'up to date', stale tokens silently dropped from the board's count, a missing chain read as an empty one, today's partial answer passed off as final, or an archive refusal turned into an answer.",
+  "target": "apps/stocks-mcp-http.mjs",
+  "runner": [
+    "node",
+    "apps/mcp-site-tools.test.mjs"
+  ],
+  "mutations": [
+    {
+      "name": "an issuer list that is not loaded is judged by its age alone",
+      "find": "      const state = missing ? 'down' : judge(age, limits)",
+      "replace": "      const state = judge(age, limits)",
+      "expect": "FAIL a list that is not loaded is down even when it was tried a minute ago, as /status says"
+    },
+    {
+      "name": "a late part does not make the whole answer late",
+      "find": "      if (state === 'down' || (state === 'late' && worst === 'ok')) worst = state",
+      "replace": "      if (state === 'down') worst = state",
+      "expect": "FAIL one late part makes the whole answer late, and the lead opens with it"
+    },
+    {
+      "name": "the board's lead stops saying how many readings were left out as stale",
+      "find": "    const rest = [o.stale ? `${o.stale} with a reading older than",
+      "replace": "    const rest = [false ? `${o.stale} with a reading older than",
+      "expect": "FAIL ...says how many were left out as stale and why, never ranking them"
+    },
+    {
+      "name": "a chain whose list is not loaded goes unmentioned",
+      "find": "  for (const c of r.missing || []) parts.push(",
+      "replace": "  for (const c of []) parts.push(",
+      "expect": "FAIL ...says a chain whose list is missing is missing, not empty"
+    },
+    {
+      "name": "today's answer is said as if the day were over",
+      "find": "  const partial = b.attestation && b.attestation.partial ?",
+      "replace": "  const partial = false ?",
+      "expect": "FAIL today is answered as of now, and says the day is not over"
+    },
+    {
+      "name": "an archive refusal is passed on as an answer",
+      "find": "        if (r.status !== 200) return fail(r.error)\n",
+      "replace": "\n",
+      "expect": "FAIL a future day is an error in the archive's words, never an answer"
+    }
+  ]
+}

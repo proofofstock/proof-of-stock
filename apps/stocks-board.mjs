@@ -3,7 +3,7 @@
  *
  * Until 22.11 the board came only from app.js, so a reader that does not run scripts (a search engine, an agent, a
  * judge's AI helper) saw "Loading the case archive." and an empty table where a browser saw 24 rows. The outside review
- * (Fable, 21.11) asked for the board to arrive as HTML. The script still redraws it on load and every 5 minutes, with
+ * (21.11) asked for the board to arrive as HTML. The script still redraws it on load and every 5 minutes, with
  * the click that opens a row's passport; this is the same board, said once before the script runs.
  *
  * It mirrors findingsBoard() in apps/stocks-web/app.js: the same 24 newest events of the 7-day window, the same labels,

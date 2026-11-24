@@ -49,14 +49,16 @@ console.log('the footer: the project\'s own profiles')
 {
   const foot = (html.match(/<footer class="foot">[\s\S]*?<\/footer>/) || [''])[0]
   const links = [...foot.matchAll(/<a class="foot-ic" href="([^"]+)"([^>]*)>/g)].map((m) => [m[1], m[2]])
-  check('X and Telegram, in that order; the email is not in the footer (owner, 11.11: spam)', JSON.stringify(links.map(([h]) => h)) === JSON.stringify(['https://x.com/proofofstock', 'https://t.me/proofofstockchannel']) && !/mailto:/.test(foot))
-  check('each has a label a screen reader says, and its icon is hidden from it', links.every(([, at]) => /aria-label="[^"]+"/.test(at)) && (foot.match(/class="i i-(x|tg)" aria-hidden="true"/g) || []).length === 2)
+  check('X, Telegram, then the bot, in that order; the email is not in the footer (owner, 11.11: spam)', JSON.stringify(links.map(([h]) => h)) === JSON.stringify(['https://x.com/proofofstock', 'https://t.me/proofofstockchannel', 'https://t.me/ProofofStockBot']) && !/mailto:/.test(foot))
+  check('each has a label a screen reader says, and its icon is hidden from it', links.every(([, at]) => /aria-label="[^"]+"/.test(at)) && (foot.match(/class="i i-(x|tg|bot)" aria-hidden="true"/g) || []).length === 3)
   check('the outside ones open apart and pass no opener or referrer', links.filter(([h]) => h.startsWith('https:')).every(([, at]) => /target="_blank"/.test(at) && /rel="me noopener noreferrer"/.test(at)))
   const css = fs.readFileSync(new URL('./stocks-web/style.css', import.meta.url), 'utf8')
   const iconSrc = (k) => decodeURIComponent((css.match(new RegExp('\\.i-' + k + ' \\{ --i: url\\("data:image/svg\\+xml,([^"]+)"\\)')) || [])[1] || '')
-  check('the icons are drawn here in the site\'s style: inline masks on the 16-unit grid, no image file, no third party', ['x', 'tg'].every((k) => /viewBox='0 0 16 16'/.test(iconSrc(k)) && /stroke-linecap='round'/.test(iconSrc(k))))
+  check('the icons are drawn here in the site\'s style: inline masks on the 16-unit grid, no image file, no third party', ['x', 'tg', 'bot'].every((k) => /viewBox='0 0 16 16'/.test(iconSrc(k)) && /stroke-linecap='round'/.test(iconSrc(k))))
   const { PROFILES } = await import('./stocks-seo.mjs')
   check('the organisation names the same profiles as sameAs', JSON.stringify(PROFILES) === JSON.stringify(['https://x.com/proofofstock', 'https://t.me/proofofstockchannel']))
+  // The bot is a tool, not a profile of the organisation: it is in the footer, never in sameAs or the docs' profiles.
+  check('the bot is the footer\'s, not a profile: not in sameAs', !PROFILES.some((u) => /ProofofStockBot/i.test(u)))
 }
 
 console.log('switching chains does not repeat a question')
@@ -254,7 +256,7 @@ console.log('one question, one frame')
   check('a block that answers a question is a thin rectangle', /border: 1px solid var\(--line\)/.test(framed) && /border-radius: 12px/.test(framed), framed.trim().slice(0, 60))
   check('...with the question itself as its head, cut off from the answer by a hairline', /^\.block > \.echo \{[^}]*border-bottom: 1px solid var\(--line\)/m.test(css) && /^\.block > \.echo \{[^}]*padding:/m.test(css))
   // Not one rule: every rule in the sheet that reaches a plain .block, phone overrides included. One of them giving
-  // the greeting a border of any kind is what this has to catch (Codex, 16.11).
+  // the greeting a border of any kind is what this has to catch (outside review, 16.11).
   const plainBlock = [...css.matchAll(/(^|\})\s*([^{}@]*?\.block(?![\w:.-])[^{}]*?)\{([^}]*)\}/g)]
     .filter((m) => !/:has|\.echo/.test(m[2])).map((m) => m[3])
   check('...and the greeting, which answers nothing, keeps none: the frame is tied to the echo, not to the block', plainBlock.length > 0 && !plainBlock.some((d) => /(^|[;\s])border(-\w+)*\s*:/.test(d)), plainBlock.join(' | ').slice(0, 80))
@@ -277,7 +279,7 @@ console.log('what a phone does not get')
   const phone = (css.match(/@media \(max-width: 700px\) \{\n([\s\S]*?)\n\}/g) || []).join('\n')
   check('the cut lives in one rule, and only on a phone', /\.wide-only \{ display: none; \}/.test(phone) && (css.match(/\.wide-only \{/g) || []).length === 1)
   // Every element the class is on, whatever its tag: the chips wear it too, and a check that looked only at spans
-  // would have said nothing about them (Codex, 15.11).
+  // would have said nothing about them (outside review, 15.11).
   const hidden = [...html.matchAll(/<(\w+)[^>]*class="[^"]*\bwide-only\b[^"]*"[^>]*>([\s\S]*?)<\/\1>/g)].map((m) => m[2])
   const chips = [...html.matchAll(/<button type="button" class="chip( wide-only)?" data-run="([^"]+)">/g)].map((m) => [!m[1], m[2]])
   check('something is actually dropped, and no link goes with it', hidden.length >= 7 && hidden.every((t) => !/<a[\s>]/.test(t)), String(hidden.length))
@@ -290,7 +292,7 @@ console.log('what a phone does not get')
   check('...and the phone is left with punctuation that closes: no comma or gap where the clause was', paras.length >= 4 && short.every(([full, cut]) => cut.length > 20 && !/[,;] *[.?]?$/.test(cut) && !/ {2}/.test(cut) && (!/[.?]$/.test(full) || /[.?]$/.test(cut))), short.filter(([full, cut]) => /[.?]$/.test(full) && !/[.?]$/.test(cut)).map(([, c]) => c).join(' | '))
   check('the hero keeps a few examples and help on a phone, not the whole row', chips.filter(([keep]) => keep).length >= 3 && chips.filter(([keep]) => keep).length <= 4 && chips.some(([keep, run]) => keep && run === 'help') && chips.some(([keep]) => !keep), chips.filter(([k]) => k).map(([, r]) => r).join())
   // The narrow branch itself, not the pair: a check that only found the counts somewhere in the file would pass with
-  // a narrow greeting that dropped them (Codex, 15.11).
+  // a narrow greeting that dropped them (outside review, 15.11).
   const js = fs.readFileSync(new URL('./stocks-web/app.js', import.meta.url), 'utf8')
   const narrowHello = (js.match(/const counts = st\n\s*\? \(narrow\n\s*\? (`[^`]*`)/) || [])[1] || ''
   const wideHello = (js.match(/const counts = st\n[\s\S]*?\n\s*: (`[^`]*`)\)\n/) || [])[1] || ''
@@ -317,7 +319,7 @@ console.log('connecting from Claude and ChatGPT')
   // card below carries the whole ChatGPT path and the tutorial carries the plans and the @ step, both checked here.
   check('Claude, ChatGPT, the clients that copy from the card, then Bankr, one short line each', items.length === 4 && items[0].startsWith('<b>Claude:</b>') && gpt.startsWith('<b>ChatGPT</b>') && /^<b>Claude Code, other clients, npm:<\/b>/.test(items[2]) && items[3].startsWith('<b>Bankr:</b>') && items.every((t) => t.replace(/<[^>]*>/g, '').length < 135), items.map((t) => t.replace(/<[^>]*>/g, '').length).join())
   // The rest of the path is one link away, so the link has to point at a page that exists and is the one checked at
-  // the end of this block for the plans and the @ step (Codex, 15.11: an href proves nothing on its own).
+  // the end of this block for the plans and the @ step (outside review, 15.11: an href proves nothing on its own).
   const tutHref = (gpt.match(/href="(docs\/tutorials\/[^"]+)"/) || [])[1]
   check('...ChatGPT keeps the two things a reader cannot guess: which plans have it, and where the button is', /\(web, paid plans\)/.test(gpt) && /Plugins → \+ → Add custom MCP server/.test(gpt) && tutHref === 'docs/tutorials/connect-an-agent.md' && fs.existsSync(new URL('../' + tutHref, import.meta.url)), String(tutHref))
   const urlBlock = (agents.match(/<pre id="mcp-url">([^<]*)<\/pre>/) || [])[1]
@@ -345,7 +347,7 @@ check('...and the npm line installs the published package, which the page says h
   check('...the tutorial gives the same ChatGPT plans and steps as the card, install and @ included, with the public URL', /\*\*Plugins\*\*/.test(tutGpt) && /\*\*Add custom MCP server\*\*/.test(tutGpt) && /`https:\/\/proofofstock\.xyz\/mcp`/.test(tutGpt) && /\*\*No authentication\*\*/.test(tutGpt) && /\*\*Create as a plugin\*\*/.test(tutGpt) && /Pro, Business or Enterprise\/Edu/.test(tutGpt) && /Install the plugin\. In a new chat, type `@` and pick it/.test(tutGpt))
 }
 
-// Fable's review (21.11): "units" is our internal word. The FAQ says calls, in the page and in its FAQ markup alike,
+// Outside review (21.11): "units" is our internal word. The FAQ says calls, in the page and in its FAQ markup alike,
 // and the README puts the exam score beside its title from the live site, never as a number written into git.
 console.log('plain words, and the exam beside the README title')
 {

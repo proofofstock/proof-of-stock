@@ -42,6 +42,10 @@ import { COINBASE_URL, ROBINHOOD_ASSETS_URL, ROBINHOOD_PRICES_URL } from '../evm
 import { MIN_POOL_LIQUIDITY_USD } from '../evm/core/stocks/peg.mjs'
 import { RECORDER_CADENCE_S } from '../evm/core/stocks/passport.mjs'
 
+// Where an on-chain price comes from: the passport and the largest_gaps tool say it in the same words.
+const DEX_SOURCE = 'the pools on the chain itself, read at one block, with DexScreener token-pairs (completed from GeckoTerminal when DexScreener lists 30); where both see a pool, the price and liquidity read from the chain are used'
+// The board ranks no reading older than this, two recorder runs: /api/overview and largest_gaps pass the same number.
+export const OVERVIEW_STALE_S = 1800
 // Where every number in a passport comes from, per chain.
 const SOURCES = Object.freeze({
   base: { registry: COINBASE_URL, reference: 'Coinbase NAV per token (nav_price, total return), from the same registry' },
@@ -52,7 +56,7 @@ import { usEquitySession } from '../evm/core/stocks/market-session.mjs'
 import { createWindowCache, readingsOf, seriesPoints } from '../evm/core/stocks/readings-window.mjs'
 import { metaFor, injectMeta, withHead, headOf } from '../evm/core/stocks/page-meta.mjs'
 import { robotsTxt, securityTxt, sitemapXml, sitemapUrls, docUrl, homeJsonLd, docJsonLd, pageJsonLd } from './stocks-seo.mjs'
-import { createMcpHttp, SUPPORTED_VERSIONS, MAX_VERIFY_BATCH, toolsFor } from './stocks-mcp-http.mjs'
+import { createMcpHttp, SUPPORTED_VERSIONS, MAX_VERIFY_BATCH, toolsFor, freshnessOf, GAPS_LIMIT } from './stocks-mcp-http.mjs'
 import { siteBar } from './stocks-nav.mjs'
 import { apiPage } from './stocks-api-page.mjs'
 import { verifyToken, badgeSvg, badgeState, issuerPrefixOf, ISSUER_LABEL as VERIFY_ISSUER_LABEL } from '../evm/core/stocks/verify.mjs'
@@ -610,7 +614,7 @@ export function createStocksWeb ({
       dex: inRegistry && p.latest && /^0x[0-9a-f]{40}$/.test(String(p.latest.dex_pool)) ? `https://www.geckoterminal.com/${C.gecko}/pools/${p.latest.dex_pool}` : `https://www.geckoterminal.com/${C.gecko}/tokens/${addr}`,
       explorer: C.explorer ? `${C.explorer}/token/${addr}` : null,
     }
-    const sources = { ...SOURCES[chain], dex: 'the pools on the chain itself, read at one block, with DexScreener token-pairs (completed from GeckoTerminal when DexScreener lists 30); where both see a pool, the price and liquidity read from the chain are used', recorded_every_s: RECORDER_CADENCE_S,
+    const sources = { ...SOURCES[chain], dex: DEX_SOURCE, recorded_every_s: RECORDER_CADENCE_S,
       pools_counted: { min_liquidity_usd: MIN_POOL_LIQUIDITY_USD, paired_with_addresses: [...(C.referenceAssets || [])], rule: 'a pool prices the token only against the chain\'s dollar stablecoins or wrapped ETH, matched by address; the deepest one is used' } }
     return { status: 200, body: { ...p, chain, links, sources, issuer_factory: factoryFact(chain, addr), issuer_like_address: inRegistry ? null : issuerLike(chain, addr, reg.records), list_proof: proofOf(chain, reg), same_stock_elsewhere: elsewhere, series_points: points, impostor_listing: listed ? { first_seen_at: listed.first_seen_at, same_deployer_impostors: listed.same_deployer_impostors ?? null } : null, case: caseSummary(chain, addr), readings_loaded: Boolean(w.window), registry_age_s: Math.round((now() - reg.at) / 1000) } }
   }
@@ -750,6 +754,32 @@ export function createStocksWeb ({
   // The list a verdict was decided against, stamped so anyone can check it again (evm/core/stocks/list-proof.mjs).
   const proofOf = (c, r = registries.get(c)) => listProof(r?.stamp, { readAt: r?.at, stale: Boolean(r?.error), ledgerUrl: `${publicOrigin}${publicPath}/api/history/registry?chain=${c}`, listBase: `${publicOrigin}${publicPath}/api/list` })
   const sourceOf = (c) => { const r = registries.get(c); return { generated_at: new Date(now()).toISOString(), source: `${CHAINS[c].issuer} issuer registry`, registry_age_s: r?.at ? Math.round((now() - r.at) / 1000) : null } }
+  /** One address on one day, from the archive (apps/stocks-archive.mjs): /api/archive/at and address_on_date. */
+  function archiveOn (chain, address, date) {
+    const dir = process.env.STP_ANCHOR_DIR || null
+    const anchorOf = (d) => {
+      const a = dir ? anchorFor(dir, d) : null
+      return a ? { day: a.day, sha256: a.sha256, manifest_url: `${publicOrigin}${publicPath}/anchors/${a.manifest}`, mirrors: a.mirrors } : null
+    }
+    return archiveAt({ history, anchorOf, origin: publicOrigin + publicPath, chains: Object.keys(CHAINS), chain, address, date, now: now() })
+  }
+  /**
+   * The landing's board of largest gaps (/api/overview) for largest_gaps: the same overview() call, with each row's
+   * reading age and each chain's sources added, so the answer names its time and where every number comes from.
+   */
+  function gapsOf (chain) {
+    const { byChain, missing } = loaded()
+    if (!Object.keys(byChain).length) throw unavailable('no issuer registry is loaded yet; try again in a minute')
+    const scope = chain ? (byChain[chain] ? { [chain]: byChain[chain] } : null) : byChain
+    if (!scope) throw unavailable(`the ${chain} registry is not loaded yet; try again in a minute`)
+    const t = now()
+    const chains = Object.fromEntries(Object.entries(overview(scope, { now: t, staleS: OVERVIEW_STALE_S, limit: GAPS_LIMIT })).map(([c, o]) => [c, {
+      ...o,
+      rows: o.rows.map((x) => ({ ...x, reading_age_s: Math.max(0, Math.round((t - Date.parse(x.observed_at)) / 1000)) })),
+      sources: { registry: SOURCES[c].registry, reference: SOURCES[c].reference, dex: DEX_SOURCE, recorded_every_s: RECORDER_CADENCE_S },
+    }]))
+    return { generated_at: new Date(t).toISOString(), market_now: usEquitySession(t), stale_after_s: OVERVIEW_STALE_S, ranked_by: 'absolute premium', limit_per_chain: GAPS_LIMIT, chains, missing: chain ? [] : missing }
+  }
   // The tools as the MCP server lists them, for /api: one list, so the page cannot name a tool the server lacks.
   const mcpTools = toolsFor(Math.min(PUBLIC_HOURS, windowH))
   let apiHtml = null
@@ -787,6 +817,9 @@ export function createStocksWeb ({
     listProof: proofOf,
     recent: recentImpostors,
     matrix: matrixFor,
+    gaps: gapsOf,
+    freshness: () => freshnessOf(statusNumbers(), now()),
+    archiveAt: archiveOn,
   })
   // No `authorization` among the allowed headers: the server takes no credentials and nginx clears the header before
   // the app, so allowing it only told a browser page it could send one (pentest, 22.11).
@@ -1140,7 +1173,7 @@ export function createStocksWeb ({
     if (sub === '/api/status') {
       return send(res, 200, statusNumbers(), undefined, { 'cache-control': 'no-store' })
     }
-    // The exam as a shields.io endpoint badge (Fable's review, 21.11: put the score beside the README title). The score is
+    // The exam as a shields.io endpoint badge (outside review, 21.11: put the score beside the README title). The score is
     // read here at every request, so no number is ever written into the repository.
     if (sub === '/api/exam/badge.json') {
       const r = exam.get()
@@ -1176,12 +1209,7 @@ export function createStocksWeb ({
     // One address on one day, from the archive, free (apps/stocks-archive.mjs). A window, not a download.
     if (sub === '/api/archive/at') {
       const cors = { 'access-control-allow-origin': '*' }
-      const dir = process.env.STP_ANCHOR_DIR || null
-      const anchorOf = (d) => {
-        const a = dir ? anchorFor(dir, d) : null
-        return a ? { day: a.day, sha256: a.sha256, manifest_url: `${publicOrigin}${publicPath}/anchors/${a.manifest}`, mirrors: a.mirrors } : null
-      }
-      const r = archiveAt({ history, anchorOf, origin: publicOrigin + publicPath, chains: Object.keys(CHAINS), chain, address: url.searchParams.get('address'), date: url.searchParams.get('date'), now: now() })
+      const r = archiveOn(chain, url.searchParams.get('address'), url.searchParams.get('date'))
       if (r.status !== 200) return send(res, r.status, { error: r.error }, undefined, cors)
       return send(res, 200, r.body, undefined, { ...cors, 'cache-control': 'public, max-age=300' })
     }
@@ -1209,7 +1237,7 @@ export function createStocksWeb ({
       if (!Object.keys(byChain).length) return send(res, 503, { error: 'no issuer registry is loaded yet' }, undefined, { 'retry-after': '30' })
       const scope = chain ? (byChain[chain] ? { [chain]: byChain[chain] } : null) : byChain
       if (!scope) return send(res, 503, { error: `the ${chain} registry is not loaded yet` }, undefined, { 'retry-after': '30' })
-      if (sub === '/api/overview') return send(res, 200, { market_now: usEquitySession(now()), chains: overview(scope, { now: now() }), missing }, undefined, { 'cache-control': 'public, max-age=60' })
+      if (sub === '/api/overview') return send(res, 200, { market_now: usEquitySession(now()), chains: overview(scope, { now: now(), staleS: OVERVIEW_STALE_S }), missing }, undefined, { 'cache-control': 'public, max-age=60' })
       const q = String(url.searchParams.get('q') || '').trim().slice(0, 64)
       if (!q) return send(res, 400, { error: 'q is required' })
       return send(res, 200, { ...findAcross(scope, q), missing }, undefined, { 'cache-control': 'public, max-age=60' })

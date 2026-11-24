@@ -29,7 +29,7 @@ on Enterprise/Edu, an admin can grant it. Not on mobile.
 2. Select the plus button, then **Add custom MCP server**.
 3. Name it `Proof of Stock`. Under **Connection**, paste `https://proofofstock.xyz/mcp` as the server URL.
 4. For authentication, choose **No authentication**.
-5. Tick **I understand and want to continue**, then select **Create as a plugin**. You should see the seven tools.
+5. Tick **I understand and want to continue**, then select **Create as a plugin**. You should see the ten tools.
 6. Install the plugin. In a new chat, type `@` and pick it.
 
 ### Claude Code
@@ -87,8 +87,8 @@ curl -s https://proofofstock.xyz/mcp \
   -d '{"jsonrpc":"2.0","id":2,"method":"tools/list"}' | jq -r '.result.tools[].name'
 ```
 
-You should see seven names: `find_stock_token`, `list_stock_tokens`, `stock_passport`, `verify_stock_tokens`,
-`recent_impostors`, `compare_venues` and `verify_anchor`. Each is described in [the tools reference](../reference/tools.md).
+You should see ten names: `find_stock_token`, `list_stock_tokens`, `stock_passport`, `verify_stock_tokens`,
+`recent_impostors`, `compare_venues`, `verify_anchor`, `largest_gaps`, `data_freshness` and `address_on_date`. Each is described in [the tools reference](../reference/tools.md).
 
 ## Step 2: ask for a passport
 

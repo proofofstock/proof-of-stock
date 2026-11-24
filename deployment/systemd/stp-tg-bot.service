@@ -1,0 +1,59 @@
+# The Proof of Stock Telegram bot (scripts/stocks/tg-bot.mjs, 23.11): answers a contract address or a ticker with the
+# issuer-list verdict, and posts newly opened look-alike cases to an alert channel. It reads only the site's own API on
+# the loopback and talks to api.telegram.org; it holds no wallet and signs nothing.
+#
+# Host-only facts, never in git:
+#   /etc/pos/tg-bot.env  TG_BOT_TOKEN=<from @BotFather>, root:root 0600, typed in by the owner (deployment/PUBLISHING.md)
+#   STP_TG_ALERT_CHAT    in /etc/pos/tg-bot-alerts.env (optional): the channel id or @name the bot posts alerts to
+# The token reaches the bot through LoadCredential (systemd reads it as root before the sandbox exists); the bot reads
+# $CREDENTIALS_DIRECTORY/tg-bot and never logs it. It runs as pos with our data roots hidden from it. Without the file the unit does not start: install it only with one.
+[Unit]
+OnFailure=stp-alert@%n.service
+Description=Proof of Stock: Telegram bot (read-only verdicts, look-alike alerts)
+After=network-online.target stp-web.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pos
+Group=pos
+WorkingDirectory=/opt/stp/current
+Environment=STP_BOT_API=http://127.0.0.1:3005/stocks
+Environment=STP_TG_STATE=/var/lib/stp-tg-bot/state.json
+EnvironmentFile=-/etc/pos/tg-bot-alerts.env
+LoadCredential=tg-bot:/etc/pos/tg-bot.env
+StateDirectory=stp-tg-bot
+StateDirectoryMode=0700
+ExecStart=/usr/bin/node scripts/stocks/tg-bot.mjs
+Restart=always
+RestartSec=10s
+Nice=10
+MemoryAccounting=true
+MemoryMax=128M
+CPUQuota=20%
+NoNewPrivileges=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+ProtectProc=invisible
+UMask=0077
+ProtectSystem=strict
+InaccessiblePaths=-/var/lib/stp-raw -/var/lib/stp-analytics -/var/lib/pos
+InaccessiblePaths=-/etc/pos -/etc/stp
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+# AF_UNIX is name resolution for api.telegram.org (nss-resolve answers over a unix socket), not a path of ours.
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+SystemCallFilter=@system-service
+RestrictNamespaces=true
+LockPersonality=true
+RestrictRealtime=true
+SystemCallArchitectures=native
+
+[Install]
+WantedBy=multi-user.target

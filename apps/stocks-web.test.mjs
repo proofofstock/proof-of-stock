@@ -120,7 +120,7 @@ console.log('the recorder\'s private copies of third-party answers are never ser
 
 console.log('the exam as a badge for the README')
 {
-  // shields.io reads this (Fable's review, 21.11): always its schema; the score when the exam is read, else unavailable.
+  // shields.io reads this (outside review, 21.11): always its schema; the score when the exam is read, else unavailable.
   // Its own client address: a unit taken here from the shared test client would run a later check into the limit.
   const r = await get('/stocks/api/exam/badge.json', { headers: { 'x-real-ip': '198.51.100.90' } })
   const b = await r.json()
@@ -697,7 +697,7 @@ console.log('the public MCP endpoint')
   const note = await rpc({ jsonrpc: '2.0', method: 'notifications/initialized' })
   check('a notification is 202 with no body', note.status === 202 && (await note.text()) === '')
   const list = await (await rpc({ jsonrpc: '2.0', id: 3, method: 'tools/list' })).json()
-  check('seven read-only tools, none of them trading', list.result.tools.length === 7 && !list.result.tools.some((t) => /buy|sell|swap|trade/.test(t.name)))
+  check('ten read-only tools, none of them trading', list.result.tools.length === 10 && list.result.tools.every((t) => t.annotations && t.annotations.readOnlyHint === true && t.annotations.destructiveHint === false) &&!list.result.tools.some((t) => /buy|sell|swap|trade/.test(t.name)))
   check('...and the newest of them hands over an anchor, which is a read as well', list.result.tools.some((t) => t.name === 'verify_anchor' && t.annotations.readOnlyHint === true))
   check('the passport tool offers only the hours the site holds', list.result.tools.find((t) => t.name === 'stock_passport').inputSchema.properties.hours.maximum === 24)
   // mcptry, 12.11: agents pick a tool and fill its arguments from these descriptions, so none may be missing.
@@ -751,6 +751,28 @@ console.log('the public MCP endpoint')
   const bad = await (await rpc({ jsonrpc: '2.0', id: 6, method: 'tools/call', params: { name: 'stock_passport', arguments: { chain: 'base', address: 'nope' } } })).json()
   check('an argument that breaks the schema is a protocol error -32602', bad.error && bad.error.code === -32602 && /address has the wrong form/.test(bad.error.message), JSON.stringify(bad).slice(0, 200))
   const callWith = (id, name, args) => rpc({ jsonrpc: '2.0', id, method: 'tools/call', params: { name, arguments: args } }).then((r) => r.json())
+  // The three tools that ask through MCP what the site already answers (23.11): each from the same function as its page.
+  // From their own client address, so the rate limit the checks below count stays where it was.
+  const callNew = (id, name, args) => rpc({ jsonrpc: '2.0', id, method: 'tools/call', params: { name, arguments: args } }, { 'x-real-ip': '198.51.100.41' }).then((r) => r.json())
+  const gaps = await callNew(40, 'largest_gaps', {})
+  const ovNow = await (await get('/stocks/api/overview', { headers: { 'x-real-ip': '198.51.100.41' } })).json()
+  const gs = gaps.result.structuredContent
+  check('largest_gaps is the landing board: the same rows as /api/overview, each with its reading age and sources', gs.chains.base.priced === ovNow.chains.base.priced && gs.chains.base.rows.map((r) => r.address).join() === ovNow.chains.base.rows.map((r) => r.address).join() && gs.chains.base.rows[0].reading_age_s === 900 && /coinbase\.com/.test(gs.chains.base.sources.registry) && gs.stale_after_s === 1800, JSON.stringify(gs).slice(0, 300))
+  check('...its lead names the token, its premium and when it was read, and that it is not a signal', /On Base \(Coinbase list\), 1 of 1 listed token/.test(gaps.result.content[0].text) && /NVDAc \+0\.56% \(read 15 min ago/.test(gaps.result.content[0].text) && /not a trade signal/.test(gaps.result.content[0].text), gaps.result.content[0].text)
+  const gapsRh = await callNew(41, 'largest_gaps', { chain: 'robinhood' })
+  check('...one chain when asked, and a chain with no current premium says so', Object.keys(gapsRh.result.structuredContent.chains).join() === 'robinhood' && /no listed token has a current premium/.test(gapsRh.result.content[0].text))
+  const fresh = await callNew(42, 'data_freshness', {})
+  const fs_ = fresh.result.structuredContent
+  check('data_freshness gives /status as data: when each part was last read, its age and its state', fs_.chains.base.readings.last_at === '2026-11-08T13:45:00.000Z' && fs_.chains.base.readings.age_s === 900 && fs_.chains.base.readings.state === 'ok' && fs_.chains.robinhood.readings.state === 'down' && fs_.overall === 'down', JSON.stringify(fs_).slice(0, 300))
+  check('...and its lead opens with the worst state, so a part that stopped cannot hide', /^Something is NOT UPDATING\./.test(fresh.result.content[0].text) && /Base: issuer list read/.test(fresh.result.content[0].text))
+  check('...an argument it does not take is refused', (await callNew(43, 'data_freshness', { chain: 'base' })).error?.code === -32602)
+  const past = await callNew(44, 'address_on_date', { chain: 'base', address: A, date: '2026-01-07' })
+  check('address_on_date with nothing archived for that day says UNKNOWN, never a guess', !past.result.isError && /^UNKNOWN: no issuer list was recorded for 2026-01-07/.test(past.result.content[0].text) && past.result.structuredContent.attestation.verdict_on_date === 'unknown', JSON.stringify(past).slice(0, 300))
+  const viaApi = await (await get(`/stocks/api/archive/at?chain=base&address=${A}&date=2026-01-07`, { headers: { 'x-real-ip': '198.51.100.41' } })).json()
+  check('...the same answer as /api/archive/at, attestation hash and all', viaApi.attestation.sha256 === past.result.structuredContent.attestation.sha256)
+  check('...a day in the future is refused in the archive\'s words', (await callNew(45, 'address_on_date', { chain: 'base', address: A, date: '2026-11-20' })).result.isError === true)
+  check('...a day that is not a calendar day is refused', /real calendar day/.test((await callNew(46, 'address_on_date', { chain: 'base', address: A, date: '2026-02-30' })).result.content[0].text))
+  check('...and the date is required', (await callNew(47, 'address_on_date', { chain: 'base', address: A })).error?.code === -32602)
   const lean = pass.result.structuredContent
   check('the MCP passport leaves the raw series out unless asked, and names its sources and pool rule', lean.series_points === undefined && lean.series && /coinbase\.com/.test(lean.sources.registry) && lean.sources.pools_counted.min_liquidity_usd === 10000 && lean.sources.recorded_every_s === 900, JSON.stringify(lean.sources || {}).slice(0, 160))
   const full = await callWith(25, 'stock_passport', { chain: 'base', address: A, include_series: true })
@@ -1335,11 +1357,13 @@ console.log('source link')
   check('once it is public, the footer and the docs link to the source', shown.home.includes(`href="${GH}"`) && shown.doc.includes(`href="${GH}"`))
   check('...and the exam chip sits with the proof links right after Status, hidden until the page has a fresh result', /id="foot-status"[\s\S]{0,90}<a id="exam-chip" class="foot-link exam" href="https:\/\/github\.com\/proofofstock\/proof-of-stock\/tree\/exam" target="_blank" rel="noopener noreferrer" hidden>/.test(shown.home) && !hidden.home.includes('exam-chip') && !shown.home.includes('<!--exam-->'))
   {
-    // The bottom of every page: X, Telegram, GitHub, in that order and nothing after them (owner, 12.11).
+    // The bottom of every page: X, Telegram, GitHub, in that order and nothing after them (owner, 12.11). The landing
+    // adds the Telegram bot between Telegram and GitHub (owner, 23.11); the docs show the profiles only.
     const icons = (html, cls) => [...html.matchAll(new RegExp(`<a class="${cls}" href="([^"]+)"`, 'g'))].map((m) => m[1])
     const order = JSON.stringify(['https://x.com/proofofstock', 'https://t.me/proofofstockchannel', GH])
+    const siteOrder = JSON.stringify(['https://x.com/proofofstock', 'https://t.me/proofofstockchannel', 'https://t.me/ProofofStockBot', GH])
     const foot = (shown.home.match(/<footer class="foot">[\s\S]*?<\/footer>/) || [''])[0]
-    check('the site: X, Telegram and GitHub are the last thing in the footer, not in the link row', JSON.stringify(icons(foot, 'foot-ic')) === order && /<\/span>\s*<\/span>\s*<\/div>\s*<\/footer>/.test(foot) && !/<a(?![^>]*exam-chip)[^>]*foot-link[^>]*github/.test(foot) && foot.lastIndexOf('foot-ic') > foot.indexOf('foot-bottom'))
+    check('the site: X, Telegram, the bot and GitHub are the last thing in the footer, not in the link row', JSON.stringify(icons(foot, 'foot-ic')) === siteOrder && /<\/span>\s*<\/span>\s*<\/div>\s*<\/footer>/.test(foot) && !/<a(?![^>]*exam-chip)[^>]*foot-link[^>]*github/.test(foot) && foot.lastIndexOf('foot-ic') > foot.indexOf('foot-bottom'))
     const dfoot = (shown.doc.match(/<footer class="dx-foot">[\s\S]*?<\/footer>/) || [''])[0]
     check('the docs: the same three icons at the bottom, each named for a screen reader', JSON.stringify(icons(dfoot, 'dx-ic')) === order && (dfoot.match(/aria-label="Proof of Stock[^"]*"><span class="i i-(x|tg|gh)" aria-hidden="true">/g) || []).length === 3)
     check('...and while private, the docs show X and Telegram only', JSON.stringify(icons((hidden.doc.match(/<footer class="dx-foot">[\s\S]*?<\/footer>/) || [''])[0], 'dx-ic')) === JSON.stringify(['https://x.com/proofofstock', 'https://t.me/proofofstockchannel']))

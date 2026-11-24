@@ -73,7 +73,7 @@ export function mergeHistory (kept, rows) {
 /**
  * Read what is there. A file that is not there yet is an empty history; anything else that stops us reading it is a
  * refusal, because "could not read" followed by a write is how a history gets replaced by one run's worth of days
- * (Codex, 16.11). The zone is part of the file: one history is one zone.
+ * (outside review, 16.11). The zone is part of the file: one history is one zone.
  */
 export function readHistory (file, zone, readFile = (f) => fs.readFileSync(f, 'utf8')) {
   let text = null

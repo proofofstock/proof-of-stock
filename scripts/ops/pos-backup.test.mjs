@@ -91,7 +91,7 @@ console.log('a run')
   const refusedAfter = runBackup({ env: { POS_BACKUP_STATUS: statusFile }, run, now: () => t, exists: all })
   check('a run refused before it looks at the paths keeps the gap, instead of clearing the alert', refusedAfter === 2 && readStatus(statusFile).missing_sources.join() === '/var/lib/stp-anchors' && backupChecks({ status: readStatus(statusFile), now: t }).find((c) => c.key === 'backup:sources').bad)
   // The gap is a claim about the newest snapshot, so a run that finds the path again and then writes nothing must not
-  // report it closed: the owner would get the all-clear while no snapshot holds the path (zcode review, 13.11).
+  // report it closed: the owner would get the all-clear while no snapshot holds the path (outside review, 13.11).
   codes = { backup: 11 }
   const failedAfter = runBackup({ env, run, now: () => t, exists: all })
   check('a run that finds the path again but fails to write keeps the gap open', failedAfter === 1 && readStatus(statusFile).missing_sources.join() === '/var/lib/stp-anchors' && backupChecks({ status: readStatus(statusFile), now: t }).find((c) => c.key === 'backup:sources').bad)

@@ -61,8 +61,8 @@ fi
 
 [ "$(running_sha)" = "$EXPECT" ] || { echo "REFUSED: the running release changed during the gate; re-run"; exit 3; }
 # Again, and not only when the release is built: a release already on disk is reused as it is, so a host file
-# installed after it was built would never reach it and the deploy would look like it had done its job (Codex,
-# 16.11). Copying a file that is already there costs nothing.
+# installed after it was built would never reach it and the deploy would look like it had done its job (outside
+# review, 16.11). Copying a file that is already there costs nothing.
 sh "$REL/scripts/host-files.sh" copy "$BASE" "$REL"
 PREV=$(readlink -f "$BASE/current" 2>/dev/null || true)
 ln -sfn "$REL" "$BASE/current.new" && mv -T "$BASE/current.new" "$BASE/current"

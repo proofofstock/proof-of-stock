@@ -122,7 +122,7 @@ console.log('the run itself')
   check('a run answers, writes its days and says how many it has', code === 0 && readHistory(file, 'proofofstock.xyz').length === 1, String(code))
   check('...and with --quiet says one line, the one about the history', said.length === 1 && /^history: 1 days in /.test(said[0]), said.join(' | ').slice(0, 80))
   // The token goes in a header and nowhere else: not in a URL, not in a body, not in anything printed, and not in
-  // the file this leaves behind for years (Codex, 16.11).
+  // the file this leaves behind for years (outside review, 16.11).
   const secret = env.CF_API_TOKEN
   check('...and the token travelled as a bearer header, on every call and only there', calls.length === 2 && calls.every((c) => c.auth === `Bearer ${secret}`) && calls.every((c) => !c.url.includes(secret) && !String(c.body).includes(secret)), String(calls.length))
   check('...and is in nothing this run leaves behind', !said.join('\n').includes(secret) && !fs.readFileSync(file, 'utf8').includes(secret))
