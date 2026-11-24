@@ -1,17 +1,17 @@
 {
  "version": 1,
- "day": "2026-11-23",
+ "day": "2026-11-24",
  "site": "https://proofofstock.xyz",
- "started_at": "2026-11-23T18:41:19.297Z",
- "finished_at": "2026-11-23T18:43:43.275Z",
+ "started_at": "2026-11-24T18:13:25.578Z",
+ "finished_at": "2026-11-24T18:15:49.847Z",
  "set": {
   "counts": {
    "A": 620,
-   "B": 53,
+   "B": 56,
    "C": 26,
    "D": 20
   },
-  "sha256": "cbf06f3773c77de3655a7ccf5d8f1603cfd58b47f970a3c8f2a788ac2626e683",
+  "sha256": "15e65eab258127f5638cb311419aa4bb04202bde460b54884be8e233265fb5d1",
   "issuer_list_sha256": {
    "base": "495a7ac2ccea1c523940c18c014ee6cc8e26f3521e326a81d88cbdb024aaf24a",
    "robinhood": "3726b934cfecef05bc247c7a905e313565c30e55a6d62e5ed102bbe0df32e7f7"
@@ -21,12 +21,12 @@
   "false_listed": 0,
   "false_not_listed": 0,
   "real_called_fake": 0,
-  "lookalikes": 53,
-  "lookalikes_caught": 53,
+  "lookalikes": 56,
+  "lookalikes_caught": 56,
   "minted_wrong": 0,
   "refused": 0,
   "not_listed_while_refusing": 0,
-  "asked": 719,
+  "asked": 722,
   "lookalikes_caught_pct": 100,
   "list_proof": {
    "base": {
@@ -47,8 +47,8 @@
    "none": 0
   },
   "verify_ms": {
-   "p50": 389,
-   "p95": 1014,
+   "p50": 497,
+   "p95": 1430,
    "batches": 16
   }
  },
