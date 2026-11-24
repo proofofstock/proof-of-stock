@@ -81,6 +81,14 @@ reaches the numbers above.
 Three days is a decision for the site's first weeks, to see how it is used. The honest end of it is to stop keeping
 the requested link at all, not to make the window longer.
 
+## What a paid pass keeps
+
+Only if you buy a pass. The server keeps a ledger of passes and payments on disk, so that a restart neither ends your
+pass nor lets someone else reuse your payment: for each payment, the paying wallet and the transaction (both public on
+the chain anyway), when the pass ends, and the client it was granted to as a salted hash, never as an address. A
+payment's record is deleted a day after it settled, a pass's when it ends. The ledger is read by the payment code
+alone, and is not counted, published, sold or shared.
+
 ## Who our servers talk to
 
 Our servers send nothing about a visitor to anyone. To do their work they read from, and in three cases write to,

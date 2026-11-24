@@ -420,15 +420,16 @@ a.btn { text-decoration: none; display: inline-block; }
 .hero-brand { display: flex; align-items: center; gap: clamp(12px, 1.8vw, 20px); margin: 0 0 18px; }
 .hero-brand .headline { margin: 0; }
 /* The shield is alive (owner, 24.11): app.js sets --nx and --ny, where the pointer is from the shield's centre (-1 to 1),
-   or a slow sway when there is no pointer. The shield turns a few degrees to face it; the emblem, raised above the
-   plate, slides a little further the same way; a glare crosses the face; the glow under it falls away from the
-   pointer. Nothing here moves on its own, and with reduced motion app.js sets nothing and the rule below pins it flat. */
+   or a slow sway when there is no pointer. The shield turns a few degrees to face it as ONE rigid piece: outline, rim,
+   disc and band together, nothing inside it moves on its own (a disc moving within the shield read as a lens, owner,
+   24.11). Only the light moves across it: a glare over the whole face, a thin dark edge behind the outline that shows
+   the plate's thickness on the side turned away, and the glow under it falling away from the pointer. With reduced
+   motion app.js sets nothing and the rule below pins it flat. */
 .hero-shield { --nx: 0; --ny: 0; display: block; flex: none; width: clamp(54px, 9.5vw, 112px); margin-left: -6px; perspective: 420px;
-  filter: drop-shadow(calc(var(--nx) * -5px) calc(8px + var(--ny) * -4px) 26px rgba(75, 135, 255, .28)); }
-.shield-3d { display: block; width: 100%; height: auto; overflow: visible; transform: rotateX(calc(var(--ny) * -8deg)) rotateY(calc(var(--nx) * 8deg)); will-change: transform; }
-.shield-emblem { transform: translate(calc(var(--nx) * 1.8px), calc(var(--ny) * 1.8px)); }
-.shield-glare { transform: translate(calc(var(--nx) * 16px), calc(var(--ny) * 18px)); opacity: calc(.55 + (var(--nx) * var(--nx) + var(--ny) * var(--ny)) * .45); }
-@media (prefers-reduced-motion: reduce) { .hero-shield { filter: drop-shadow(0 8px 26px rgba(75, 135, 255, .28)); } .shield-3d, .shield-emblem, .shield-glare { transform: none; will-change: auto; } }
+  filter: drop-shadow(calc(var(--nx) * -1.6px) calc(1.2px + var(--ny) * -1.6px) 0 #0b1f55) drop-shadow(calc(var(--nx) * -6px) calc(8px + var(--ny) * -5px) 26px rgba(75, 135, 255, .28)); }
+.shield-3d { display: block; width: 100%; height: auto; overflow: visible; transform: rotateX(calc(var(--ny) * -9deg)) rotateY(calc(var(--nx) * 9deg)); will-change: transform; }
+.shield-glare { transform: translate(calc(var(--nx) * 22px), calc(var(--ny) * 26px)); opacity: calc(.5 + (var(--nx) * var(--nx) + var(--ny) * var(--ny)) * .5); }
+@media (prefers-reduced-motion: reduce) { .hero-shield { filter: drop-shadow(0 1.2px 0 #0b1f55) drop-shadow(0 8px 26px rgba(75, 135, 255, .28)); } .shield-3d, .shield-glare { transform: none; will-change: auto; } }
 .lede { font: 400 17px/1.6 var(--sans); color: var(--dim); max-width: 60ch; margin: 0 0 22px; }
 .hero-try { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; font-size: 12.5px; }
 .chip { background: var(--glass-2); border: 1px solid var(--line); border-radius: 999px; padding: 3px 12px; font-size: 12.5px; }

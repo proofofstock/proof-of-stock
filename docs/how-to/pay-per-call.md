@@ -101,7 +101,8 @@ hash is on BaseScan, and anyone can check the payment there.
 | 402, `this payment has already been used` | a replay, or another client presenting your authorization; sign a payment with a fresh nonce |
 | 429, `this payment is being settled` | the same authorization is in flight already; send it again in a few seconds |
 | 429, `a pass was bought here recently` | purchase pacing: one broadcast purchase per client and per payer every 5 minutes |
-| 429, `paid passes are paused` | several settlements in a row failed on chain; selling stops for a while |
+| 429, `this payer's last settlement failed on chain; it can buy again later` | a payment from this wallet was cancelled or failed after we sent it; that wallet waits 30 minutes, nobody else does |
+| 429, `paid passes are paused` | settlements from many different payers failed on chain within the hour; selling stops for a while |
 | 429, `a purchase from here is being settled` | another payment from the same client or the same payer is in flight; wait for its answer instead of signing a second one |
 | 429, `too many failed payments from this client; try again in N minutes` | five refused payments within 10 minutes, on any route that takes a payment; a payment that is only pending does not count. The body's `retry_after_s` and `Retry-After` give the same wait in seconds |
 | 429, `your pass is active` | you are over even 600 units a minute; slow down, `Retry-After: 5` |

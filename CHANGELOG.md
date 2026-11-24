@@ -21,6 +21,10 @@ The version is in `package.json`, and the site footer, the MCP `serverInfo.versi
 - The Telegram bot answers in Telegram HTML: the verdict in bold with a mark (listed, look-alike, not listed, unavailable), the chain and its issuer on a line of their own, every contract address as a code span that Telegram copies in one tap, and links to the passport and BaseScan. A ticker answer names the issuer's company beside each contract. Only our own tags (b, i, code, a) are sent and every value is escaped; a token creator's text still never reaches a reply.
 
 ### Security
+- Paid passes, the money path (owner, 24.11):
+  - A v2 payment settled through Coinbase's facilitator is checked on chain before a pass is granted: the receipt must show this payment going to our payee, as for our own settlement. No receipt yet is pending; a receipt that is not this payment grants nothing.
+  - The ledgers of passes and payments are kept on disk (`STP_X402_STATE`), so a restart ends no live pass and a settled authorization copied from the chain is "already used", never a second pass. Client addresses are stored as salted hashes; `docs/legal.md` says what is kept and for how long.
+  - A settlement that fails after broadcast blocks its payer for 30 minutes, and nobody else; selling as a whole pauses only when ten different payers fail that way within an hour. Before, three failures in a row from anyone paused all sales.
 From a self-audit before an outside one (two independent code reviews and a probe of the live service):
 - A stale issuer list gives no verdict on any route. Only `/verify` refused a list the issuer had not answered for 15 minutes; the passport, search, the list, the page and the board kept answering from the old copy, so a token delisted while the issuer was unreachable stayed ISSUER-LISTED there. Now every route says it cannot verify.
 - An issuer answer that is empty, or that lost more than half the list in one read, is a failed read, not a mass delisting.

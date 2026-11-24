@@ -206,7 +206,16 @@ To turn the passes on, give the web unit both facts (in `/etc/pos/web.env` or th
    # /etc/systemd/system/stp-web.service.d/x402.conf
    [Service]
    LoadCredential=x402-key:/etc/pos/x402.key
+   # The ledgers of passes and payments, kept across restarts (24.11). Client addresses are stored as salted hashes.
+   StateDirectory=stp-x402
+   StateDirectoryMode=0700
+   ReadWritePaths=/var/lib/stp-x402
+   Environment=STP_X402_STATE=/var/lib/stp-x402/ledger.json
    ```
+
+   The other units run as the same `pos` user, so they are told the ledger does not exist for them
+   (`InaccessiblePaths=-/var/lib/stp-x402` in `stp-tg-bot.service`). Without `STP_X402_STATE` the module keeps its
+   ledgers in memory, as before 24.11, and every restart ends every live pass.
 
    Like the anchor key, it is deliberately in no backup: it holds only gas, and a lost one is replaced by making a new
    one and funding it. The drop-in and `/etc/pos/web.env` are host config, and belong in the host's config backup.

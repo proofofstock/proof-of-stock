@@ -1008,7 +1008,7 @@
 // it sways very slowly. On a phone it follows the tilt of the device only where the browser gives that without asking
 // (an iPhone would ask for a permission, so there it only sways). With reduced motion nothing here runs at all and the
 // shield stays still. The script only writes --nx and --ny on the shield; style.css turns them into the tilt, the
-// raised emblem, the glare and the shadow. It runs only while the shield is on screen.
+// glare, the edge and the shadow; the shield turns as one piece. It runs only while the shield is on screen.
 ;(function () {
   function shieldMotion(el, win) {
     const mq = el && win.matchMedia ? win.matchMedia('(prefers-reduced-motion: reduce)') : null

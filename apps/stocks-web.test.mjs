@@ -1401,7 +1401,7 @@ console.log('search engines, AI crawlers and link previews')
     // The hero draws the same icon inline so its layers can move (owner, 24.11): every shape of shield.svg, unchanged.
     const hero = ((await (await g('/stocks/', { accept: 'text/html' })).text()).match(/<span class="hero-shield"[\s\S]*?<\/svg><\/span>/) || [''])[0]
     const shapes = [...icon.matchAll(/ (d|transform)="([^"]+)"/g)].map((m) => m[0])
-    check('...the hero\'s live shield is that icon, every shape and placement as drawn', shapes.length >= 5 && shapes.every((a) => hero.includes(a)) && hero.includes('class="shield-emblem"') && hero.includes('class="shield-glare"'), JSON.stringify(shapes.filter((a) => !hero.includes(a))))
+    check('...the hero\'s live shield is that icon, every shape and placement as drawn', shapes.length >= 5 && shapes.every((a) => hero.includes(a)) && hero.includes('class="shield-glare"'), JSON.stringify(shapes.filter((a) => !hero.includes(a))))
     {
       // Reduced motion: the script starts nothing (no listener, no frame, no property) and the stylesheet pins it flat.
       const js = fs.readFileSync(new URL('./stocks-web/app.js', import.meta.url), 'utf8')
@@ -1418,7 +1418,11 @@ console.log('search engines, AI crawlers and link previews')
       check('the shield does not move with reduced motion: the script starts nothing', still && still.out === null && still.calls.length === 0, JSON.stringify(still && still.calls))
       check('...and moves otherwise: it follows the pointer and asks for frames', live && live.out && live.calls.includes('listen:pointermove') && live.calls.some((c) => c.startsWith('frame:')), JSON.stringify(live && live.calls))
       const css = fs.readFileSync(new URL('./stocks-web/style.css', import.meta.url), 'utf8')
-      check('...and the stylesheet pins every moving layer flat under reduced motion', /@media \(prefers-reduced-motion: reduce\) \{[^\n]*\.shield-3d, \.shield-emblem, \.shield-glare \{ transform: none;/.test(css))
+      check('...and the stylesheet pins every moving layer flat under reduced motion', /@media \(prefers-reduced-motion: reduce\) \{[^\n]*\.shield-3d, \.shield-glare \{ transform: none;/.test(css))
+      // One rigid piece (owner, 24.11: only the disc moved, like a lens). The emblem is drawn exactly where shield.svg
+      // draws it, and nothing in the stylesheet gives a transform to any part of the shield but the whole and the glare.
+      const moving = [...css.matchAll(/([^{}\n]*)\{[^}]*\btransform: (?!none)[^;}]+/g)].map((m) => m[1].trim()).filter((sel) => /shield|emblem|disc/.test(sel))
+      check('...the shield turns as one piece: the disc has no transform of its own', !/shield-emblem/.test(hero) && /<g clip-path="url\(#hs-clip\)"><rect [^>]*\/><path [^>]*\/><g filter="url\(#hs-emboss\)" transform="translate\(40 43\) scale\(2\.55\) translate\(-8 -8\)"><circle /.test(hero) && JSON.stringify(moving) === JSON.stringify(['.shield-3d', '.shield-glare']), JSON.stringify(moving))
     }
     const png = Buffer.from(await (await g('/stocks/logo.png')).arrayBuffer())
     check('...and its PNG is 512 px', png.readUInt32BE(16) === 512 && png.readUInt32BE(20) === 512)

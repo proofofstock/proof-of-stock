@@ -25,10 +25,11 @@ The project holds two private keys and two other credentials. All live on the ho
   credential is absent.
 - **The facilitator API key** (`stp-web`, where v2 payments are settled through Coinbase's x402 facilitator). We check
   a v2 payment ourselves first (payee, amount, asset, network, window, one-time nonce), then hand it to the
-  facilitator, and the pass is granted on the facilitator's answer. On that path the answer that the payment settled
-  is **Coinbase's word**, not a receipt we read from the chain ourselves: Coinbase is one of the two issuers this
-  service checks, and this is the one place where we take its word for something. Stolen, the key lets someone call
-  the facilitator in our name; it moves no money of ours or of anyone's.
+  facilitator. Its answer that the payment settled is not taken on trust: Coinbase is one of the two issuers this
+  service checks, so before a pass is granted we read that transaction's receipt from the chain ourselves, the same
+  check as our own settlement (it succeeded, and its Transfer log moves exactly this payment to our payee). No receipt
+  yet is "pending"; a receipt that is not this payment grants nothing. Stolen, the key lets someone call the
+  facilitator in our name; it moves no money of ours or of anyone's.
 - **The Telegram bot token** (`stp-tg-bot`). It lets whoever holds it speak as @ProofofStockBot. The bot holds no
   key, reads only our own API on the loopback, and sends fixed words with every value escaped.
 
@@ -126,13 +127,15 @@ said last month.
   only ones in the signing path. We do not vendor them, and a malicious release of one would be a real problem.
 - **Your own agent.** If an agent ignores the answer it was given, nothing here can help it. The guard package exists
   for that, and it fails closed.
-- **Paid passes across a restart.** Passes and the ledger of settled payments are held in memory, so a deploy or a
-  restart ends every live pass early, and for the few minutes an already settled authorization stays inside its own
-  time window, a stranger who copies it from the chain could present it again and be granted a pass. Nobody's money
-  moves by it; the cost is a pass.
-- **Griefing the settlement breaker.** Three payments that a payer cancels between our check and our broadcast make
-  three failed settlements, and after three in a row selling pauses for 30 minutes. That costs the attacker three
-  transactions on Base each time. Failed payments are capped per client on every paid route.
+- **Griefing the settlement breaker, at a price.** A payment its payer cancels between our check and our broadcast
+  fails after we sent it. That payer is then refused for 30 minutes, and nobody else is: selling as a whole pauses
+  only when ten different payers fail that way within an hour, which costs an attacker ten funded wallets and ten
+  transactions on Base each time. The day's gas budget caps what it can cost us. Failed payments are also capped per
+  client on every paid route.
+
+The ledgers of passes and payments live on disk, so a restart keeps every live pass and every spent authorization: a
+settled authorization copied from the chain is "already used", not a second pass. They name no client by address:
+client addresses are kept as salted hashes.
 - **The badge is not metered.** `/badge.svg` answers without the per-client limit, because image proxies fetch it
   from a handful of addresses. It says listed, look-alike or not listed per address, at the proxy's own rate.
 
