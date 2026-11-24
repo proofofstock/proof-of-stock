@@ -1,0 +1,28 @@
+{
+  "_finding": "find_stock_token and list_stock_tokens are shared with the stdio server, which has only three tools. Their descriptions now name another tool to take (24.11); naming one the stdio server lacks, such as verify_stock_tokens, would send a stdio agent to a dead end.",
+  "target": "scripts/stocks/passport-mcp.mjs",
+  "runner": [
+    "node",
+    "apps/mcp-site-tools.test.mjs"
+  ],
+  "mutations": [
+    {
+      "name": "find_stock_token points at a tool only the HTTP server has",
+      "find": "to check an address you already hold, use stock_passport instead,",
+      "replace": "to check an address you already hold, use verify_stock_tokens or stock_passport instead,",
+      "expect": "FAIL ...and the stdio tools name only tools the stdio server has"
+    },
+    {
+      "name": "list_stock_tokens no longer says how to look one token up",
+      "find": "to look up one token by name use find_stock_token,",
+      "replace": "to look up one token by name search,",
+      "expect": "FAIL list_stock_tokens says to look one up with find_stock_token and check an address with stock_passport"
+    },
+    {
+      "name": "stock_passport no longer says to find the address first",
+      "find": "to get the official address from a ticker or company name use find_stock_token first.",
+      "replace": "it also takes a ticker.",
+      "expect": "FAIL stock_passport says when to use it and to find the address with find_stock_token first"
+    }
+  ]
+}

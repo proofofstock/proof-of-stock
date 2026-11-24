@@ -2,8 +2,8 @@
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "xyz.proofofstock/proof-of-stock",
   "title": "Proof of Stock",
-  "description": "RWA: is this stock token the issuer's? Base and Robinhood Chain, with a list hash to recheck.",
-  "version": "0.8.0",
+  "description": "Is this tokenized stock the issuer's own? Checks Base and Robinhood Chain, flags look-alikes.",
+  "version": "0.9.0",
   "websiteUrl": "https://proofofstock.xyz",
   "icons": [
     {

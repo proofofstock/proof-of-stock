@@ -1,0 +1,16 @@
+{
+  "_finding": "verify_anchor lists every anchored day in `days` (24.11): an agent asking about an older day must be able to see that it is there. Cutting the list back to the newest few hides the older days again.",
+  "target": "apps/stocks-web.mjs",
+  "runner": [
+    "node",
+    "apps/stocks-web.test.mjs"
+  ],
+  "mutations": [
+    {
+      "name": "verify_anchor lists only the newest ten days again",
+      "find": "mirror_mismatch: a.mirror_mismatch, days: anchorDays(dir),",
+      "replace": "mirror_mismatch: a.mirror_mismatch, days: anchorDays(dir).slice(0, 10),",
+      "expect": "FAIL verify_anchor lists every anchored day, newest first, not only the newest ten"
+    }
+  ]
+}

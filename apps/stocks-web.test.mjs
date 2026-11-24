@@ -156,6 +156,13 @@ console.log('the page')
   check('the fonts travel with their licence', ofl.status === 200 && (await ofl.text()).split('SIL OPEN FONT LICENSE Version 1.1').length === 3)
   }
   check('POST is refused', (await get('/stocks/api/find?chain=base&q=nvda', { method: 'POST' })).status === 405)
+  {
+    // The footer's Glama badge (apps/stocks-glama.mjs, 24.11). This app's fetch answers 404 for it, so the route serves
+    // our fallback chip, never a broken image, under a CSP of its own that runs nothing.
+    const b = await get('/stocks/glama-badge.svg')
+    const body = await b.text(), csp = b.headers.get('content-security-policy') || ''
+    check('/glama-badge.svg answers an SVG under a CSP that runs nothing, our fallback while no badge was read', b.status === 200 && /^image\/svg\+xml/.test(b.headers.get('content-type')) && /default-src 'none'/.test(csp) && !/script-src/.test(csp) && /^<svg/.test(body) && />Glama</.test(body), `${b.status} ${csp}`)
+  }
   const bare = await get('/stocks?chain=robinhood', { redirect: 'manual' })
   check('/stocks redirects to /stocks/, keeping the query', bare.status === 301 && bare.headers.get('location') === '/stocks/?chain=robinhood')
   check('the root and the old unprefixed API are not served', (await get('/')).status === 404 && (await get('/api/status')).status === 404)
@@ -953,6 +960,15 @@ console.log('verify and badge')
   const va = (await (await ask({})).json()).result
   const lead = va.content[0].text
   check('verify_anchor hands over the hash, the proof and the mirror transaction', va.structuredContent.sha256 === manifestHash && /\/anchors\/manifest-2026-11-12\.json$/.test(va.structuredContent.manifest_url) && va.structuredContent.mirrors.length === 1)
+  {
+    // Every anchored day, not the newest ten (24.11): an agent asking about an older day must be able to see it is
+    // there. Dates only, which /anchors/ lists anyway, so this hands over nothing of the archive itself.
+    const extra = Array.from({ length: 11 }, (_, i) => `2026-10-${String(20 + i).padStart(2, '0')}`)
+    for (const d of extra) fs.writeFileSync(path.join(ad, `manifest-${d}.json`), `{"day":"${d}"}\n`)
+    const all = (await (await ask({ day: '2026-11-12' })).json()).result.structuredContent.days
+    check('verify_anchor lists every anchored day, newest first, not only the newest ten', Array.isArray(all) && all.length === 12 && all[0] === '2026-11-12' && all[11] === '2026-10-20', JSON.stringify(all))
+    for (const d of extra) fs.rmSync(path.join(ad, `manifest-${d}.json`))
+  }
   check('...and its sentence says where the hash is and that Bitcoin is the root', lead.includes(manifestHash) && /Bitcoin is the root/.test(lead) && /sequenced by Coinbase/.test(lead))
   // A submitted transaction is not a published one. An agent quoting the lead must not say "it is on Base" about
   // something no block holds yet, so the two are said apart.
@@ -1355,6 +1371,12 @@ console.log('source link')
   check('while the repository is private, no page links to it (no GitHub 404 for a visitor)', !hidden.home.includes('github.com/proofofstock') && !hidden.doc.includes('github.com/proofofstock') && !hidden.home.includes('<!--source-->'))
   const shown = await pages({ source: GH })
   check('once it is public, the footer and the docs link to the source', shown.home.includes(`href="${GH}"`) && shown.doc.includes(`href="${GH}"`))
+  {
+    // The Glama badge (owner, 24.11): an image from OUR origin in the landing's footer, before the profile icons, linking
+    // to the connector page. The test app reads no badge (its fetch answers 404), so the route serves our fallback chip.
+    const foot = (shown.home.match(/<footer class="foot">[\s\S]*?<\/footer>/) || [''])[0]
+    check('the footer shows the Glama badge from our origin, linking to the connector on Glama, before the icons', /<a class="foot-glama" href="https:\/\/glama\.ai\/mcp\/connectors\/xyz\.proofofstock\/proof-of-stock"[^>]*><img src="glama-badge\.svg"/.test(foot) && foot.indexOf('foot-glama') < foot.indexOf('foot-social') && !/<img[^>]*src="https?:/.test(foot))
+  }
   check('...and the exam chip sits with the proof links right after Status, hidden until the page has a fresh result', /id="foot-status"[\s\S]{0,90}<a id="exam-chip" class="foot-link exam" href="https:\/\/github\.com\/proofofstock\/proof-of-stock\/tree\/exam" target="_blank" rel="noopener noreferrer" hidden>/.test(shown.home) && !hidden.home.includes('exam-chip') && !shown.home.includes('<!--exam-->'))
   {
     // The bottom of every page: X, Telegram, GitHub, in that order and nothing after them (owner, 12.11). The landing

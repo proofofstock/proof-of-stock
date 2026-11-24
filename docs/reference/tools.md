@@ -435,6 +435,10 @@ Tokens on a chain whose symbol or name copies an issuer-listed token while their
 newest first, first seen in the last 7 days, at most 50. A claim with evidence, not a verdict. A `since` older than 7 days is treated as 7 days ago; for any one address, use
 `verify_stock_tokens` or `stock_passport`, which answer its whole case.
 
+The 7-day window is a decision, not a gap: the archive answers questions and is not a bulk download, because what
+was recorded at the time is what nobody can rebuild later. The full archive is available on request at
+hello@proofofstock.xyz.
+
 ```bash
 curl -s https://proofofstock.xyz/mcp -H 'content-type: application/json' \
   -d '{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"recent_impostors","arguments":{"chain":"base","since":"2026-11-09"}}}'
@@ -661,7 +665,7 @@ curl -s https://proofofstock.xyz/mcp -H 'content-type: application/json'   -d '{
 | `mirrors[]` | object[] | one per chain that took the write: `chain`, `chain_id`, `tx`, `status`, `block`, `explorer`, `witnessed_by`, and `from`/`to`, which are the same address |
 | `mirrors[].status` | string | `confirmed`: in a block, and a node run by somebody other than that chain's operator has confirmed that the transaction at that hash carries this day and this manifest hash, from and to one address, value zero (`witnessed_by` names them). `in-block-unwitnessed`: the endpoint we sent it to says it is in a block and no independent node has confirmed it yet, so treat it as unconfirmed; it is asked again daily. `contradicted`: an independent node sees something else at that hash, which is a fault worth telling us about. `pending`: sent, not in a block yet. `skipped`, `failed`, `reverted`: no write that day |
 | `mirror_mismatch` | boolean | `true` when a mirror record exists for that day but names a different hash than the manifest now has. Then `mirrors` is empty: a record that belongs to other bytes is not shown beside these |
-| `days` | string[] | the ten newest anchored days, so an agent can ask for another without guessing |
+| `days` | string[] | every anchored day, newest first, so an agent can ask for another without guessing. Dates only: the same days `/anchors/` lists |
 | `how_to_check` | string[] | the steps, in order, for checking all of it yourself |
 
 ### Errors
@@ -897,6 +901,8 @@ The MCP lead adds one sentence to the archive's: that the answer is from the arc
 
 ### Limits
 
-One address and one day per call: a window, not a download. 1 unit of the rate limit, like `GET /api/archive/at`.
+One address and one day per call: a window, not a download, on purpose (the full archive is available on request at
+hello@proofofstock.xyz). [`verify_anchor`](#tool-verify_anchor) lists every anchored day. 1 unit of the rate limit,
+like `GET /api/archive/at`.
 
 [Not investment advice](../legal.md)

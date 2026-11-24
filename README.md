@@ -3,6 +3,7 @@
 [![CI](https://github.com/proofofstock/proof-of-stock/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/proofofstock/proof-of-stock/actions/workflows/ci.yml)
 [![Licence: MIT](https://img.shields.io/badge/licence-MIT-blue)](LICENSE)
 [![Public exam](https://img.shields.io/endpoint?url=https%3A%2F%2Fproofofstock.xyz%2Fapi%2Fexam%2Fbadge.json)](https://github.com/proofofstock/proof-of-stock/tree/exam)
+[![Proof of Stock MCP connector: tool definition quality and endpoint health on Glama](https://glama.ai/mcp/connectors/xyz.proofofstock/proof-of-stock/badges/score.svg)](https://glama.ai/mcp/connectors/xyz.proofofstock/proof-of-stock)
 
 ## At a glance
 
@@ -38,7 +39,7 @@ short. The dated record is [CHANGELOG.md](CHANGELOG.md); in one line per release
 | 2026-11-14 | 0.6.0 | A written threat model; the guard published through CI, not from a laptop |
 | 2026-11-15 | 0.7.0 | Paid passes over the free rate, paid in USDC on Base over x402 |
 | 2026-11-20 | 0.8.0 | Payment alarms reach Telegram; look-alikes found by symbol search across DEX aggregators |
-| 2026-11-23 | live, unreleased | `/api`, every call with its price; tabs on every page; a badge to embed from each passport; paid passes over x402 v2 too; a Bankr skill in review |
+| 2026-11-24 | 0.9.0 | Ten MCP tools; a Telegram bot, @ProofofStockBot; `/api`, every call with its price; tabs on every page; a badge to embed from each passport; paid passes over x402 v2 too; a Bankr skill in review |
 
 </details>
 

@@ -1,0 +1,70 @@
+{
+  "_finding": "The MCP descriptions tell an agent which tool to take and say where a window is deliberate (24.11, after an outside tool-quality score asked for both). The danger is a description that quietly loses its pointer, drops the reason a window is a window, or names a tool this server does not have, which sends an agent to a dead end.",
+  "target": "apps/stocks-mcp-http.mjs",
+  "runner": [
+    "node",
+    "apps/mcp-site-tools.test.mjs"
+  ],
+  "mutations": [
+    {
+      "name": "verify_stock_tokens no longer says to find an address with find_stock_token",
+      "find": "to get the official address from a ticker or company name use find_stock_token,",
+      "replace": "to get the official address from a ticker or company name ask elsewhere,",
+      "expect": "FAIL verify_stock_tokens says to find an address with find_stock_token and go deep with stock_passport"
+    },
+    {
+      "name": "recent_impostors no longer says its window is deliberate",
+      "find": "list. Each names what it imitates and the listed address. The window is deliberate:",
+      "replace": "list. Each names what it imitates and the listed address. The window is short:",
+      "expect": "FAIL recent_impostors says its window is deliberate, not a bulk download, and the full archive is on request"
+    },
+    {
+      "name": "address_on_date drops where the full archive is",
+      "find": "(the full archive is available on request, hello@proofofstock.xyz). The days that are anchored",
+      "replace": "(hello@proofofstock.xyz). The days that are anchored",
+      "expect": "FAIL address_on_date says its window is deliberate, not a bulk download, and the full archive is on request"
+    },
+    {
+      "name": "verify_anchor stops promising every anchored day",
+      "find": "Every answer lists all anchored days in `days`, newest first,",
+      "replace": "Every answer lists recent anchored days in `days`, newest first,",
+      "expect": "FAIL verify_anchor promises every anchored day in `days`"
+    },
+    {
+      "name": "a description names a tool this server does not have",
+      "find": "and for one address in depth (prices, premium, its case) stock_passport. An address of the wrong form",
+      "replace": "and for one address in depth (prices, premium, its case) stock_passport or token_passport. An address of the wrong form",
+      "expect": "FAIL every tool a description names exists on this server"
+    },
+    {
+      "name": "largest_gaps says its caveat twice again",
+      "find": "not a trade signal or advice.',",
+      "replace": "not a trade signal. Facts, not advice.',",
+      "expect": "FAIL ...and says \"not a trade signal\" once, not twice"
+    },
+    {
+      "name": "verify_anchor buries what omitting day does",
+      "find": "'Check that our record of one UTC day has not been changed since. Omit day for the newest anchored day; a day with no anchor is an error that says so, never a guess. ",
+      "replace": "'Check that our record of one UTC day has not been changed since. ",
+      "expect": "FAIL verify_anchor opens with the action, then what omitting day does, and says an unanchored day is an error"
+    },
+    {
+      "name": "data_freshness loses when to ask it",
+      "find": "Use it before trusting an answer that seems old, or when largest_gaps leaves rows out as stale; it answers about the service, not about any token.",
+      "replace": "Use it before trusting an answer that seems old.",
+      "expect": "FAIL data_freshness says when to ask it, and that it is about the service, not a token"
+    },
+    {
+      "name": "compare_venues loses its siblings",
+      "find": "for the largest gaps on one chain use largest_gaps, and for one contract address stock_passport.",
+      "replace": "for anything else ask another tool.",
+      "expect": "FAIL compare_venues names largest_gaps and stock_passport as the ones to use instead"
+    },
+    {
+      "name": "verify_stock_tokens no longer says what a call costs",
+      "find": " Costs one unit of the rate limit per ten addresses.",
+      "replace": "",
+      "expect": "FAIL verify_stock_tokens says what a malformed address does and what a call costs"
+    }
+  ]
+}

@@ -1,0 +1,70 @@
+{
+  "_finding": "The footer's Glama badge is somebody else's SVG served from our origin (24.11). Opened on its own an SVG is a document, so a script, an event handler, a foreignObject or a link out inside it would run or load as us. The danger is a filter that lets one of them through, a failed read that drops the good copy, or a server that asks Glama on every request.",
+  "target": "apps/stocks-glama.mjs",
+  "runner": [
+    "node",
+    "apps/glama-badge.test.mjs"
+  ],
+  "mutations": [
+    {
+      "name": "any element is allowed",
+      "find": "if (!ELEMENTS.has(m[1].toLowerCase())) return why(`element ${m[1].slice(0, 30)}`)",
+      "replace": "if (false) return why(`element ${m[1].slice(0, 30)}`)",
+      "expect": "FAIL refused: a foreignObject"
+    },
+    {
+      "name": "event handlers are no longer looked for",
+      "find": "  if (/\\son[a-z]+\\s*=/i.test(s)) return why('an event handler')",
+      "replace": "  if (/\\son[a-z]+=/.test(s)) return why('an event handler')",
+      "expect": "FAIL refused: an event handler in capitals"
+    },
+    {
+      "name": "a link may leave the file",
+      "find": "if (!/^#[\\w.-]+$/.test(m[2] ?? m[3])) return why('a link out of the file')",
+      "replace": "if (/^javascript:/.test(m[2] ?? m[3])) return why('a link out of the file')",
+      "expect": "FAIL refused: a link out by href"
+    },
+    {
+      "name": "a url() may leave the file",
+      "find": "if (!/^#[\\w.-]+$/.test(m[1])) return why('a url() out of the file')",
+      "replace": "if (false) return why('a url() out of the file')",
+      "expect": "FAIL refused: a url() out of the file"
+    },
+    {
+      "name": "a DOCTYPE or entity is let through",
+      "find": "  if (/<[!?]/.test(s)) return why('a DOCTYPE, entity, comment or processing instruction')",
+      "replace": "  if (/<\\?/.test(s)) return why('a DOCTYPE, entity, comment or processing instruction')",
+      "expect": "FAIL refused: a markup declaration inside the svg"
+    },
+    {
+      "name": "a failed read throws away the last good copy",
+      "find": "      log(`[glama] ${String(e && e.message || e).slice(0, 200)}`)",
+      "replace": "      svg = null; log(`[glama] ${String(e && e.message || e).slice(0, 200)}`)",
+      "expect": "FAIL a refused read keeps the last good copy, and says why in the journal"
+    },
+    {
+      "name": "the server asks Glama on every refresh",
+      "find": "      if (!force && now() - tried < everyMs) return Promise.resolve()",
+      "replace": "      if (false) return Promise.resolve()",
+      "expect": "FAIL ...and the server asks again only after an hour"
+    },
+    {
+      "name": "any content type is taken as a badge",
+      "find": "      if (!/^image\\/svg\\+xml\\b/i.test(res.headers?.get?.('content-type') || '')) throw new Error('badge is not image/svg+xml')",
+      "replace": "      if (false) throw new Error('badge is not image/svg+xml')",
+      "expect": "FAIL a read that is not image/svg+xml is refused"
+    },
+    {
+      "name": "the size cap is lifted",
+      "find": "  if (buf.length > max) throw new Error(`badge too large (${buf.length} bytes)`)",
+      "replace": "  if (false) throw new Error(`badge too large (${buf.length} bytes)`)",
+      "expect": "FAIL a read past the size cap is refused"
+    },
+    {
+      "name": "the badge's own CSP allows scripts",
+      "find": "export const GLAMA_BADGE_CSP = \"default-src 'none'; style-src 'unsafe-inline'; img-src data:\"",
+      "replace": "export const GLAMA_BADGE_CSP = \"default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:\"",
+      "expect": "FAIL the badge is served under a CSP that runs no script and fetches nothing"
+    }
+  ]
+}

@@ -604,6 +604,8 @@ html:has(.tape) { scroll-padding-top: 72px; } /* the landing only: docs headings
 .foot-meta { display: inline-flex; align-items: center; gap: 14px; flex-wrap: wrap; }
 /* X and Telegram: square keys in the footer's own glass and line, the icon in the site's stroke; the accent on hover. */
 .i-x { --i: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M2.6 2.6h3.1l7.7 10.8h-3.1z'/%3E%3Cpath d='M13.2 2.6L8.9 7.5M7.1 9.6l-4.3 3.8'/%3E%3C/svg%3E"); } .i-tg { --i: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M14.1 2.3L1.9 7.2l4.5 1.7 1.7 4.6 2.4-3 3.1 2.3z'/%3E%3Cpath d='M6.4 8.9l7.7-6.6'/%3E%3C/svg%3E"); }
+.foot-glama { display: inline-flex; align-items: center; }
+.foot-glama img { display: block; width: 110px; height: 20px; }
 .foot-social { display: inline-flex; gap: 6px; padding-left: 14px; border-left: 1px solid var(--line); }
 .foot-ic { width: 26px; height: 26px; display: grid; place-items: center; border: 1px solid var(--line); border-radius: 7px; background: var(--glass-2); color: var(--dim); font-size: 13px; transition: color .15s, border-color .15s, background .15s, transform .15s; }
 .foot-ic:hover, .foot-ic:focus-visible { color: var(--accent-hi); border-color: var(--accent-hi); background: color-mix(in srgb, var(--accent) 12%, var(--glass-2)); transform: translateY(-1px); outline: none; }

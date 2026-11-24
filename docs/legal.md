@@ -48,8 +48,8 @@ you may hold or trade a tokenized stock is a matter between you, the issuer and 
 ## What we count
 
 The site counts its own visits, with no cookie, no third-party counter and no stored address
-(`apps/stocks-analytics.mjs`, `apps/stocks-web/beacon.js`). One thing is not ours: the pages load two fonts from Google
-Fonts, so your browser asks Google for them. For each visit we keep:
+(`apps/stocks-analytics.mjs`, `apps/stocks-web/beacon.js`). The fonts are served from this site as well, so a page view
+asks no other host for anything. For each visit we keep:
 
 - which page was shown, and for how many seconds it was on screen;
 - which passport was open, and the host name of the site that linked here, if any;
@@ -97,7 +97,11 @@ these services; each is named so that a reader can check what leaves our host:
 - **Bitcoin**: the OpenTimestamps calendars, to stamp the day's hash, and mempool.space and blockstream.info, to check
   the block a proof points to;
 - **GitHub**: the latest report of the public exam, at most every 30 minutes;
-- **Telegram**: alerts about our own service, to us.
+- **Glama**: the score badge of our MCP connector, at most once an hour, so the footer can show it from this site
+  instead of your browser asking Glama for it;
+- **Telegram**: alerts about our own service, to us; and [@ProofofStockBot](https://t.me/ProofofStockBot), which reads
+  the messages sent to it and answers them. It writes no chat and no message to disk: a chat is held in memory only to
+  limit how often it is answered.
 
 Cloudflare serves the site. The fonts come from this site too, not from Google Fonts, so a page view tells no font host
 who is reading. Nothing else on the page reaches a third party.

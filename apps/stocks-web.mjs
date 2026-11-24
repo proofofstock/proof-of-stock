@@ -76,6 +76,7 @@ import { createAnalytics, parseHit } from './stocks-analytics.mjs'
 import { findAcross, sameStockElsewhere, overview, matrix, isinsOfTicker, MATRIX_VENUES } from '../evm/core/stocks/cross-chain.mjs'
 import { symbolLabel, nameLabel, UNTRUSTED_TEXT_NOTE } from '../evm/core/stocks/untrusted-text.mjs'
 import { createExamCache, EXAM_CHIP_HTML } from './stocks-exam.mjs'
+import { createGlamaBadge, glamaFooterHtml, GLAMA_BADGE_CSP, GLAMA_BADGE_PATH, GLAMA_FALLBACK_SVG } from './stocks-glama.mjs'
 import { boardOf, withBoard, BOARD_LIMIT } from './stocks-board.mjs'
 import { createPassSales, rpcCaller } from './pass-sales.mjs'
 import { passBazaar, openApiOf } from './x402-discovery.mjs'
@@ -265,6 +266,7 @@ export function createStocksWeb ({
   publicPath = process.env.STOCKS_PUBLIC_PATH ?? '',
   analytics: analyticsOpts = {}, // apps/stocks-analytics.mjs options; { enabled: false } turns the counter off
   exam: examOpts = {}, // apps/stocks-exam.mjs options; { url: null } turns the exam summary off
+  glama: glamaOpts = {}, // apps/stocks-glama.mjs options; { url: null } leaves the footer badge on its fallback
   x402: x402Opts = {}, // evm/core/stocks/x402.mjs options; {} with no host env is off, and then nothing changes
   // The module itself, so a test can be a host that asked for passes and did not get it. Null is that host.
   x402Module = createX402,
@@ -300,6 +302,9 @@ export function createStocksWeb ({
   // The public exam's report is read from GitHub in the background, at most every 30 minutes; a request reads memory.
   // Like the source link, only while the source is public: before that there is no exam branch to read or link to.
   const exam = createExamCache({ fetchImpl, now, log, ...(sourceUrl ? {} : { url: null }), ...examOpts })
+  // The Glama badge of our MCP connector, fetched by the server at most hourly and served from our origin, so a
+  // visitor's browser never asks glama.ai for it (apps/stocks-glama.mjs, owner 24.11).
+  const glama = createGlamaBadge({ fetchImpl, now, log, ...glamaOpts })
   // The release date is the changelog's for this version ("## [0.3.0] - 2026-11-10"), shown as "10 Nov 2026".
   // The sitemap's lastmod for the home and the docs is the same date, as YYYY-MM-DD (null when unreleased).
   const releasedIso = (() => {
@@ -351,6 +356,7 @@ export function createStocksWeb ({
   static_['/'].body = Buffer.from(String(static_['/'].body).replace('href="style.css"', `href="style.css?v=${version('/style.css')}"`).replace('src="app.js"', `src="app.js?v=${version('/app.js')}"`).replace('src="beacon.js"', `src="beacon.js?v=${version('/beacon.js')}"`).replace('src="seal.js"', `src="seal.js?v=${version('/seal.js')}"`)
     .replaceAll('__MCP_URL__', publicOrigin + publicPath + '/mcp').replaceAll('__VERSION__', appVersion).replaceAll('__RELEASED__', released)
     .replace('<!--source-->', sourceUrl ? sourceIcon(sourceUrl) : '').replace('<!--exam-->', sourceUrl ? EXAM_CHIP_HTML : '')
+    .replace('<!--glama-->', glamaFooterHtml(GLAMA_BADGE_PATH.slice(1)))
     // The site's tabs (apps/stocks-nav.mjs), the same bar every other page has.
     .replace('<!--site-bar-->', () => siteBar({ current: 'home' }))
     // The paid-pass block promises a payment path: a server without one (passes off, a local copy) never shows it.
@@ -437,6 +443,7 @@ export function createStocksWeb ({
   async function refreshAll () {
     // Not awaited: a slow GitHub must not hold the start of the site or a registry refresh.
     exam.refresh().catch(() => {})
+    glama.refresh().catch(() => {})
     await Promise.all(Object.keys(CHAINS).flatMap((c) => [refreshRegistry(c), windows[c].refresh(), Promise.resolve(refreshImpostors(c)), Promise.resolve(refreshNames(c)), Promise.resolve(history.refresh(c))]))
   }
 
@@ -810,7 +817,7 @@ export function createStocksWeb ({
       return {
         day: a.day, sha256: a.sha256, root: 'bitcoin', manifest_url: at + a.manifest,
         proofs: a.proofs.map((p) => ({ ...p, url: at + p.file })),
-        mirrors: a.mirrors, mirror_mismatch: a.mirror_mismatch, days: anchorDays(dir).slice(0, 10),
+        mirrors: a.mirrors, mirror_mismatch: a.mirror_mismatch, days: anchorDays(dir),
         how_to_check: ['Fetch the manifest and recompute its SHA-256: it must be the sha256 above.', 'Fetch a .ots proof beside it and run: ots verify manifest-' + a.day + '.json (opentimestamps-client); a proof still pending completes with ots upgrade.', 'Read each mirror transaction on its own chain: the calldata is ASCII and says the day and this hash.', 'The manifest names every data file of that day by SHA-256, so any file you hold can be checked against it.'],
       }
     },
@@ -1032,6 +1039,12 @@ export function createStocksWeb ({
     // The badge: an image other pages embed. It answers from memory, is cached at the CDN and is not rate limited per
     // address of the requester, because image proxies fetch it from a handful of addresses. It is always 200: a broken
     // image on someone else's page would read as our outage.
+    // The Glama badge from memory: the last copy that passed checkBadgeSvg, or our plain chip until one has. Its own CSP
+    // allows no script, so even opened on its own it runs nothing.
+    if (sub === GLAMA_BADGE_PATH) {
+      const svg = glama.get()
+      return send(res, 200, svg || GLAMA_FALLBACK_SVG, 'image/svg+xml; charset=utf-8', { 'cache-control': svg ? 'public, max-age=3600' : 'public, max-age=300', 'content-security-policy': GLAMA_BADGE_CSP })
+    }
     if (sub === '/badge.svg') {
       const c = url.searchParams.get('chain'), a = url.searchParams.get('address')
       const r = CHAINS[c] ? verifyOf(c, a) : { status: 'unavailable', body: { address: a } }

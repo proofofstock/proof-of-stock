@@ -7,7 +7,8 @@
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { createMcpHttp, freshnessOf, freshnessLead, gapsLead, onDateLead, SITE_TOOLS } from './stocks-mcp-http.mjs'
+import { createMcpHttp, freshnessOf, freshnessLead, gapsLead, onDateLead, SITE_TOOLS, toolsFor } from './stocks-mcp-http.mjs'
+import { TOOLS } from '../scripts/stocks/passport-mcp.mjs'
 import { statusOf } from './stocks-status.mjs'
 import { archiveAt } from './stocks-archive.mjs'
 import { createHistoryStore } from './stocks-history.mjs'
@@ -24,6 +25,37 @@ const pctOf = (x) => (x == null ? null : (x > 0 ? '+' : '') + (x * 100).toFixed(
 console.log('the tools')
 check('three tools, every one read-only, none trading or signing', SITE_TOOLS.length === 3 && SITE_TOOLS.every((t) => t.annotations.readOnlyHint === true && t.annotations.destructiveHint === false && !/buy|sell|swap|trade|sign/.test(t.name)))
 check('every argument is described for an agent', SITE_TOOLS.every((t) => Object.values(t.inputSchema.properties).every((p) => typeof p.description === 'string' && p.description.length >= 15)))
+
+console.log('descriptions that tell an agent which tool to use (24.11)')
+{
+  const all = toolsFor(24)
+  const d = Object.fromEntries(all.map((t) => [t.name, t.description]))
+  // The three closest tools each say when to take another, by name.
+  check('find_stock_token says to check an address with stock_passport and to enumerate with list_stock_tokens', /use stock_passport instead/.test(d.find_stock_token) && /list_stock_tokens/.test(d.find_stock_token))
+  check('list_stock_tokens says to look one up with find_stock_token and check an address with stock_passport', /find_stock_token/.test(d.list_stock_tokens) && /stock_passport/.test(d.list_stock_tokens))
+  check('verify_stock_tokens says to find an address with find_stock_token and go deep with stock_passport', /find_stock_token/.test(d.verify_stock_tokens) && /stock_passport/.test(d.verify_stock_tokens))
+  // The window is a decision (owner, 10.11 and 19.11), and the description says so, with where the rest is.
+  for (const n of ['recent_impostors', 'address_on_date']) check(`${n} says its window is deliberate, not a bulk download, and the full archive is on request`, /deliberate/.test(d[n]) && /not a bulk download/.test(d[n]) && /on request/.test(d[n]))
+  check('verify_anchor promises every anchored day in `days`', /lists all anchored days in `days`/.test(d.verify_anchor))
+  // The second pass (24.11), after the per-tool scores: each says when to take it and which sibling instead, and the
+  // instruction an agent needs first comes first.
+  check('stock_passport says when to use it and to find the address with find_stock_token first', /^Check one token contract address in depth\. Use it when you hold one address/.test(d.stock_passport) && /use find_stock_token first/.test(d.stock_passport))
+  check('largest_gaps names stock_passport, compare_venues and data_freshness as the ones to use instead', ['stock_passport', 'compare_venues', 'data_freshness'].every((n) => d.largest_gaps.includes(n)))
+  check('...and says "not a trade signal" once, not twice', d.largest_gaps.split('not a trade signal').length === 2 && !/Facts, not advice\./.test(d.largest_gaps))
+  check('compare_venues names largest_gaps and stock_passport as the ones to use instead', /use largest_gaps/.test(d.compare_venues) && /stock_passport/.test(d.compare_venues))
+  check('data_freshness says when to ask it, and that it is about the service, not a token', /when largest_gaps leaves rows out as stale/.test(d.data_freshness) && /not about any token/.test(d.data_freshness))
+  check('verify_anchor opens with the action, then what omitting day does, and says an unanchored day is an error', /^Check that our record of one UTC day has not been changed since\. Omit day for the newest anchored day; a day with no anchor is an error/.test(d.verify_anchor))
+  check('verify_stock_tokens says what a malformed address does and what a call costs', /refuses the whole call before any is checked/.test(d.verify_stock_tokens) && /one unit of the rate limit per ten addresses/.test(d.verify_stock_tokens))
+  // A description that names a tool the server does not have sends an agent to a dead end. The stdio server offers
+  // only the first three, so their descriptions may name only those three.
+  const names = new Set(all.map((t) => t.name))
+  const named = (s) => [...s.matchAll(/\b([a-z]+(?:_[a-z]+)+)\b/g)].map((m) => m[1]).filter((w) => /_(token|tokens|passport|impostors|venues|anchor|gaps|freshness|date)$/.test(w))
+  const dead = all.flatMap((t) => named(t.description).filter((w) => !names.has(w)).map((w) => `${t.name} -> ${w}`))
+  check('every tool a description names exists on this server', dead.length === 0, dead.join(', '))
+  const stdio = new Set(TOOLS.map((t) => t.name))
+  const deadStdio = TOOLS.flatMap((t) => named(t.description).filter((w) => !stdio.has(w)).map((w) => `${t.name} -> ${w}`))
+  check('...and the stdio tools name only tools the stdio server has', deadStdio.length === 0, deadStdio.join(', '))
+}
 
 console.log('data_freshness')
 const NOW = Date.parse('2026-11-23T12:00:00Z')
