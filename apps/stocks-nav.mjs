@@ -11,14 +11,14 @@
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))
 
 /**
- * The tabs, in order. Proofs opens the how-to on checking a day's anchor: it is the one page a person can follow to
- * check us without us (the manifest, its Bitcoin proof, the mirrors on Base). /anchors/ is the same evidence as JSON for
- * code, and the landing's seal block shows it only with a script; both are linked from that page.
+ * The tabs, in order. Proofs opens "Check us" (24.11): what we could and could not fake, and the three checks of an
+ * answer a person can run without us (the issuer's list, the past in Bitcoin, a price at its block). It links the
+ * how-to on a day's anchor and the receipts, which sit under the same tab.
  */
 export const TABS = Object.freeze([
   Object.freeze({ id: 'home', label: 'Home', href: '' }),
   Object.freeze({ id: 'methodology', label: 'Methodology', href: 'docs/explanation/methodology.md' }),
-  Object.freeze({ id: 'proofs', label: 'Proofs', href: 'docs/how-to/verify-an-anchor.md' }),
+  Object.freeze({ id: 'proofs', label: 'Proofs', href: 'docs/how-to/check-us.md' }),
   Object.freeze({ id: 'api', label: 'API', href: 'api' }),
   Object.freeze({ id: 'status', label: 'Status', href: 'status' }),
   Object.freeze({ id: 'history', label: 'History', href: 'history' }),
@@ -28,6 +28,7 @@ export const TABS = Object.freeze([
 /** The docs pages that belong to a tab other than Docs: a reader on one sees that tab marked. */
 const DOC_TAB = Object.freeze({
   'explanation/methodology.md': 'methodology',
+  'how-to/check-us.md': 'proofs',
   'how-to/verify-an-anchor.md': 'proofs',
   'how-to/keep-a-receipt.md': 'proofs',
   'reference/http-api.md': 'api',

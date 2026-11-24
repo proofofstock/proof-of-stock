@@ -14,9 +14,9 @@
     },
     {
       "name": "Proofs opens the JSON listing instead of the page a person can follow",
-      "find": "href: 'docs/how-to/verify-an-anchor.md' })",
+      "find": "href: 'docs/how-to/check-us.md' })",
       "replace": "href: 'anchors/' })",
-      "expect": "FAIL Methodology opens the methodology, Proofs the how-to on checking a day's anchor"
+      "expect": "FAIL Methodology opens the methodology, Proofs the page on checking us without us"
     },
     {
       "name": "the methodology page is not under its tab",

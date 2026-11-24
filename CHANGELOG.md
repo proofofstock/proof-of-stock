@@ -13,6 +13,7 @@ The version is in `package.json`, and the site footer, the MCP `serverInfo.versi
 ## [Unreleased]
 
 ### Added
+- "Check us, not just our answers" (`docs/how-to/check-us.md`), where the Proofs tab now opens: what we could fake and what we could not, the three checks of an answer anyone can run without us (the verdict against the issuer's own list, the past against Bitcoin, a price against the chain at its block), what else runs against us daily, and the one true sentence an agent should say when asked whether the service is audited. The MCP instructions point agents there.
 - A reward: 100 USD in USDC on Base for a critical finding (a false "listed", a pass without its payment, somebody's text in a sentence of ours). Terms in `SECURITY.md`; the threat model points to them.
 - The footer links `security.txt` as "Security", beside Legal: where somebody looking for how to report a hole looks first.
 - Pay per call: a client sets a hard price ceiling itself, never more than 0.01 USDC for one of our passes without a person confirming; and the refusals table names the new one (a purchase from here is being settled) and that failed payments are capped on every paid route.

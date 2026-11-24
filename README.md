@@ -109,7 +109,8 @@ Claude, ChatGPT, Cursor and raw JSON-RPC are covered in the [tutorial](docs/tuto
 
 ## Check us, not just our answers
 
-A checker is worth something only if you do not have to take its word. Each of these works without trusting us:
+A checker is worth something only if you do not have to take its word. Each of these works without trusting us, and
+[Check us](docs/how-to/check-us.md) puts them on one page, with the commands:
 
 - **The list behind a verdict.** Every answer names the issuer list it was decided against by the SHA-256 of its
   sorted addresses, with a shell command that computes the same hash from the issuer's own API, and a URL of that

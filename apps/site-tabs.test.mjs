@@ -24,14 +24,14 @@ const tabsOf = (nav) => [...nav.matchAll(/<a class="site-tab" href="([^"]*)"( ar
 console.log('the tabs themselves')
 {
   check('seven tabs in the owner\'s order: Home, Methodology, Proofs, API, Status, History, Docs', TABS.map((t) => t.label).join(',') === 'Home,Methodology,Proofs,API,Status,History,Docs')
-  check('Methodology opens the methodology, Proofs the how-to on checking a day\'s anchor', TABS.find((t) => t.id === 'methodology').href === 'docs/explanation/methodology.md' && TABS.find((t) => t.id === 'proofs').href === 'docs/how-to/verify-an-anchor.md')
+  check('Methodology opens the methodology, Proofs the page on checking us without us', TABS.find((t) => t.id === 'methodology').href === 'docs/explanation/methodology.md' && TABS.find((t) => t.id === 'proofs').href === 'docs/how-to/check-us.md')
   for (const t of TABS) {
     const tabs = tabsOf(siteTabs({ current: t.id, root: '../' }))
     check(`with ${t.id} current, exactly that one tab is marked`, tabs.length === TABS.length && tabs.filter((x) => x.current).length === 1 && tabs.find((x) => x.current).label === t.label)
   }
   check('every href is relative to the root it is handed', tabsOf(siteTabs({ current: 'home', root: '../../' })).every((x, i) => x.href === '../../' + TABS[i].href))
   check('an unknown page marks no tab rather than a wrong one', tabsOf(siteTabs({ current: 'nope' })).every((x) => !x.current))
-  check('docs pages sit under their tab: methodology, proofs, API; the rest under Docs', tabOfDoc('explanation/methodology.md') === 'methodology' && tabOfDoc('how-to/verify-an-anchor.md') === 'proofs' && tabOfDoc('how-to/keep-a-receipt.md') === 'proofs' && tabOfDoc('reference/http-api.md') === 'api' && tabOfDoc('reference/tools.md') === 'api' && tabOfDoc('how-to/alert-on-gap.md') === 'docs' && tabOfDoc('README.md') === 'docs')
+  check('docs pages sit under their tab: methodology, proofs, API; the rest under Docs', tabOfDoc('explanation/methodology.md') === 'methodology' && tabOfDoc('how-to/check-us.md') === 'proofs' && tabOfDoc('how-to/verify-an-anchor.md') === 'proofs' && tabOfDoc('how-to/keep-a-receipt.md') === 'proofs' && tabOfDoc('reference/http-api.md') === 'api' && tabOfDoc('reference/tools.md') === 'api' && tabOfDoc('how-to/alert-on-gap.md') === 'docs' && tabOfDoc('README.md') === 'docs')
   const bar = siteBar({ current: 'api', extra: '<b>x</b>' })
   check('the bar needs nothing the CSP forbids: no inline style, script or handler', !/<script|<style|\sstyle=|\son[a-z]+=/.test(siteBar({ current: 'home' })))
   check('every class the bar uses is styled in style.css, which every page loads', [...new Set([...bar.matchAll(/class="([^"]+)"/g)].flatMap((m) => m[1].split(/\s+/)))].every((c) => new RegExp('\\.' + c + '[\\s{.:,\\[]').test(css)))
