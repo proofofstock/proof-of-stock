@@ -82,6 +82,24 @@ jobs:
       - run: npm run locks
 YML
 
+# Dependabot: in the public copy only. Its pull requests there run on GitHub's hosted runners with no secrets; in the
+# private repository they would run a new package version's install scripts on our own runner. An update it proposes
+# is taken into the private repository and comes back with the next export.
+cat > "$DEST/.github/dependabot.yml" <<'YML'
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+YML
+
 # .gitignore: the private one explains, file by file, what is kept off the repository and why: where the keys live on
 # the host, which module is the money path, where a claim of ownership is stored. That is a map of what is worth
 # taking, and a public reader needs none of it (owner, 24.11). The public copy gets the plain patterns that keep a

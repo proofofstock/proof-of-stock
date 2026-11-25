@@ -1,0 +1,32 @@
+name: Scorecard
+# OpenSSF Scorecard: an outside tool grades how this repository is run (pinned actions, token permissions, a security
+# policy, branch protection, review, ...) and publishes the result at api.scorecard.dev, where the README badge reads
+# it. We do not choose the score; anyone can rerun the same checks with the scorecard CLI.
+#
+# Public repository only (the private one is skipped by the `if`). Kept to the shape scorecard's publishing API
+# accepts: hosted runner, read-only token plus id-token to sign the upload, no top-level env, only these two actions,
+# both pinned to a commit.
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: '23 5 * * 1'
+  workflow_dispatch:
+permissions: read-all
+jobs:
+  analysis:
+    if: github.repository == 'proofofstock/proof-of-stock'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: ossf/scorecard-action@fa7117db83c52d787ae5a89f350999701505d78e # v2.5.0
+        with:
+          results_file: results.json
+          results_format: json
+          publish_results: true

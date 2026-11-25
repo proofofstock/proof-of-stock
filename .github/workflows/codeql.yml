@@ -1,0 +1,31 @@
+name: CodeQL
+# Static analysis of the JavaScript on GitHub's hosted runners. Public repository only (the private one is skipped by
+# the `if`): the code is the same, and the private CI runs on our own runner, where a third-party analyser has no place.
+# Findings land in the repository's code scanning tab, visible to its maintainers.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: '17 4 * * 2'
+permissions: read-all
+jobs:
+  analyze:
+    if: github.repository == 'proofofstock/proof-of-stock'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: github/codeql-action/init@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
+        with:
+          languages: javascript-typescript
+          build-mode: none
+      - uses: github/codeql-action/analyze@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
+        with:
+          category: /language:javascript-typescript

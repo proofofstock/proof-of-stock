@@ -77,8 +77,26 @@ try {
     const ci = fs.readFileSync(path.join(r.dest, '.github/workflows/ci.yml'), 'utf8')
     // A tag can be moved to other code; a commit cannot. Both CIs name every action by its commit.
     const usesOf = (y) => [...y.matchAll(/^\s*-?\s*uses:\s*(\S+)/gm)].map((m) => m[1])
-    const priv = fs.readFileSync(path.join(repo, '.github/workflows/ci.yml'), 'utf8')
-    check('every action in both CIs is pinned to a commit', [...usesOf(ci), ...usesOf(priv)].length >= 3 && [...usesOf(ci), ...usesOf(priv)].every((u) => /@[0-9a-f]{40}$/.test(u)), JSON.stringify([...usesOf(ci), ...usesOf(priv)]))
+    const wfs = (dir) => fs.readdirSync(path.join(dir, '.github/workflows')).filter((f) => /\.ya?ml$/.test(f)).map((f) => fs.readFileSync(path.join(dir, '.github/workflows', f), 'utf8'))
+    const all = [...wfs(r.dest), ...wfs(repo)].flatMap(usesOf)
+    check('every action in every workflow, public and private, is pinned to a commit', all.length >= 6 && all.every((u) => /@[0-9a-f]{40}$/.test(u)), JSON.stringify(all.filter((u) => !/@[0-9a-f]{40}$/.test(u))))
+    // The Scorecard badge reads what this workflow publishes. Its publishing API refuses a workflow outside a narrow
+    // shape, and a write token here would be the very thing Scorecard marks down.
+    const sc = fs.readFileSync(path.join(r.dest, '.github/workflows/scorecard.yml'), 'utf8')
+    check('the Scorecard workflow publishes from the public repository only, read-only, with no extra actions',
+      /publish_results: true/.test(sc) && /^permissions: read-all$/m.test(sc) && /if: github\.repository == 'proofofstock\/proof-of-stock'/.test(sc) &&
+      !/:\s*write/.test(sc.replace(/id-token: write/, '')) && !/^env:/m.test(sc) &&
+      usesOf(sc).every((u) => /^(actions\/checkout|ossf\/scorecard-action)@/.test(u)))
+    const cq = fs.readFileSync(path.join(r.dest, '.github/workflows/codeql.yml'), 'utf8')
+    check('CodeQL runs in the public repository only, on hosted runners, writing nothing but its findings',
+      /if: github\.repository == 'proofofstock\/proof-of-stock'/.test(cq) && /runs-on: ubuntu-latest/.test(cq) &&
+      /^permissions: read-all$/m.test(cq) && !/:\s*write/.test(cq.replace(/security-events: write/, '')))
+    // Dependabot's pull requests would run new package versions' install scripts on whatever runner the CI uses: the
+    // public copy's hosted one, never the private repository's own.
+    const dep = path.join(r.dest, '.github/dependabot.yml')
+    check('Dependabot watches actions and npm in the public copy, and is absent from the private repository',
+      fs.existsSync(dep) && /package-ecosystem: github-actions/.test(fs.readFileSync(dep, 'utf8')) && /package-ecosystem: npm/.test(fs.readFileSync(dep, 'utf8')) &&
+      !fs.existsSync(path.join(repo, '.github/dependabot.yml')))
     check('the public CI runs on hosted runners', /runs-on: ubuntu-latest/.test(ci) && !/self-hosted/i.test(ci))
     // The private .gitignore is a map of what is worth taking (owner, 24.11): the public one is plain patterns only.
     const ign = fs.readFileSync(path.join(r.dest, '.gitignore'), 'utf8')
