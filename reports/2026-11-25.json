@@ -1,0 +1,57 @@
+{
+ "version": 1,
+ "day": "2026-11-25",
+ "site": "https://proofofstock.xyz",
+ "started_at": "2026-11-25T17:34:25.872Z",
+ "finished_at": "2026-11-25T17:36:48.851Z",
+ "set": {
+  "counts": {
+   "A": 620,
+   "B": 60,
+   "C": 26,
+   "D": 20
+  },
+  "sha256": "8fcc6cb4477c558db6a5e765cf9a4b29e1beee93f35f1ef0aff96149cc35cd6e",
+  "issuer_list_sha256": {
+   "base": "495a7ac2ccea1c523940c18c014ee6cc8e26f3521e326a81d88cbdb024aaf24a",
+   "robinhood": "3726b934cfecef05bc247c7a905e313565c30e55a6d62e5ed102bbe0df32e7f7"
+  }
+ },
+ "metrics": {
+  "false_listed": 0,
+  "false_not_listed": 0,
+  "real_called_fake": 0,
+  "lookalikes": 60,
+  "lookalikes_caught": 60,
+  "minted_wrong": 0,
+  "refused": 0,
+  "not_listed_while_refusing": 0,
+  "asked": 726,
+  "lookalikes_caught_pct": 100,
+  "list_proof": {
+   "base": {
+    "ours": "495a7ac2ccea1c523940c18c014ee6cc8e26f3521e326a81d88cbdb024aaf24a",
+    "issuer": "495a7ac2ccea1c523940c18c014ee6cc8e26f3521e326a81d88cbdb024aaf24a",
+    "match": true
+   },
+   "robinhood": {
+    "ours": "3726b934cfecef05bc247c7a905e313565c30e55a6d62e5ed102bbe0df32e7f7",
+    "issuer": "3726b934cfecef05bc247c7a905e313565c30e55a6d62e5ed102bbe0df32e7f7",
+    "match": true
+   }
+  },
+  "price_evidence": {
+   "tried": 5,
+   "onchain": 5,
+   "same_bytes": 5,
+   "none": 0
+  },
+  "verify_ms": {
+   "p50": 599,
+   "p95": 782,
+   "batches": 16
+  }
+ },
+ "failures": [],
+ "failures_total": 0
+}
