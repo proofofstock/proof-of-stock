@@ -1,0 +1,28 @@
+{
+  "_finding": "25.11: with the eighth tab (Demo Agent) the tab row overflowed and clipped Docs on docs pages from 1024 to 1280px and on every page from 761 to about 850px. The bar's breakpoints were moved; measured in a browser, every width from 761 to 1600 then fits.",
+  "target": "apps/stocks-web/style.css",
+  "runner": [
+    "node",
+    "apps/site-tabs.test.mjs"
+  ],
+  "mutations": [
+    {
+      "name": "the tabs stay on one row down to the phone layout",
+      "find": "@media (max-width: 900px) {\n  .site-bar {",
+      "replace": "@media (max-width: 700px) {\n  .site-bar {",
+      "expect": "FAIL eight tabs never scroll out of sight"
+    },
+    {
+      "name": "beside the docs search box the tabs keep one row down to 1000px again",
+      "find": "@media (max-width: 1180px) {\n  .site-bar.has-extra {",
+      "replace": "@media (max-width: 1000px) {\n  .site-bar.has-extra {",
+      "expect": "FAIL eight tabs never scroll out of sight"
+    },
+    {
+      "name": "the call to connect an agent crowds the docs bar at 1280px again",
+      "find": "@media (max-width: 1340px) { .site-bar.has-extra .site-cta",
+      "replace": "@media (max-width: 1240px) { .site-bar.has-extra .site-cta",
+      "expect": "FAIL eight tabs never scroll out of sight"
+    }
+  ]
+}

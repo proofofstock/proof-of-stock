@@ -27,6 +27,15 @@ export const BASE_RPC = 'https://mainnet.base.org'
 // KyberSwap's MetaAggregationRouterV2 on Base. A built swap to any other contract is refused: the aggregator chooses the
 // route, never where the user's USDC goes.
 export const KYBER_ROUTER = '0x6131b5fae19ea4f9d964eac0408e4408b66337b5'
+/** The slippage the built swap allows, in basis points: the least it may deliver is the quote less this. */
+export const SLIPPAGE_BPS = 50
+
+/** The unsigned USDC approve the swap needs first: exactly `amount` (base units) to `spender`, never an unlimited one. */
+export function approveUsdc (spender, amount) {
+  if (!ADDRESS.test(String(spender)) || !/^\d{1,30}$/.test(String(amount))) return null
+  const word = (hex) => hex.padStart(64, '0')
+  return { to: USDC_BASE, value: '0', data: '0x095ea7b3' + word(String(spender).slice(2).toLowerCase()) + word(BigInt(amount).toString(16)) }
+}
 
 /** KyberSwap's swap page with USDC -> the given contract filled in, built from the checked address only (never from
  * the user's words or a quote), so the browser gets exactly the contract the guard passed. Null for anything else. */
@@ -53,10 +62,13 @@ export function parseRequest (text) {
  * @param {string} [o.handed]         the contract the agent was handed, if any
  * @param {string} [o.from]           the user's wallet: build the unsigned swap for it
  * @param {number} [o.maxPremium]     refuse a quote further than this from the issuer's reference (default 0.03)
+ * @param {function} [o.onStep]       called with { step, ... } at each step, for a page that draws the flow (apps/stocks-web/demo.js);
+ *                                    it only watches: what it returns or throws changes nothing in the flow
  */
-export async function buyFlow ({ request, handed = null, from = null, maxPremium = 0.03, fetchImpl = globalThis.fetch, print = console.log, endpoint = DEFAULT_ENDPOINT } = {}) {
+export async function buyFlow ({ request, handed = null, from = null, maxPremium = 0.03, fetchImpl = globalThis.fetch, print = console.log, endpoint = DEFAULT_ENDPOINT, onStep = null } = {}) {
   const say = (who, s) => print(`${who.padEnd(6)} ${s}`)
-  const stop = (code, outcome, why) => { say('agent', why); return { code, outcome } }
+  const step = (name, o = {}) => { try { if (onStep) onStep({ step: name, ...o }) } catch (_) {} }
+  const stop = (code, outcome, why) => { say('agent', why); step('stop', { code, outcome, why }); return { code, outcome } }
   const getJson = async (url, init = {}) => {
     try {
       const r = await fetchImpl(url, { ...init, signal: AbortSignal.timeout(10000) })
@@ -71,6 +83,7 @@ export async function buyFlow ({ request, handed = null, from = null, maxPremium
   if (from != null && !ADDRESS.test(from)) return stop(2, 'bad_input', '--from must be 0x followed by 40 hex characters. Nothing bought.')
   if (handed != null && !ADDRESS.test(handed)) return stop(2, 'bad_input', 'the handed contract must be 0x followed by 40 hex characters. Nothing bought.')
   say('user', `buy $${ask.usd} of ${ask.ticker} on ${ask.chain}`)
+  step('request', { ask })
 
   const guard = createGuard({ endpoint, fetchImpl })
   let address = null
@@ -78,8 +91,10 @@ export async function buyFlow ({ request, handed = null, from = null, maxPremium
   // 2. The handed contract.
   if (handed) {
     say('agent', `I was handed ${handed}. Checking it before anything else.`)
+    step('handed', { address: handed.toLowerCase() })
     const d = await guard.beforeBuy({ chain: ask.chain, tokenAddress: handed, claimedSymbol: ask.ticker })
     say('guard', `${d.allow ? 'ALLOW' : 'REFUSE'} (${d.decision}) ${d.reason}`)
+    step('guard_handed', { address: handed.toLowerCase(), decision: d })
     if (d.decision === 'unknown') return stop(3, 'unavailable', 'The check could not be made, so I do not buy.')
     if (d.allow) address = handed.toLowerCase()
     else if (d.use_instead) { say('agent', `Not buying ${handed}. Checking the issuer's own contract instead.`); address = d.use_instead.toLowerCase() }
@@ -93,9 +108,11 @@ export async function buyFlow ({ request, handed = null, from = null, maxPremium
     const hit = f.match === 'exact' ? f.matches.find((x) => x && x.chain === ask.chain && ADDRESS.test(String(x.address || ''))) : null
     if (!hit) return stop(1, 'refused', `No issuer-listed ${ask.ticker} on ${ask.chain}. Nothing bought.`)
     address = hit.address.toLowerCase()
+    step('find', { address, matches: f.matches })
   }
   const d = await guard.beforeBuy({ chain: ask.chain, tokenAddress: address, claimedSymbol: ask.ticker })
   say('guard', `${d.allow ? 'ALLOW' : 'REFUSE'} (${d.decision}) ${d.reason}`)
+  step('guard_real', { address, decision: d })
   if (d.decision === 'unknown') return stop(3, 'unavailable', 'The check could not be made, so I do not buy.')
   if (!d.allow) return stop(1, 'refused', 'The issuer\'s contract did not pass the check either. Nothing bought.')
   const symbol = d.verify.symbol
@@ -108,6 +125,7 @@ export async function buyFlow ({ request, handed = null, from = null, maxPremium
   if (!Array.isArray(p.issuer.paused) || p.issuer.paused.length) return stop(1, 'refused', `The issuer has paused ${symbol} (${(p.issuer.paused || []).join(', ') || 'unknown'}). Nothing bought.`)
   const session = p.market_now && p.market_now.session
   say('agent', `${symbol}: the issuer's reference is $${ref.toFixed(2)}${session && session !== 'regular' ? ` (US market ${session}: the reference is held from the last close)` : ''}.`)
+  step('passport', { address, symbol, ref, session: session || null, passport: p })
 
   if (ask.chain !== 'base') return stop(0, 'checked', `This example quotes on Base only; ${symbol} on ${ask.chain} is checked and ready for your own venue.`)
 
@@ -126,24 +144,31 @@ export async function buyFlow ({ request, handed = null, from = null, maxPremium
   if (!(tokens > 0)) return stop(1, 'refused', 'The quote gives nothing for the money. Nothing bought.')
   const price = ask.usd / tokens, premium = price / ref - 1
   say('quote', `$${ask.usd} USDC -> ${tokens.toFixed(6)} ${symbol} at $${price.toFixed(2)}, ${(premium * 100).toFixed(2)}% from the issuer's reference.`)
+  step('quote', { address, symbol, usd: ask.usd, tokens, price, ref, premium, maxPremium, decimals, slippageBps: SLIPPAGE_BPS, routeSummary: rs })
   if (Math.abs(premium) > maxPremium) return stop(1, 'refused', `That is more than ${(maxPremium * 100).toFixed(1)}% from the reference. Not buying at this price.`)
 
   // 6. The unsigned swap, for the user's own wallet only.
   // The same swap for a person in a browser: the page opens with the checked contract already in place, no search by name.
   const link = swapLink(address)
   say('link', link)
+  step('link', { link, address, symbol })
   say('', `opens USDC -> ${symbol} with ${address} filled in; check that address in your wallet before you sign.`)
   if (!from) { say('agent', `Ready to swap into ${address} (${symbol}). Pass --from <your wallet> to build the transaction; nothing is signed here.`); return { code: 0, outcome: 'quoted', link, address, symbol } }
-  const b = await getJson(`${KYBER}/route/build`, { method: 'POST', headers: { ...CLIENT, 'content-type': 'application/json' }, body: JSON.stringify({ routeSummary: rs, sender: from, recipient: from, slippageTolerance: 50 }) })
+  const b = await getJson(`${KYBER}/route/build`, { method: 'POST', headers: { ...CLIENT, 'content-type': 'application/json' }, body: JSON.stringify({ routeSummary: rs, sender: from, recipient: from, slippageTolerance: SLIPPAGE_BPS }) })
   const tx = b && b.data
   if (!tx || !ADDRESS.test(String(tx.routerAddress || '')) || !/^0x[0-9a-f]+$/i.test(String(tx.data || ''))) return stop(3, 'unavailable', 'The swap could not be built, so I do not buy.')
   if (String(tx.routerAddress).toLowerCase() !== KYBER_ROUTER) return stop(1, 'refused', "The built swap goes to a contract that is not the aggregator's router. Not signing that.")
   say('agent', 'Unsigned transaction for your wallet to review and sign (first approve USDC to the router):')
   say('', `to ${tx.routerAddress}, value 0, data ${tx.data.slice(0, 10)}... (${(tx.data.length - 2) / 2} bytes), max 0.5% slippage`)
-  return { code: 0, outcome: 'built', tx: { to: tx.routerAddress, value: '0', data: tx.data }, link, address, symbol }
+  const approve = approveUsdc(tx.routerAddress, rs.amountIn)
+  if (approve) say('', `approve first: to ${approve.to} (USDC), data ${approve.data.slice(0, 10)}... for exactly ${ask.usd} USDC, not unlimited`)
+  const built = { to: tx.routerAddress, value: '0', data: tx.data }
+  step('built', { tx: built, from, approve, address, symbol })
+  return { code: 0, outcome: 'built', tx: built, link, address, symbol }
 }
 
-const isMain = process.argv[1] && import.meta.url === new URL('file://' + process.argv[1].replace(/\\/g, '/').replace(/^(?=[A-Za-z]:)/, '/')).href
+// The page at /demo imports this file in a browser, where there is no process.
+const isMain = globalThis.process?.argv?.[1] && import.meta.url === new URL('file://' + process.argv[1].replace(/\\/g, '/').replace(/^(?=[A-Za-z]:)/, '/')).href
 if (isMain) {
   const args = process.argv.slice(2)
   const opt = (name) => { const i = args.indexOf(name); return i >= 0 ? args.splice(i, 2)[1] ?? '' : null }

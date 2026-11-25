@@ -101,6 +101,7 @@ export function sitemapUrls ({ site, docs, released = null, symbols = {} }) {
     { loc: `${site}/`, lastmod: released },
     ...pages.map((k) => ({ loc: docUrl(site, k), lastmod: released })),
     { loc: `${site}/api` },
+    { loc: `${site}/demo` },
     { loc: `${site}/status` },
     { loc: `${site}/history` },
     ...Object.entries(symbols).flatMap(([chain, list]) => [...new Set(list)].sort().map((s) => ({ loc: `${site}/?${chain}=${encodeURIComponent(s)}` }))),

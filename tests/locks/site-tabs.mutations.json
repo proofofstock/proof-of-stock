@@ -29,6 +29,18 @@
       "find": "href=\"${esc(root + t.href)}\"",
       "replace": "href=\"${esc(t.href)}\"",
       "expect": "FAIL every href is relative to the root it is handed"
+    },
+    {
+      "name": "the Demo Agent tab is gone",
+      "find": "  Object.freeze({ id: 'demo', label: 'Demo Agent', href: 'demo' }),\n",
+      "replace": "",
+      "expect": "FAIL eight tabs in the owner"
+    },
+    {
+      "name": "the tab reads a bare Demo",
+      "find": "label: 'Demo Agent'",
+      "replace": "label: 'Demo'",
+      "expect": "FAIL eight tabs in the owner"
     }
   ]
 }

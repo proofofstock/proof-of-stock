@@ -1,0 +1,16 @@
+{
+  "_finding": "Owner, 25.11: the Demo Agent at /demo is a page of the site like /api and /status, so search engines are told about it in the sitemap.",
+  "target": "apps/stocks-seo.mjs",
+  "runner": [
+    "node",
+    "apps/stocks-seo.test.mjs"
+  ],
+  "mutations": [
+    {
+      "name": "the Demo Agent is left out of the sitemap",
+      "find": "    { loc: `${site}/demo` },\n",
+      "replace": "",
+      "expect": "FAIL /status, /history and the Demo Agent at /demo"
+    }
+  ]
+}

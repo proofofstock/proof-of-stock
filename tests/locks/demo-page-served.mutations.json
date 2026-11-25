@@ -1,0 +1,28 @@
+{
+  "_finding": "Owner, 25.11: /demo runs an agent's buy live in the browser, so the quote must come from KyberSwap itself and the guard must be the package's own. The server alone decides both: only this page's CSP may reach the two outside hosts, and the files it serves as the guard must be the published ones.",
+  "target": "apps/stocks-web.mjs",
+  "runner": [
+    "node",
+    "apps/demo-page.test.mjs"
+  ],
+  "mutations": [
+    {
+      "name": "the demo keeps the site's CSP, so the browser cannot reach the quote",
+      "find": "'content-security-policy': demoCsp(SECURITY_HEADERS['content-security-policy'])",
+      "replace": "'content-security-policy': SECURITY_HEADERS['content-security-policy']",
+      "expect": "FAIL served /demo lets the browser reach KyberSwap"
+    },
+    {
+      "name": "every page gets the demo's wider CSP",
+      "find": "  'content-security-policy': \"default-src 'none'; script-src 'self'; style-src 'self'; font-src 'self'; img-src 'self' data:; connect-src 'self'; base-uri",
+      "replace": "  'content-security-policy': \"default-src 'none'; script-src 'self'; style-src 'self'; font-src 'self'; img-src 'self' data:; connect-src 'self' https://aggregator-api.kyberswap.com https://mainnet.base.org; base-uri",
+      "expect": "FAIL /stocks/api keeps connect-src 'self'"
+    },
+    {
+      "name": "the guard the page runs is not the package's",
+      "find": "'/guard/index.mjs': ['../../packages/proofofstock-guard/index.mjs',",
+      "replace": "'/guard/index.mjs': ['api.js',",
+      "expect": "FAIL /stocks/guard/index.mjs is the package's index.mjs"
+    }
+  ]
+}

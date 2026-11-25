@@ -59,6 +59,18 @@
       "find": "sender: from, recipient: from",
       "replace": "sender: from, recipient: '0x0000000000000000000000000000000000000001'",
       "expect": "FAIL with a wallet, the swap is built for that wallet as sender and recipient"
+    },
+    {
+      "name": "a page whose drawing throws stops the buy",
+      "find": "try { if (onStep) onStep({ step: name, ...o }) } catch (_) {}",
+      "replace": "if (onStep) onStep({ step: name, ...o })",
+      "expect": "FAIL a page whose drawing throws changes nothing in the flow"
+    },
+    {
+      "name": "the approve is unlimited",
+      "find": "word(BigInt(amount).toString(16))",
+      "replace": "'f'.repeat(64)",
+      "expect": "FAIL approve is for USDC, to the router, for exactly the amount"
     }
   ]
 }

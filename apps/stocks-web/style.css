@@ -369,9 +369,15 @@ a.btn { text-decoration: none; display: inline-block; }
 .site-cta { grid-area: cta; display: inline-flex; align-items: center; gap: 7px; height: 38px; padding: 0 16px; border-radius: 10px; background: var(--accent); color: var(--on-accent); font: 600 14px/1 var(--sans);
   white-space: nowrap; text-decoration: none; box-shadow: 0 6px 22px rgba(0, 82, 255, .3); transition: filter .15s, transform .15s; }
 .site-cta:hover { filter: brightness(1.12); transform: translateY(-1px); }
-@media (max-width: 1240px) { .site-bar.has-extra .site-cta { display: none; } }
-@media (max-width: 1000px) {
-  .site-cta { display: none; }
+/* Eight tabs since the Demo Agent (25.11): beside the docs search box they fit on one row only from these widths. */
+@media (max-width: 1340px) { .site-bar.has-extra .site-cta { display: none; } }
+@media (max-width: 1000px) { .site-cta { display: none; } }
+@media (max-width: 900px) {
+  .site-bar { grid-template-columns: auto minmax(0, 1fr); grid-template-areas: "brand extra" "tabs tabs"; height: auto; row-gap: 0; padding-top: 10px; }
+  .site-bar .site-tabs { padding: 6px 0 4px; }
+  .site-bar .site-tab[aria-current="page"]::after { bottom: -5px; }
+}
+@media (max-width: 1180px) {
   .site-bar.has-extra { grid-template-columns: auto minmax(0, 1fr); grid-template-areas: "brand extra" "tabs tabs"; height: auto; row-gap: 0; padding-top: 10px; }
   .site-bar.has-extra .site-tabs { padding: 6px 0 4px; }
   .site-bar.has-extra .site-tab[aria-current="page"]::after { bottom: -5px; }

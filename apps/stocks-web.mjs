@@ -59,6 +59,7 @@ import { robotsTxt, securityTxt, sitemapXml, sitemapUrls, docUrl, homeJsonLd, do
 import { createMcpHttp, SUPPORTED_VERSIONS, MAX_VERIFY_BATCH, toolsFor, freshnessOf, GAPS_LIMIT } from './stocks-mcp-http.mjs'
 import { siteBar } from './stocks-nav.mjs'
 import { apiPage } from './stocks-api-page.mjs'
+import { demoPage, demoCsp } from './stocks-demo-page.mjs'
 import { verifyToken, badgeSvg, badgeState, issuerPrefixOf, ISSUER_LABEL as VERIFY_ISSUER_LABEL, REGISTRY_FRESH_S } from '../evm/core/stocks/verify.mjs'
 import { mintedOf } from '../evm/core/stocks/registries.mjs'
 import { createDocsRenderer } from './stocks-docs.mjs'
@@ -129,6 +130,11 @@ const STATIC = Object.freeze({
   '/beacon.js': ['beacon.js', 'text/javascript; charset=utf-8'],
   '/seal.js': ['seal.js', 'text/javascript; charset=utf-8'],
   '/api.js': ['api.js', 'text/javascript; charset=utf-8'],
+  '/demo.js': ['demo.js', 'text/javascript; charset=utf-8'],
+  '/demo.css': ['demo.css', 'text/css; charset=utf-8'],
+  // /demo runs the guard package's own example in the browser (apps/stocks-demo-page.mjs): the two files, as published.
+  '/guard/index.mjs': ['../../packages/proofofstock-guard/index.mjs', 'text/javascript; charset=utf-8'],
+  '/guard/examples/agent-buy.mjs': ['../../packages/proofofstock-guard/examples/agent-buy.mjs', 'text/javascript; charset=utf-8'],
   '/og.png': ['og.png', 'image/png'],
   '/logo.png': ['logo.png', 'image/png'],
   '/favicon.svg': ['favicon.svg', 'image/svg+xml'],
@@ -807,6 +813,7 @@ export function createStocksWeb ({
   // The tools as the MCP server lists them, for /api: one list, so the page cannot name a tool the server lacks.
   const mcpTools = toolsFor(Math.min(PUBLIC_HOURS, windowH))
   let apiHtml = null
+  let demoHtml = null
   const mcp = createMcpHttp({
     chains: Object.keys(CHAINS),
     log,
@@ -1189,6 +1196,14 @@ export function createStocksWeb ({
         assets: { css: `style.css?v=${version('/style.css')}`, docsCss: `docs.css?v=${version('/docs.css')}`, apiJs: `api.js?v=${version('/api.js')}`, beacon: `beacon.js?v=${version('/beacon.js')}` } }))
       return send(res, 200, apiHtml, 'text/html; charset=utf-8', { 'cache-control': 'public, max-age=300' })
     }
+    // An agent buying through the guard, live (owner, 25.11). The one page whose CSP lets the browser reach KyberSwap and
+    // Base's RPC: the quote must come from the aggregator, not through us.
+    if (sub === '/demo') {
+      analytics.load(clientIp(req), req.headers, '/demo')
+      demoHtml ??= withPageHead('/demo', demoPage({ version: appVersion,
+        assets: { css: `style.css?v=${version('/style.css')}`, docsCss: `docs.css?v=${version('/docs.css')}`, demoCss: `demo.css?v=${version('/demo.css')}`, demoJs: `demo.js?v=${version('/demo.js')}`, beacon: `beacon.js?v=${version('/beacon.js')}` } }))
+      return send(res, 200, demoHtml, 'text/html; charset=utf-8', { 'cache-control': 'public, max-age=300', 'content-security-policy': demoCsp(SECURITY_HEADERS['content-security-policy']) })
+    }
     if (!sub.startsWith('/api/')) return send(res, 404, { error: 'not found' })
 
     // The payment state is for monitoring: stp-health reads it every 15 minutes, and a monitor that met the free
@@ -1214,7 +1229,7 @@ export function createStocksWeb ({
 
     const chain = url.searchParams.get('chain')
     if (sub === '/api/hit') {
-      const hit = parseHit(url.searchParams, Object.keys(CHAINS), (p) => p === '/' || p === '/history' || p === '/status' || p === '/api' || (p.startsWith('/docs/') && docs.has(p.slice(6))))
+      const hit = parseHit(url.searchParams, Object.keys(CHAINS), (p) => p === '/' || p === '/history' || p === '/status' || p === '/api' || p === '/demo' || (p.startsWith('/docs/') && docs.has(p.slice(6))))
       if (hit) analytics.hit(clientIp(req), req.headers, hit)
       return send(res, 204, '', 'text/plain', { 'cache-control': 'no-store' })
     }

@@ -1,0 +1,22 @@
+{
+  "_finding": "Owner, 25.11: the agent on /demo draws answers from three outside services (ours, KyberSwap, Base's RPC) and must never put one on the page as HTML, nor tell a step the example does not take.",
+  "target": "apps/stocks-web/demo.js",
+  "runner": [
+    "node",
+    "apps/demo-page.test.mjs"
+  ],
+  "mutations": [
+    {
+      "name": "network text is drawn as HTML",
+      "find": "el.append(k instanceof Node ? k : String(k))",
+      "replace": "k instanceof Node ? el.append(k) : el.insertAdjacentHTML('beforeend', String(k))",
+      "expect": "FAIL what the network says is drawn as text, never as HTML"
+    },
+    {
+      "name": "the quote step is not drawn",
+      "find": "  quote: (e) => {",
+      "replace": "  quote_: (e) => {",
+      "expect": "FAIL it draws the example's quote step"
+    }
+  ]
+}

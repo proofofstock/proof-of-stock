@@ -1,6 +1,6 @@
 // apps/stocks-nav.mjs: the bar at the top of every page the site renders, with the site's tabs (owner, 22.11: "tabs at
-// the top, like a product": Home, Methodology, Proofs, API, Status, History, and the docs). One function writes it for
-// the landing (apps/stocks-web/index.html, through its <!--site-bar--> placeholder), /status, /history, /api and every
+// the top, like a product": Home, Methodology, Proofs, API, Status, History, and the docs; Demo Agent after Home since 25.11).
+// One function writes it for the landing (apps/stocks-web/index.html, through its <!--site-bar--> placeholder), /status, /history, /api and every
 // docs page, so the tabs are the same everywhere and only the current one changes. Plain links, no script: a reader that
 // runs none (a crawler, an agent, a judge's AI helper) gets the same navigation.
 //
@@ -17,6 +17,9 @@ const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&
  */
 export const TABS = Object.freeze([
   Object.freeze({ id: 'home', label: 'Home', href: '' }),
+  // An agent buying through the guard, live (owner, 25.11): right after Home, the first thing a newcomer should see.
+  // "Demo Agent", never a bare "Demo" (owner, 25.11): alone it reads as if the product itself were a demo.
+  Object.freeze({ id: 'demo', label: 'Demo Agent', href: 'demo' }),
   Object.freeze({ id: 'methodology', label: 'Methodology', href: 'docs/explanation/methodology.md' }),
   Object.freeze({ id: 'proofs', label: 'Proofs', href: 'docs/how-to/check-us.md' }),
   Object.freeze({ id: 'api', label: 'API', href: 'api' }),

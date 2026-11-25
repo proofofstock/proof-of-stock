@@ -23,7 +23,7 @@ const tabsOf = (nav) => [...nav.matchAll(/<a class="site-tab" href="([^"]*)"( ar
 
 console.log('the tabs themselves')
 {
-  check('seven tabs in the owner\'s order: Home, Methodology, Proofs, API, Status, History, Docs', TABS.map((t) => t.label).join(',') === 'Home,Methodology,Proofs,API,Status,History,Docs')
+  check('eight tabs in the owner\'s order: Home, Demo Agent, Methodology, Proofs, API, Status, History, Docs', TABS.map((t) => t.label).join(',') === 'Home,Demo Agent,Methodology,Proofs,API,Status,History,Docs')
   check('Methodology opens the methodology, Proofs the page on checking us without us', TABS.find((t) => t.id === 'methodology').href === 'docs/explanation/methodology.md' && TABS.find((t) => t.id === 'proofs').href === 'docs/how-to/check-us.md')
   for (const t of TABS) {
     const tabs = tabsOf(siteTabs({ current: t.id, root: '../' }))
@@ -50,6 +50,9 @@ console.log('the landing: tabs on top, the ticker under the terminal')
   // The footer does not repeat the tabs (owner, 23.11): Docs, Methodology, API and History are in the bar above.
   const foot = (html.match(/<nav class="foot-nav"[\s\S]*?<\/nav>/) || [''])[0]
   check('the footer repeats none of the tabs: no Docs, Methodology, API or History link there', foot.length > 0 && !/href="(docs\/|docs\/explanation\/methodology\.md|api|history)"/.test(foot) && /href="status"/.test(foot) && /href="llms\.txt"/.test(foot), foot.slice(0, 200))
+  // Measured in a browser on 25.11 with eight tabs: one row from 901px (from 1181px beside the docs search box, with the
+  // call to connect an agent from 1341px), below that the tabs take a row of their own instead of scrolling out of sight.
+  check('eight tabs never scroll out of sight: below 900px the tabs take their own row, beside the docs search from 1180px', /@media \(max-width: 900px\) \{\n  \.site-bar \{ grid-template-columns: auto minmax\(0, 1fr\); grid-template-areas: "brand extra" "tabs tabs";/.test(css) && /@media \(max-width: 1180px\) \{\n  \.site-bar\.has-extra \{ grid-template-columns: auto minmax\(0, 1fr\); grid-template-areas: "brand extra" "tabs tabs";/.test(css) && /@media \(max-width: 1340px\) \{ \.site-bar\.has-extra \.site-cta \{ display: none; \} \}/.test(css))
   check('on a phone the bar scrolls away and the tabs wrap, so the current one is always in view', /@media \(max-width: 760px\) \{\n  \.site-bar, \.site-bar\.has-extra \{ position: static;/.test(css) && /\.site-tabs \{ flex-wrap: wrap;/.test(css))
   check('docs: the sticky sidebar starts below the two-row bar between a tablet and a phone', /@media \(max-width: 1000px\) and \(min-width: 761px\) \{ \.dx-side \{ top: 98px;/.test(docsCss))
 }
@@ -63,7 +66,7 @@ const base = `http://127.0.0.1:${port}`
 const get = (p) => fetch(base + p, { headers: { accept: 'text/html' } })
 try {
   const pages = [
-    ['/stocks/', 'home'], ['/stocks/status', 'status'], ['/stocks/history', 'history'], ['/stocks/api', 'api'],
+    ['/stocks/', 'home'], ['/stocks/status', 'status'], ['/stocks/history', 'history'], ['/stocks/api', 'api'], ['/stocks/demo', 'demo'],
     ['/stocks/docs/', 'docs'], ['/stocks/docs/explanation/methodology.md', 'methodology'], ['/stocks/docs/how-to/verify-an-anchor.md', 'proofs'],
     ['/stocks/docs/reference/http-api.md', 'api'], ['/stocks/docs/how-to/alert-on-gap.md', 'docs'],
   ]
@@ -72,7 +75,7 @@ try {
     const r = await get(p)
     const page = await r.text()
     const tabs = tabsOf(navOf(page))
-    check(`${p}: 200, with the seven tabs in order`, r.status === 200 && tabs.map((t) => t.label).join(',') === TABS.map((t) => t.label).join(','), `${r.status} ${tabs.map((t) => t.label)}`)
+    check(`${p}: 200, with the eight tabs in order`, r.status === 200 && tabs.map((t) => t.label).join(',') === TABS.map((t) => t.label).join(','), `${r.status} ${tabs.map((t) => t.label)}`)
     check(`${p}: ${current} is the current tab, and only it`, tabs.filter((t) => t.current).map((t) => t.label).join() === TABS.find((t) => t.id === current).label)
     check(`${p}: one bar, and no placeholder left over`, page.split('class="site-bar').length === 2 && !page.includes('<!--site-bar-->'))
     // Every tab, resolved the way a browser resolves it from this page, is a page of the site.

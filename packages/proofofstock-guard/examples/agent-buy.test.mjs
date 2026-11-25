@@ -3,7 +3,7 @@
 // build a swap only for the router it names and only when asked, and stop on anything it could not read.
 //
 // Run: node packages/proofofstock-guard/examples/agent-buy.test.mjs
-import { buyFlow, parseRequest, swapLink, USDC_BASE, KYBER_ROUTER } from './agent-buy.mjs'
+import { buyFlow, parseRequest, swapLink, approveUsdc, USDC_BASE, KYBER_ROUTER, SLIPPAGE_BPS } from './agent-buy.mjs'
 
 let passed = 0, failed = 0
 const failures = []
@@ -116,6 +116,29 @@ console.log('the unsigned swap')
   check('...and nothing is ever sent: no request carries a signature or a send', !r.calls.some((c) => /eth_send|signature|private/i.test(String(c.init.body || '') + c.url)))
   const rogue = await go({ request: 'buy $20 of SNDK', from: WALLET }, { build: () => ({ data: { routerAddress: OTHER, data: '0xe21fd0e9' } }) })
   check('a built swap to any other contract than the router is refused', rogue.code === 1 && !rogue.tx && /not the aggregator's router/.test(rogue.text), rogue.text)
+}
+
+console.log('the steps a page draws (onStep, apps/stocks-web/demo.js)')
+{
+  const seen = []
+  const r = await buyFlow({ request: 'buy $20 of SNDK on Base', handed: FAKE, from: WALLET, fetchImpl: world().fetchImpl, print: () => {}, endpoint: 'https://pos.test', onStep: (e) => seen.push(e) })
+  check('the whole buy is told in order: request, handed, its refusal, the real one, passport, quote, link, the build', seen.map((e) => e.step).join() === 'request,handed,guard_handed,guard_real,passport,quote,link,built', seen.map((e) => e.step).join())
+  const g = seen.find((e) => e.step === 'guard_handed'), real = seen.find((e) => e.step === 'guard_real'), q = seen.find((e) => e.step === 'quote'), b = seen.find((e) => e.step === 'built')
+  check('...the look-alike is shown refused, the real one allowed, each with its address', g.decision.allow === false && g.address === FAKE && real.decision.allow === true && real.address === REAL)
+  check('...the quote carries what a trader reads: the price, its gap from the reference, the limit and the slippage', q.ref === 650 && Math.abs(q.premium - (q.price / 650 - 1)) < 1e-12 && q.maxPremium === 0.03 && q.slippageBps === SLIPPAGE_BPS && q.routeSummary.tokenOut === REAL)
+  check('...the build is the one returned, for the wallet given, with the approve it needs', b.tx === r.tx && b.from === WALLET && b.approve.to === USDC_BASE)
+  const stopped = []
+  await buyFlow({ request: 'buy $20 of SNDK', handed: FAKE, fetchImpl: world({ verify: () => ({ __status: 503 }) }).fetchImpl, print: () => {}, endpoint: 'https://pos.test', onStep: (e) => stopped.push(e) })
+  check('a stop is a step too, with its reason', stopped.at(-1).step === 'stop' && stopped.at(-1).code === 3 && /do not buy/.test(stopped.at(-1).why))
+  const loud = await go({ request: 'buy $20 of SNDK', handed: FAKE, onStep: () => { throw new Error('a page that breaks') } }).catch((e) => ({ code: 'threw', text: String(e) }))
+  check('a page whose drawing throws changes nothing in the flow', loud.code === 0 && loud.outcome === 'quoted', loud.text)
+}
+
+console.log('the approve')
+{
+  const a = approveUsdc(KYBER_ROUTER, '20000000')
+  check('approve is for USDC, to the router, for exactly the amount: never unlimited', a.to === USDC_BASE && a.value === '0' && a.data === '0x095ea7b3' + KYBER_ROUTER.slice(2).padStart(64, '0') + (20000000).toString(16).padStart(64, '0'))
+  check('...and nothing for a spender or amount that is not one', approveUsdc('NVDA', '1') === null && approveUsdc(KYBER_ROUTER, '-1') === null && approveUsdc(KYBER_ROUTER, '1e9') === null)
 }
 
 console.log('anything unread stops the buy (exit 3)')
