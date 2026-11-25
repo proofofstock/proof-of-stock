@@ -26,6 +26,6 @@
     "@noble/hashes": "2.4.0",
     "ajv": "^8.17.1",
     "ajv-formats": "^3.0.1",
-    "marked": "18.2.0"
+    "marked": "18.2.1"
   }
 }
