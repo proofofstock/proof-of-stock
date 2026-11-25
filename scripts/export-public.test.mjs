@@ -104,7 +104,7 @@ try {
     const ign = fs.readFileSync(path.join(r.dest, '.gitignore'), 'utf8')
     const privIgn = fs.readFileSync(path.join(repo, '.gitignore'), 'utf8')
     check('the public .gitignore is plain patterns: no comment, no host path, no money path, no claim', !/^#/m.test(ign) && !/\/etc\/|x402|glama|claim/i.test(ign) && /^node_modules\/$/m.test(ign) && /^\.env$/m.test(ign) && /^\*\.key$/m.test(ign) && /^data\/$/m.test(ign) && ign !== privIgn)
-    for (const f of ['docs/stocks-truth-layer-tz.md', 'docs/stocks-passport-agent.md']) {
+    for (const f of ['docs/stocks-truth-layer-tz.md', 'docs/stocks-passport-agent.md', 'docs/list-locks-tz.md']) {
       const p = path.join(r.dest, f)
       check(f + ' is the stub', !fs.existsSync(p) || /^# Internal\n\nThis page is internal design notes/.test(fs.readFileSync(p, 'utf8')))
     }

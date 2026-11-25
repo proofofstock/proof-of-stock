@@ -97,6 +97,8 @@ export const ISSUER_OF: Readonly<{ base: 'coinbase', robinhood: 'robinhood' }>
 export const ISSUER_ADDRESS_PREFIX: Readonly<{ base: string }>
 /** How long the guard keeps an issuer list it read itself, in ms. */
 export const ISSUER_LIST_TTL_MS: number
+/** The server's no-verdict reasons that mean the chain contradicts the issuer's list: never bought, failOpen or not. */
+export const CONTRADICTED: ReadonlySet<string>
 /** How long a failed read of an issuer's list is kept, in ms. */
 export const ISSUER_FAIL_TTL_MS: number
 /** Pages of an issuer's list the guard follows. */

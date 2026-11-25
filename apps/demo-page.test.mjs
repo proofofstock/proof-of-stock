@@ -51,7 +51,15 @@ console.log('the CSP: three more hosts, on this page only')
 
 console.log('the script: the examples themselves, text only, no wallet')
 {
-  check('it runs searchFlow from the guard\'s example as served, not a copy', /^const \{ searchFlow, parseIntent \} = await import\(new URL\('examples\/agent-search\.mjs', GUARD\)\.href\)$/m.test(js) && !/async function (searchFlow|buyFlow)/.test(js) && /^import \{ buyFlow \} from '\.\/agent-buy\.mjs'$/m.test(search))
+  check('it runs searchFlow from the guard\'s example as served, not a copy', /^  import\(new URL\('examples\/agent-search\.mjs', GUARD\)\.href\)\.then\(\(m\) => \{ \(\{ searchFlow, parseIntent \} = m\) \}\),$/m.test(js) && !/async function (searchFlow|buyFlow)/.test(js) && /^import \{ buyFlow \} from '\.\/agent-buy\.mjs'$/m.test(search))
+  {
+    // Owner, 25.11: a chip clicked while the guard's files were still loading did nothing. The page wires itself up at
+    // once, and a run waits for the files before it reads anything; a failed load ends in a stop card, not silence.
+    const go = (js.match(/\nasync function go \(\) \{[\s\S]*?\n\}\n/) || [''])[0]
+    const waits = go.indexOf('try { await ready }'), reads = go.indexOf('parseIntent(said)')
+    check('a stock clicked before the guard\'s files arrive waits for them, it is not lost', !/^const .*= await import\(/m.test(js) && /^const ready = Promise\.all\(\[$/m.test(js) && waits > 0 && reads > waits && /^  if \(busy\) return\n[^]*?  busy = true\n  try \{ await ready \}/m.test(go))
+    check('...and if they never arrive, the agent says it stopped', /catch \(_\) \{\n    busy = false\n    log\.replaceChildren\(draw\.stop\(\{ code: 3, outcome: 'unavailable', why: /.test(go))
+  }
   check('the reader\'s words go to the example as typed, read by its parseIntent: the amount in them fills the amount', /intent = parseIntent\(said\)/.test(js) && /searchFlow\(\{ query: said,/.test(js) && /if \(intent\.usd != null\) \$\('dm-usd'\)\.value = String\(intent\.usd\)/.test(js) && /Got it: \$\{usd\(e\.usd\)\} of \$\{ctx\.query\} on Base/.test(js))
   check('...from the versioned folder the page names, only if it looks like one', /^const GUARD = new URL\(\/\^guard\\\/\[0-9a-f\]\{12\}\\\/\$\/\.test\(document\.body\.dataset\.guard \|\| ''\) \? document\.body\.dataset\.guard : 'guard\/', location\.href\)$/m.test(js) && !/^import .* from '\.\/guard\//m.test(js))
   check('it never asks a wallet, signs or sends', !/ethereum|eth_send|eth_sign|personal_sign|signTypedData|sendTransaction|privateKey|mnemonic|seed/i.test(js))

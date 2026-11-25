@@ -17,6 +17,7 @@ answer comes from [proofofstock.xyz](https://proofofstock.xyz).
   - **The prefix is pinned.** If Coinbase ever creates stock tokens at a new kind of address, this version answers
     `unknown` for them (a refusal, never a crash) until a new version updates the pin.
   - **Only 0.3.0 and later check this.** Agents on 0.2.x still take a listed answer as it comes; update to get it.
+  - **`failOpen` covers an outage, not a contradiction (0.3.1).** A `503` from proofofstock.xyz saying the chain contradicts the issuer's list for the address (`factory_conflict`, `issuer_prefix_mismatch`) is refused too.
   - **`failOpen` covers an outage, not a contradiction.** An issuer that cannot be read may be let through with `failOpen`; an issuer's list that was read and does not have the address never is.
   - **A failed read of the issuer's list is kept for 15 seconds**, so a batch asks once. Coinbase's list is followed page by page, up to 5 pages.
 - **Never throws on bad input.** `beforeBuy` answers `invalid_input` instead.

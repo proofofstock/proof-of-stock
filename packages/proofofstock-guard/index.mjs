@@ -22,7 +22,7 @@
 //
 // No dependencies; Node 20.19+ (ESM, also loadable with require()) or any runtime with fetch and WebCrypto.
 
-export const VERSION = '0.3.0'
+export const VERSION = '0.3.1'
 export const DEFAULT_ENDPOINT = 'https://proofofstock.xyz'
 export const MAX_BATCH = 50
 const ADDRESS = /^0x[0-9a-fA-F]{40}$/
@@ -40,6 +40,8 @@ export const ISSUER_ADDRESS_PREFIX = Object.freeze({ base: '0xb20000000000000000
 export const ISSUER_LIST_TTL_MS = 60_000
 /** How long a failed read of an issuer's list is kept: a batch of 50 asks once, not 50 times (outside review, 25.11). */
 export const ISSUER_FAIL_TTL_MS = 15_000
+/** The server's reasons for no verdict that mean the chain contradicts the issuer's list: never bought, failOpen or not. */
+export const CONTRADICTED = Object.freeze(new Set(['factory_conflict', 'issuer_prefix_mismatch']))
 /** Pages of an issuer's list the guard follows (Coinbase pages at 500), as the server's reader does. */
 export const ISSUER_MAX_PAGES = 5
 // A page, or a Web Worker or Service Worker: the issuers' APIs send no CORS headers to any of them (outside review, 25.11).
@@ -249,7 +251,14 @@ export function createGuard ({ endpoint = DEFAULT_ENDPOINT, fetchImpl = globalTh
   }
 
   const invalid = (why) => ({ allow: false, decision: 'invalid_input', reason: why, use_instead: null, verify: null })
-  const couldNot = (tokenAddress, chain, v) => ({ allow: failOpen, decision: 'unknown', reason: `Could not check ${tokenAddress} on ${chain} (${v.body && v.body.error || v.status}). ${failOpen ? 'Allowed because failOpen is set.' : 'Not buying a token that could not be checked.'}`, use_instead: null, verify: v.body })
+  // A 503 that says the chain contradicts the issuer's list for this address (proofofstock.xyz's list locks) is an
+  // answer, not an outage: failOpen never turns it into a buy (outside review, 25.11). Any other 503 is an outage.
+  const couldNot = (tokenAddress, chain, v) => {
+    const reason = v.body && typeof v.body.reason === 'string' ? v.body.reason : null
+    const contradicted = CONTRADICTED.has(reason)
+    const allow = contradicted ? false : failOpen
+    return { allow, decision: 'unknown', reason: `Could not check ${tokenAddress} on ${chain} (${reason ? 'no verdict: ' + reason : v.body && v.body.error || v.status}). ${contradicted ? 'The chain contradicts the issuer list for it: not buying, whatever failOpen says.' : allow ? 'Allowed because failOpen is set.' : 'Not buying a token that could not be checked.'}`, use_instead: null, verify: v.body }
+  }
 
   /**
    * The decision before a buy. Never throws.

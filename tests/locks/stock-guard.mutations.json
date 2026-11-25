@@ -101,6 +101,18 @@
       "find": " || typeof globalThis.WorkerGlobalScope !== 'undefined'",
       "replace": "",
       "expect": "FAIL crossCheck is on by default outside a browser, off in one, a Web Worker"
+    },
+    {
+      "name": "failOpen buys a record the chain contradicts",
+      "find": "    const allow = contradicted ? false : failOpen\n",
+      "replace": "    const allow = failOpen\n",
+      "expect": "FAIL failOpen never buys a record the server holds as factory_conflict"
+    },
+    {
+      "name": "the prefix mismatch is not taken as a contradiction",
+      "find": "export const CONTRADICTED = Object.freeze(new Set(['factory_conflict', 'issuer_prefix_mismatch']))",
+      "replace": "export const CONTRADICTED = Object.freeze(new Set(['factory_conflict']))",
+      "expect": "FAIL failOpen never buys a record the server holds as issuer_prefix_mismatch"
     }
   ]
 }

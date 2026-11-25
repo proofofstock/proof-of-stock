@@ -105,6 +105,38 @@ prize is a few days of gas, the key can be replaced in a minute with no loss to 
 writing the same directory as the anchor is a good way to break the one job that has to run every night. If the
 balance on that key ever has to be larger, this is the first thing to change.
 
+### When the source itself lies, or our host does
+
+Everything above protects the path between an issuer's list and you. Two cases sit outside that path, and until
+26.11 this model did not name them (the owner asked; nothing had happened):
+
+- **The issuer's list is wrong.** Somebody who gets into an issuer's systems adds a foreign address to its list. We
+  would then say "listed" for it, with a hash that honestly matches the list we read, and an agent would buy it. Every
+  proof we publish would prove, correctly, that we repeated a lie.
+- **Our own host is taken.** Then it can answer whatever it likes, and a check that runs on the same host proves
+  nothing.
+
+What answers them is three locks that do not rest on the same thing:
+
+1. **On the buyer's side** (`@proofofstock/guard` 0.3): the guard reads the issuer's own list itself, outside our
+   server, and refuses a buy our answer calls listed when that list says otherwise. On Base it also refuses an address
+   outside the fixed form every Coinbase stock token has had so far: a new form from Coinbase would be refused until the
+   guard is updated, and an agent on an older guard does not get any of this.
+2. **Off our host** (`deployment/KILLSWITCH.md`): a small worker in the owner's own Cloudflare account compares our
+   answers with the issuers' lists every minute. When we call an address listed that the issuer has not listed, twice
+   in a row, it closes the verdict routes and stays closed until the owner opens them by hand. An issuer that cannot
+   be read is "unknown", never a mismatch, so an issuer outage cannot close us. It sees only what our host shows it, so a
+   host that lies to it alone is the case it cannot catch; that limit is written down where it is set up.
+3. **On the chain:** a token counts as the issuer's only when the chain itself records that the issuer's factory
+   contract created it, read up to finalized blocks and confirmed through a second, independent node. A list that names
+   an address the factory never created gets no verdict at all. The cost is that a brand-new listing turns green 35 to
+   50 minutes after it is created. A node that has lost old history, or simply fails, can delay a token, never take one
+   back without proof from the block itself.
+
+Status on 26.11: the guard lock is in 0.3 in this repository; the worker is in the repository and goes live once the
+owner sets it up; the chain lock is written, reviewed and going out in two steps. This section will say when each is
+live.
+
 **Ourselves.** The code is public and MIT, the daily exam publishes its own wrong answers to a branch anyone can
 rerun, and the archive is anchored. The point of all three is that we cannot quietly change our mind about what we
 said last month.
@@ -156,8 +188,10 @@ says. The first version, 0.2.0, was published by hand before this was set up, an
 
 In the order that would hurt most:
 
-1. **A false "listed".** An address shown as the issuer's when it is not. This would need our registry read and the
-   list hash to agree on something untrue, which is why the hash and the frozen list are published with every verdict.
+1. **A false "listed".** An address shown as the issuer's when it is not. From our side this would need our registry
+   read and the list hash to agree on something untrue, which is why the hash and the frozen list are published with
+   every verdict. From the issuer's side, a list that is itself wrong agrees with its own hash: that is what the three
+   locks under "When the source itself lies, or our host does" are for.
 2. **A forged proof of the past.** A day's archive shown as timestamped in Bitcoin when it is not, or shown with a
    block that does not contain it.
 3. **A quiet stop.** Readings that stop, an alert that never fires, a proof that never completes and nobody notices.

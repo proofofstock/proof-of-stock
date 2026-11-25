@@ -11,8 +11,14 @@
 // a new address, so no browser keeps running an old one from its cache (owner, 25.11). Anything else falls back to the
 // unversioned folder, which the server never lets a browser keep.
 const GUARD = new URL(/^guard\/[0-9a-f]{12}\/$/.test(document.body.dataset.guard || '') ? document.body.dataset.guard : 'guard/', location.href)
-const { searchFlow, parseIntent } = await import(new URL('examples/agent-search.mjs', GUARD).href)
-const { KYBER_ROUTER, USDC_BASE } = await import(new URL('examples/agent-buy.mjs', GUARD).href)
+// They load while the page wires itself up, not before: a stock clicked the moment the page appears waits for them in
+// go() instead of being lost (owner, 25.11: the first click on a chip did nothing on a slow load).
+let searchFlow, parseIntent, KYBER_ROUTER, USDC_BASE
+const ready = Promise.all([
+  import(new URL('examples/agent-search.mjs', GUARD).href).then((m) => { ({ searchFlow, parseIntent } = m) }),
+  import(new URL('examples/agent-buy.mjs', GUARD).href).then((m) => { ({ KYBER_ROUTER, USDC_BASE } = m) }),
+])
+ready.catch(() => {})
 
 const $ = (id) => document.getElementById(id)
 const log = $('dm-log'), form = $('dm-ask'), run = $('dm-run'), live = $('dm-live')
@@ -277,6 +283,14 @@ async function typing () {
 let busy = false
 async function go () {
   if (busy) return
+  // A click that came before the guard's files arrived runs once they have; if they never do, the agent says it stopped.
+  busy = true
+  try { await ready } catch (_) {
+    busy = false
+    log.replaceChildren(draw.stop({ code: 3, outcome: 'unavailable', why: 'The agent\'s own files did not load, so it does nothing. Reload the page.', wire: [] }))
+    return
+  }
+  busy = false
   // The request in the reader's words, split the way the example splits it (owner, 25.11: "Tesla 7000$" is $7,000 of Tesla).
   const said = String($('dm-q').value || '').trim().slice(0, 80), intent = parseIntent(said)
   const query = cleanQuery(intent.query), chip = chosenChip(query)

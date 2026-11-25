@@ -200,6 +200,19 @@ console.log('it does not take our word for it (0.3.0)')
   check('crossCheck is on by default outside a browser, off in one, a Web Worker or a Service Worker included (no CORS)', /crossCheck = !IN_BROWSER/.test(src) && /typeof globalThis\.window !== 'undefined' && typeof globalThis\.document !== 'undefined'/.test(src) && /typeof globalThis\.WorkerGlobalScope !== 'undefined'/.test(src))
 }
 
+console.log('a 503 that says the chain contradicts the list (0.3.1)')
+{
+  const held = (reason) => async (url) => (String(url).startsWith('https://proofofstock.xyz') ? ans(503, { error: 'no verdict: the issuer list names this address, but the chain does not back it', reason, address: LISTED }) : ans(200, ISSUER_BODY))
+  for (const reason of ['factory_conflict', 'issuer_prefix_mismatch']) {
+    const d = await createGuard({ retryDelayMs: 0, failOpen: true, fetchImpl: held(reason) }).beforeBuy({ chain: 'base', tokenAddress: LISTED })
+    check(`failOpen never buys a record the server holds as ${reason}`, d.allow === false && d.decision === 'unknown' && d.reason.includes(reason) && /whatever failOpen says/.test(d.reason))
+  }
+  const aw = await createGuard({ retryDelayMs: 0, failOpen: true, fetchImpl: held('awaiting_factory_confirmation') }).beforeBuy({ chain: 'base', tokenAddress: LISTED })
+  check('...a record only awaiting confirmation is an outage-like "could not check": failOpen decides, and the reason is named', aw.allow === true && aw.reason.includes('awaiting_factory_confirmation'))
+  const many = await createGuard({ retryDelayMs: 0, failOpen: true, fetchImpl: async (url) => (String(url).includes('addresses=') ? ans(503, { reason: 'factory_conflict', address: LISTED }) : ans(200, ISSUER_BODY)) }).beforeBuyMany('base', [{ tokenAddress: LISTED }, { tokenAddress: COPY }])
+  check('...and a batch that fails closed on such a record is never bought either', many.every((d) => d.allow === false))
+}
+
 console.log('the package')
 {
   const { createRequire } = await import('node:module')

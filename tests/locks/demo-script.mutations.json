@@ -44,8 +44,8 @@
     },
     {
       "name": "the page imports the guard from the unversioned folder again",
-      "find": "const { searchFlow, parseIntent } = await import(new URL('examples/agent-search.mjs', GUARD).href)",
-      "replace": "const { searchFlow, parseIntent } = await import('./guard/examples/agent-search.mjs')",
+      "find": "  import(new URL('examples/agent-search.mjs', GUARD).href).then(",
+      "replace": "  import('./guard/examples/agent-search.mjs').then(",
       "expect": "FAIL it runs searchFlow from the guard's example as served"
     },
     {
@@ -83,6 +83,18 @@
       "find": "The market quote, from an aggregator, gives",
       "replace": "The exchange gives",
       "expect": "FAIL the quote is named as the aggregator's"
+    },
+    {
+      "name": "a run no longer waits for the guard's files (an early click is lost or breaks)",
+      "find": "  try { await ready } catch (_) {",
+      "replace": "  try { } catch (_) {",
+      "expect": "FAIL a stock clicked before the guard's files arrive waits for them"
+    },
+    {
+      "name": "a failed load ends in silence",
+      "find": "log.replaceChildren(draw.stop({ code: 3",
+      "replace": "console.log(({ code: 3",
+      "expect": "FAIL ...and if they never arrive, the agent says it stopped"
     }
   ]
 }
