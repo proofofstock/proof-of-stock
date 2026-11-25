@@ -1,0 +1,22 @@
+{
+  "_finding": "Owner, 25.11: the wallet field is for developers only. The page hides its block outside the Developer view with one rule in demo.css; without it the field shows to every reader.",
+  "target": "apps/stocks-web/demo.css",
+  "runner": [
+    "node",
+    "apps/demo-page.test.mjs"
+  ],
+  "mutations": [
+    {
+      "name": "the wallet block shows in every view",
+      "find": ".dm:not([data-view=\"dev\"]) .dm-dev-only { display: none; }",
+      "replace": ".dm-dev-only { }",
+      "expect": "FAIL the wallet block shows in the Developer view only"
+    },
+    {
+      "name": "all three tellings show at once",
+      "find": ".dm .v-trader, .dm .v-dev { display: none; }",
+      "replace": ".dm .v-trader, .dm .v-dev { }",
+      "expect": "FAIL one telling shows at a time"
+    }
+  ]
+}

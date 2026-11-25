@@ -132,9 +132,10 @@ const STATIC = Object.freeze({
   '/api.js': ['api.js', 'text/javascript; charset=utf-8'],
   '/demo.js': ['demo.js', 'text/javascript; charset=utf-8'],
   '/demo.css': ['demo.css', 'text/css; charset=utf-8'],
-  // /demo runs the guard package's own example in the browser (apps/stocks-demo-page.mjs): the two files, as published.
+  // /demo runs the guard package's own examples in the browser (apps/stocks-demo-page.mjs): the files, as published.
   '/guard/index.mjs': ['../../packages/proofofstock-guard/index.mjs', 'text/javascript; charset=utf-8'],
   '/guard/examples/agent-buy.mjs': ['../../packages/proofofstock-guard/examples/agent-buy.mjs', 'text/javascript; charset=utf-8'],
+  '/guard/examples/agent-search.mjs': ['../../packages/proofofstock-guard/examples/agent-search.mjs', 'text/javascript; charset=utf-8'],
   '/og.png': ['og.png', 'image/png'],
   '/logo.png': ['logo.png', 'image/png'],
   '/favicon.svg': ['favicon.svg', 'image/svg+xml'],
@@ -1196,8 +1197,8 @@ export function createStocksWeb ({
         assets: { css: `style.css?v=${version('/style.css')}`, docsCss: `docs.css?v=${version('/docs.css')}`, apiJs: `api.js?v=${version('/api.js')}`, beacon: `beacon.js?v=${version('/beacon.js')}` } }))
       return send(res, 200, apiHtml, 'text/html; charset=utf-8', { 'cache-control': 'public, max-age=300' })
     }
-    // An agent buying through the guard, live (owner, 25.11). The one page whose CSP lets the browser reach KyberSwap and
-    // Base's RPC: the quote must come from the aggregator, not through us.
+    // The Demo Agent, live (owner, 25.11): a market search, Proof of Stock's verdicts, a quote. The one page whose CSP lets
+    // the browser reach GeckoTerminal, KyberSwap and Base's RPC: the search and the quote must not pass through us.
     if (sub === '/demo') {
       analytics.load(clientIp(req), req.headers, '/demo')
       demoHtml ??= withPageHead('/demo', demoPage({ version: appVersion,

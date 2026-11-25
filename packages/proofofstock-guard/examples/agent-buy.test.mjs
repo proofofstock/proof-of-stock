@@ -3,7 +3,7 @@
 // build a swap only for the router it names and only when asked, and stop on anything it could not read.
 //
 // Run: node packages/proofofstock-guard/examples/agent-buy.test.mjs
-import { buyFlow, parseRequest, swapLink, approveUsdc, USDC_BASE, KYBER_ROUTER, SLIPPAGE_BPS } from './agent-buy.mjs'
+import { buyFlow, parseRequest, swapLink, approveUsdc, USDC_BASE, KYBER_ROUTER, SLIPPAGE_BPS, BASE_CHAIN_ID, BASE_ONLY } from './agent-buy.mjs'
 
 let passed = 0, failed = 0
 const failures = []
@@ -96,14 +96,17 @@ console.log('the passport and the quote')
 
 console.log('the swap link')
 {
-  const want = `https://kyberswap.com/swap/base?inputCurrency=${USDC_BASE}&outputCurrency=${REAL}`
+  const want = `https://aerodrome.finance/swap?from=${USDC_BASE}&to=${REAL}&chain0=8453&chain1=8453`
   const r = await go({ request: 'buy $20 of SNDK on Base', handed: FAKE })
   check('after the quote, the link opens USDC -> the issuer\'s contract, the one the guard passed', r.link === want && r.text.includes(want), r.text)
-  check('...never the look-alike, anywhere in a link', !r.text.split('\n').some((l) => l.includes('kyberswap.com') && l.includes(FAKE)))
+  check('...never the look-alike, anywhere in a link', !r.text.split('\n').some((l) => /aerodrome\.finance|kyberswap\.com/.test(l) && l.includes(FAKE)))
   const b = await go({ request: 'buy $20 of SNDK', from: WALLET })
   check('...and it is there with a wallet too', b.link === want)
   const dear = await go({ request: 'buy $20 of SNDK' }, { routes: (q) => ({ data: { routeSummary: { tokenIn: q.get('tokenIn'), tokenOut: q.get('tokenOut'), amountIn: q.get('amountIn'), amountOut: '2800000' } } }) })
-  check('a refused quote gives no link', !dear.link && !/kyberswap\.com/.test(dear.text), dear.text)
+  check('a refused quote gives no link', !dear.link && !/aerodrome\.finance|kyberswap\.com/.test(dear.text), dear.text)
+  check('the link opens Aerodrome, which trades on Base only, with both sides pinned to Base (owner, 25.11)', /^https:\/\/aerodrome\.finance\/swap\?from=0x[0-9a-f]{40}&to=0x[0-9a-f]{40}&chain0=8453&chain1=8453$/.test(r.link))
+  check('...with the highest price to accept there: Aerodrome shows its own, the quote above is the aggregator\'s', /accept at most \$669\.50 per SNDKc \(3\.0% above the issuer's \$650\.00\)/.test(r.text), r.text)
+  check('...and the person is told the trade is on Base, and to stop on any other network', r.text.includes(BASE_ONLY) && /on Base/.test(BASE_ONLY) && /stop/.test(BASE_ONLY))
   check('swapLink takes a contract address only', swapLink('NVDA') === null && swapLink('0x12') === null && swapLink('0x' + 'B2'.repeat(20)) === want)
 }
 
@@ -113,6 +116,7 @@ console.log('the unsigned swap')
   const b = hit(r.calls, '/route/build')
   check('with a wallet, the swap is built for that wallet as sender and recipient', r.code === 0 && r.outcome === 'built' && b.length === 1 && JSON.parse(b[0].init.body).sender === WALLET && JSON.parse(b[0].init.body).recipient === WALLET, r.text)
   check('...returned to the caller unsigned, to the router', r.tx && r.tx.to.toLowerCase() === KYBER_ROUTER && r.tx.value === '0' && /review and sign/.test(r.text))
+  check('...for Base only: the swap and its approve carry chain id 8453', BASE_CHAIN_ID === 8453 && r.tx.chainId === 8453 && approveUsdc(KYBER_ROUTER, '1').chainId === 8453)
   check('...and nothing is ever sent: no request carries a signature or a send', !r.calls.some((c) => /eth_send|signature|private/i.test(String(c.init.body || '') + c.url)))
   const rogue = await go({ request: 'buy $20 of SNDK', from: WALLET }, { build: () => ({ data: { routerAddress: OTHER, data: '0xe21fd0e9' } }) })
   check('a built swap to any other contract than the router is refused', rogue.code === 1 && !rogue.tx && /not the aggregator's router/.test(rogue.text), rogue.text)

@@ -1,0 +1,40 @@
+{
+  "_finding": "Owner, 25.11: the Demo Agent finds a stock by searching the market, as anyone would, and Proof of Stock tells the original from the rest. The search example is where a list of look-alikes turns into one address to buy: it must buy only the one the issuer lists, ask about every candidate, stop when any answer is missing, and never show a stranger's link.",
+  "target": "packages/proofofstock-guard/examples/agent-search.mjs",
+  "runner": [
+    "node",
+    "packages/proofofstock-guard/examples/agent-search.test.mjs"
+  ],
+  "mutations": [
+    {
+      "name": "a token the issuer does not list is picked",
+      "find": "const listed = verdicts.find((v) => v.allow)",
+      "replace": "const listed = verdicts.find((v) => !v.allow) || verdicts.find((v) => v.allow)",
+      "expect": "FAIL the pick is the one the issuer lists"
+    },
+    {
+      "name": "a batch that could not be read does not stop the buy",
+      "find": "if (verdicts.some((v) => v.decision === 'unknown')) return stop(3,",
+      "replace": "if (false) return stop(3,",
+      "expect": "FAIL the batch check unreadable: exit 3, no quote"
+    },
+    {
+      "name": "a stranger's link is shown as written",
+      "find": "    .replace(/\\b(?:https?:\\/\\/|www\\.)\\S*/gi, '…')\n",
+      "replace": "",
+      "expect": "FAIL a link or a domain is cut out"
+    },
+    {
+      "name": "every token in the pools found is a candidate, the quote token included",
+      "find": "    if (!terms.some((w) => text.includes(w))) continue\n",
+      "replace": "",
+      "expect": "FAIL candidates are the tokens carrying the ticker or the company"
+    },
+    {
+      "name": "a market search that failed reads as an empty market",
+      "find": "if (found == null) return stop(3, 'unavailable', 'The market search could not be read, so I do not buy.')",
+      "replace": "if (found == null) return stop(1, 'refused', 'No tokens.')",
+      "expect": "FAIL the market search unreadable: exit 3, no quote"
+    }
+  ]
+}

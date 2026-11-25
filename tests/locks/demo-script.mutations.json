@@ -16,7 +16,37 @@
       "name": "the quote step is not drawn",
       "find": "  quote: (e) => {",
       "replace": "  quote_: (e) => {",
-      "expect": "FAIL it draws the example's quote step"
+      "expect": "FAIL it draws the examples' quote step"
+    },
+    {
+      "name": "a token off the issuer's list is shown as a fake",
+      "find": "not_listed: { tone: 'grey', badge: () => 'Not on the issuer\\'s list' },",
+      "replace": "not_listed: { tone: 'bad', badge: () => 'Fake' },",
+      "expect": "FAIL every verdict is credited to Proof of Stock, and a token off the list is not called fake"
+    },
+    {
+      "name": "the verdicts are not credited to Proof of Stock",
+      "find": "h('span', { class: 'dm-pos' }, 'Checked by Proof of Stock')",
+      "replace": "h('span', { class: 'dm-pos' }, 'Checked')",
+      "expect": "FAIL every verdict is credited to Proof of Stock"
+    },
+    {
+      "name": "the Base-only line beside the swap button is gone",
+      "find": "      h('p', { class: 'dm-chain' }, h('b', {}, 'Base only. '), e.network)] }),",
+      "replace": "] }),",
+      "expect": "FAIL beside the swap button, in every view: the trade is on Base"
+    },
+    {
+      "name": "the aggregator's quote is passed off as the price on Aerodrome",
+      "find": "The market quote, from an aggregator, gives",
+      "replace": "The exchange gives",
+      "expect": "FAIL the quote is named as the aggregator's"
+    },
+    {
+      "name": "the wallet is read in every view",
+      "find": "from = document.body.dataset.view === 'dev' ? $('dm-from').value.trim() || null : null",
+      "replace": "from = $('dm-from').value.trim() || null",
+      "expect": "FAIL the wallet block shows in the Developer view only, and is read there only"
     }
   ]
 }

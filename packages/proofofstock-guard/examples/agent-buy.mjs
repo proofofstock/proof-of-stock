@@ -7,8 +7,9 @@
 //   4. read its passport: minted, not paused, the issuer's reference price;
 //   5. ask a public DEX aggregator (KyberSwap, no key) for a USDC -> token quote, and refuse it unless the quote is for
 //      the very contract checked in step 3 and its price sits within maxPremium of the issuer's reference;
-//   6. print a KyberSwap link with the checked contract filled in, for a person to swap in the browser;
-//   7. with --from <address> only: build the unsigned swap for that wallet.
+//   6. print an Aerodrome link with the checked contract filled in, for a person to swap in the browser, with the
+//      highest price to accept there (Aerodrome shows its own final price; the quote above is the aggregator's);
+//   7. with --from <address> only: build the unsigned swap for that wallet, through KyberSwap's router.
 //
 // ⚠ IT NEVER SIGNS AND NEVER SENDS. There is no key anywhere in this file. Step 6 prints a transaction for the user's own
 // wallet to review and sign; without --from the flow stops at the quote.
@@ -24,6 +25,11 @@ import { createGuard, DEFAULT_ENDPOINT } from '../index.mjs'
 export const USDC_BASE = '0x833589fcd6edb6e08f4c7c32d4f71b54bda02913'
 export const KYBER = 'https://aggregator-api.kyberswap.com/base/api/v1'
 export const BASE_RPC = 'https://mainnet.base.org'
+/** Base's chain id. Every contract here exists on Base only; a wallet on another network must not sign for them. */
+export const BASE_CHAIN_ID = 8453
+/** What a person is told beside the swap: the network, and when to stop (owner, 25.11: a wallet left on Ethereum took
+ * KyberSwap there, under the same Base addresses). */
+export const BASE_ONLY = 'This trade is on Base: Aerodrome runs on Base, and these addresses exist on Base only. Keep your wallet on Base; if any screen shows another network, stop.'
 // KyberSwap's MetaAggregationRouterV2 on Base. A built swap to any other contract is refused: the aggregator chooses the
 // route, never where the user's USDC goes.
 export const KYBER_ROUTER = '0x6131b5fae19ea4f9d964eac0408e4408b66337b5'
@@ -34,14 +40,18 @@ export const SLIPPAGE_BPS = 50
 export function approveUsdc (spender, amount) {
   if (!ADDRESS.test(String(spender)) || !/^\d{1,30}$/.test(String(amount))) return null
   const word = (hex) => hex.padStart(64, '0')
-  return { to: USDC_BASE, value: '0', data: '0x095ea7b3' + word(String(spender).slice(2).toLowerCase()) + word(BigInt(amount).toString(16)) }
+  return { to: USDC_BASE, value: '0', data: '0x095ea7b3' + word(String(spender).slice(2).toLowerCase()) + word(BigInt(amount).toString(16)), chainId: BASE_CHAIN_ID }
 }
 
-/** KyberSwap's swap page with USDC -> the given contract filled in, built from the checked address only (never from
- * the user's words or a quote), so the browser gets exactly the contract the guard passed. Null for anything else. */
+/** Aerodrome's swap page with USDC -> the given contract filled in (owner, 25.11: "the link to Aerodrome"), built from
+ * the checked address only (never from the user's words or a quote), so the browser gets exactly the contract the guard
+ * passed. Null for anything else. Aerodrome trades on Base only, and both sides are pinned to Base's chain id, as its
+ * own page writes them. Checked 25.11: aerodrome.finance/swap opens with both tokens filled in; the new multi-network
+ * app at app.aero.xyz ignored them and asked for a network, so it is not used yet. (A KyberSwap link with the network
+ * in a query opened on Ethereum for a wallet left there; that is why the network is pinned here, not inferred.) */
 export function swapLink (address) {
   if (!ADDRESS.test(String(address))) return null
-  return `https://kyberswap.com/swap/base?inputCurrency=${USDC_BASE}&outputCurrency=${String(address).toLowerCase()}`
+  return `https://aerodrome.finance/swap?from=${USDC_BASE}&to=${String(address).toLowerCase()}&chain0=${BASE_CHAIN_ID}&chain1=${BASE_CHAIN_ID}`
 }
 const ADDRESS = /^0x[0-9a-fA-F]{40}$/
 const CLIENT = { 'x-client-id': 'proofofstock-example', accept: 'application/json' }
@@ -147,22 +157,25 @@ export async function buyFlow ({ request, handed = null, from = null, maxPremium
   step('quote', { address, symbol, usd: ask.usd, tokens, price, ref, premium, maxPremium, decimals, slippageBps: SLIPPAGE_BPS, routeSummary: rs })
   if (Math.abs(premium) > maxPremium) return stop(1, 'refused', `That is more than ${(maxPremium * 100).toFixed(1)}% from the reference. Not buying at this price.`)
 
-  // 6. The unsigned swap, for the user's own wallet only.
-  // The same swap for a person in a browser: the page opens with the checked contract already in place, no search by name.
+  // 6. The swap for a person in a browser: Aerodrome, the checked contract already in place, no search by name. The
+  // quote above is the aggregator's; Aerodrome shows its own, so the person is given the highest price to accept there.
   const link = swapLink(address)
+  const maxPrice = ref * (1 + maxPremium)
   say('link', link)
-  step('link', { link, address, symbol })
-  say('', `opens USDC -> ${symbol} with ${address} filled in; check that address in your wallet before you sign.`)
+  step('link', { link, address, symbol, chainId: BASE_CHAIN_ID, network: BASE_ONLY, ref, maxPremium, maxPrice })
+  say('', `opens USDC -> ${symbol} on Aerodrome with ${address} filled in; check that address in your wallet before you sign.`)
+  say('', `Aerodrome shows its own price: accept at most $${maxPrice.toFixed(2)} per ${symbol} (${(maxPremium * 100).toFixed(1)}% above the issuer's $${ref.toFixed(2)}).`)
+  say('', BASE_ONLY)
   if (!from) { say('agent', `Ready to swap into ${address} (${symbol}). Pass --from <your wallet> to build the transaction; nothing is signed here.`); return { code: 0, outcome: 'quoted', link, address, symbol } }
   const b = await getJson(`${KYBER}/route/build`, { method: 'POST', headers: { ...CLIENT, 'content-type': 'application/json' }, body: JSON.stringify({ routeSummary: rs, sender: from, recipient: from, slippageTolerance: SLIPPAGE_BPS }) })
   const tx = b && b.data
   if (!tx || !ADDRESS.test(String(tx.routerAddress || '')) || !/^0x[0-9a-f]+$/i.test(String(tx.data || ''))) return stop(3, 'unavailable', 'The swap could not be built, so I do not buy.')
   if (String(tx.routerAddress).toLowerCase() !== KYBER_ROUTER) return stop(1, 'refused', "The built swap goes to a contract that is not the aggregator's router. Not signing that.")
-  say('agent', 'Unsigned transaction for your wallet to review and sign (first approve USDC to the router):')
+  say('agent', `Unsigned transaction for your wallet on Base (chain id ${BASE_CHAIN_ID}) to review and sign (first approve USDC to the router):`)
   say('', `to ${tx.routerAddress}, value 0, data ${tx.data.slice(0, 10)}... (${(tx.data.length - 2) / 2} bytes), max 0.5% slippage`)
   const approve = approveUsdc(tx.routerAddress, rs.amountIn)
   if (approve) say('', `approve first: to ${approve.to} (USDC), data ${approve.data.slice(0, 10)}... for exactly ${ask.usd} USDC, not unlimited`)
-  const built = { to: tx.routerAddress, value: '0', data: tx.data }
+  const built = { to: tx.routerAddress, value: '0', data: tx.data, chainId: BASE_CHAIN_ID }
   step('built', { tx: built, from, approve, address, symbol })
   return { code: 0, outcome: 'built', tx: built, link, address, symbol }
 }

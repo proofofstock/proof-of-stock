@@ -71,6 +71,30 @@
       "find": "word(BigInt(amount).toString(16))",
       "replace": "'f'.repeat(64)",
       "expect": "FAIL approve is for USDC, to the router, for exactly the amount"
+    },
+    {
+      "name": "the built swap names no network",
+      "find": "data: tx.data, chainId: BASE_CHAIN_ID }",
+      "replace": "data: tx.data }",
+      "expect": "FAIL ...for Base only: the swap and its approve carry chain id 8453"
+    },
+    {
+      "name": "the person is not told the trade is on Base",
+      "find": "  say('', BASE_ONLY)\n",
+      "replace": "",
+      "expect": "FAIL ...and the person is told the trade is on Base"
+    },
+    {
+      "name": "the Aerodrome link is not pinned to Base",
+      "find": "&chain0=${BASE_CHAIN_ID}&chain1=${BASE_CHAIN_ID}`",
+      "replace": "`",
+      "expect": "FAIL the link opens Aerodrome, which trades on Base only"
+    },
+    {
+      "name": "the person is not told the most to pay on Aerodrome",
+      "find": "  say('', `Aerodrome shows its own price: accept at most $${maxPrice.toFixed(2)}",
+      "replace": "  say('', `Aerodrome shows its own price: accept $${maxPrice.toFixed(2)}",
+      "expect": "FAIL ...with the highest price to accept there"
     }
   ]
 }

@@ -1,5 +1,5 @@
 {
-  "_finding": "Owner, 25.11: /demo tells one live run three ways and reaches only the two hosts the example itself uses. The page module names those hosts, the switch and the steps a reader without script still reads.",
+  "_finding": "Owner, 25.11: /demo, the Demo Agent, searches the market for a stock and tells one live run three ways, reaching only the three hosts the examples use. The page module names those hosts, the stock buttons, the switch and the steps a reader without script still reads.",
   "target": "apps/stocks-demo-page.mjs",
   "runner": [
     "node",
@@ -10,24 +10,18 @@
       "name": "the CSP lets the page reach any host",
       "find": "`connect-src 'self' ${DEMO_HOSTS.join(' ')}`",
       "replace": "`connect-src *`",
-      "expect": "FAIL connect-src gains exactly those two"
+      "expect": "FAIL connect-src gains exactly those three"
     },
     {
       "name": "the page opens on the developer view, not plain words",
-      "find": "aria-pressed=\"${i === 0}\"",
-      "replace": "aria-pressed=\"${i === 2}\"",
+      "find": "aria-pressed=\"${i === 0}\" title=",
+      "replace": "aria-pressed=\"${i === 2}\" title=",
       "expect": "FAIL one switch, three views in order"
     },
     {
-      "name": "the page is handed a different look-alike from the example's",
-      "find": "export const DEMO_LOOKALIKE = '0x35b76a8fbfbac68c449a4a4a8d1bcda0d486f703'",
-      "replace": "export const DEMO_LOOKALIKE = '0x35b76a8fbfbac68c449a4a4a8d1bcda0d486f704'",
-      "expect": "FAIL the agent is handed the look-alike the example is handed"
-    },
-    {
       "name": "a step is missing for a reader that runs no script",
-      "find": "  ['Its passport', ",
-      "replace": "  // ['Its passport', ",
+      "find": "  ['The original', ",
+      "replace": "  // ['The original', ",
       "expect": "FAIL a reader that runs no script still reads every step"
     },
     {
@@ -35,6 +29,24 @@
       "find": "<h1>Demo Agent <em>",
       "replace": "<h1>Demo <em>",
       "expect": "FAIL it is called the Demo Agent, never a bare Demo"
+    },
+    {
+      "name": "the page opens on Tesla, which has no fake to show",
+      "find": "  Object.freeze({ query: 'Circle', ticker: 'CRCL' }),\n  Object.freeze({ query: 'Tesla', ticker: 'TSLA' }),",
+      "replace": "  Object.freeze({ query: 'Tesla', ticker: 'TSLA' }),\n  Object.freeze({ query: 'Circle', ticker: 'CRCL' }),",
+      "expect": "FAIL no command to type: one button per stock, Circle first"
+    },
+    {
+      "name": "the market search is left out of the CSP",
+      "find": "export const DEMO_HOSTS = Object.freeze([new URL(GECKO).origin, ",
+      "replace": "export const DEMO_HOSTS = Object.freeze([",
+      "expect": "FAIL the hosts are the examples' own"
+    },
+    {
+      "name": "the wallet field is back beside the amount, in every view",
+      "find": "<details class=\"dm-more dm-dev-only\" id=\"dm-wallet\">",
+      "replace": "<details class=\"dm-more\" id=\"dm-wallet\">",
+      "expect": "FAIL the wallet field sits in a developer-only block"
     }
   ]
 }

@@ -23,6 +23,12 @@
       "find": "'/guard/index.mjs': ['../../packages/proofofstock-guard/index.mjs',",
       "replace": "'/guard/index.mjs': ['api.js',",
       "expect": "FAIL /stocks/guard/index.mjs is the package's index.mjs"
+    },
+    {
+      "name": "the search the page runs is not the package's",
+      "find": "'/guard/examples/agent-search.mjs': ['../../packages/proofofstock-guard/examples/agent-search.mjs',",
+      "replace": "'/guard/examples/agent-search.mjs': ['api.js',",
+      "expect": "FAIL /stocks/guard/examples/agent-search.mjs is the package's agent-search.mjs"
     }
   ]
 }
