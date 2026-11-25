@@ -32,8 +32,8 @@
     },
     {
       "name": "the Base-only line beside the swap button is gone",
-      "find": "      h('p', { class: 'dm-chain' }, h('b', {}, 'Base only. '), e.network)] }),",
-      "replace": "] }),",
+      "find": "      h('p', { class: 'dm-chain' }, h('b', {}, 'Base only. '), e.network), tokenLinks(e.address)] }),",
+      "replace": "      tokenLinks(e.address)] }),",
       "expect": "FAIL beside the swap button, in every view: the trade is on Base"
     },
     {
@@ -47,6 +47,12 @@
       "find": "from = document.body.dataset.view === 'dev' ? $('dm-from').value.trim() || null : null",
       "replace": "from = $('dm-from').value.trim() || null",
       "expect": "FAIL the wallet block shows in the Developer view only, and is read there only"
+    },
+    {
+      "name": "the demo draws its own fields instead of the terminal's",
+      "find": "h('div', { class: 'field' }, h('span', { class: 'k' }, String(k).toLowerCase()), h('span', { class: 'dots-fill' }), ",
+      "replace": "h('div', { class: 'dm-row' }, h('span', { class: 'k' }, k), ",
+      "expect": "FAIL the blocks are the main terminal's own"
     }
   ]
 }

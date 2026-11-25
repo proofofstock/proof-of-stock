@@ -22,18 +22,18 @@
 .dm-card { display: grid; grid-template-columns: 82px minmax(0, 1fr); gap: 12px; align-items: start; animation: dm-in .35s ease both; }
 @keyframes dm-in { from { opacity: 0; transform: translateY(6px); } }
 .dm-who { padding-top: 13px; color: var(--faint); font: 600 10.5px/1 var(--mono); letter-spacing: .1em; text-transform: uppercase; text-align: right; }
-.dm-body { min-width: 0; padding: 12px 15px; border: 1px solid var(--hair); border-left: 3px solid var(--accent-hi); border-radius: 12px; background: var(--panel-2); color: var(--text); font: 15px/1.55 var(--sans); }
+/* Every block is the main terminal's .plain: a thin coloured line on the left, a square left edge, no frame. */
+.dm-body { min-width: 0; padding: 10px 12px; border: 0; border-left: 3px solid var(--faint); border-radius: 0 8px 8px 0; background: var(--glass-2); color: var(--text); font: 500 15px/1.5 var(--sans); }
 .dm-body p { margin: 0; }
 .dm-body code { font: 12.5px/1.4 var(--mono); color: #c9d8ff; overflow-wrap: anywhere; }
 .dm-card.you .dm-body { justify-self: end; border: 0; background: var(--accent); color: var(--on-accent); font-weight: 600; }
 .dm-card.you .dm-who { color: var(--accent-hi); }
-.dm-card.tip .dm-body { border-left-color: var(--warn); border-style: dashed; border-left-style: solid; }
 .dm-card.ok .dm-body { border-left-color: var(--ok); }
-.dm-card.bad .dm-body { border-left-color: var(--bad); background: color-mix(in srgb, var(--bad) 8%, var(--panel-2)); }
+.dm-card.bad .dm-body { border-left-color: var(--bad); background: color-mix(in srgb, var(--bad) 7%, var(--glass-2)); }
 .dm-card.bad .dm-who, .dm-card.bad .v-plain p { color: var(--bad); }
 .dm-card.bad .v-plain p { color: #ffd3d3; }
 .dm-card.warn .dm-body { border-left-color: var(--warn); }
-.dm-card.done .dm-body { border-left-color: var(--ok); background: color-mix(in srgb, var(--ok) 7%, var(--panel-2)); }
+.dm-card.done .dm-body { border-left-color: var(--ok); background: color-mix(in srgb, var(--ok) 6%, var(--glass-2)); }
 .dm-card.end .dm-body { border: 0; background: none; padding-top: 4px; color: var(--dim); font-size: 13px; }
 .dm-card.end .i { color: var(--ok); margin-right: 7px; }
 
@@ -42,13 +42,20 @@
 .dm[data-view="trader"] .v-plain, .dm[data-view="dev"] .v-plain { display: none; }
 .dm[data-view="trader"] .v-trader, .dm[data-view="dev"] .v-dev { display: block; }
 
-.dm-kv { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 5px 16px; margin: 0; font: 13px/1.45 var(--mono); }
-.dm-kv dt { color: var(--faint); }
-.dm-kv dd { margin: 0; color: var(--text); overflow-wrap: anywhere; }
-.dm-kv dd.mono { color: #c9d8ff; font-size: 12px; }
-.dm-kv dd.ok { color: var(--ok); }
-.dm-kv dd.bad { color: var(--bad); font-weight: 600; }
-.dm-kv dd.warn { color: var(--warn); }
+/* the main terminal's fields (style.css .fields / .field), in its mono, with values that may wrap in a narrow card */
+.dm-body .fields { margin: 2px 0; font: 13.5px/1.55 var(--mono); }
+.dm-body .field .v { min-width: 0; white-space: normal; overflow-wrap: anywhere; }
+.dm-body .field .v.mono { color: #c9d8ff; font-size: 12px; }
+.dm-body .field .v.ok { color: var(--ok); }
+.dm-body .field .v.bad { color: var(--bad); font-weight: 600; }
+/* a card head inside a block: the passport, as the terminal shows it */
+.dm-body .cardhead { margin: 0 0 8px; }
+.dm-body .cardhead h2 { font: 600 17px/1.3 var(--sans); }
+.dm-body .cardhead .sub { margin-top: 3px; font: 12px/1.4 var(--mono); }
+.dm-addr { word-break: break-all; }
+.dm-body .plain { margin: 8px 0 0; font-size: 14.5px; background: color-mix(in srgb, #fff 3%, transparent); }
+.dm-body .plain:first-child { margin-top: 0; }
+.dm-body .actions { margin-top: 10px; }
 
 .dm-gauge { position: relative; height: 34px; margin: 2px 0 12px; }
 .dm-gauge::before { content: ''; position: absolute; left: 0; right: 0; top: 8px; height: 6px; border-radius: 6px; background: linear-gradient(90deg, color-mix(in srgb, var(--ok) 25%, transparent), color-mix(in srgb, var(--ok) 55%, transparent) 50%, color-mix(in srgb, var(--ok) 25%, transparent)); }
@@ -110,8 +117,7 @@
   .dm-who { padding: 0 0 0 4px; text-align: left; }
   .dm-card.you .dm-who { text-align: right; padding-right: 4px; }
   .dm-body { font-size: 14.5px; }
-  .dm-kv { grid-template-columns: minmax(0, 1fr); gap: 0; }
-  .dm-kv dd { margin-bottom: 6px; }
+  .dm-body .fields { font-size: 12.5px; }
   .dm-steps { grid-template-columns: minmax(0, 1fr); }
   .dm-ask { padding: 12px; }
 }
@@ -146,7 +152,7 @@
 .dm-cand.warn .dm-c-badge { color: var(--warn); }
 
 /* Proof of Stock's own card: the blue of the brand, and its credit */
-.dm-card.pos .dm-body { border-left-color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, var(--panel-2)); }
+.dm-card.pos .dm-body { border-left-color: var(--accent-hi); background: color-mix(in srgb, var(--accent) 10%, var(--glass-2)); }
 .dm-card.pos .dm-who { color: var(--accent-hi); }
 .dm-sum { margin: 10px 0 0 !important; color: var(--text); font: 600 14px/1.5 var(--sans); }
 .dm-pos { display: inline-block; margin-right: 9px; padding: 3px 9px; border-radius: 6px; background: var(--accent); color: var(--on-accent); font: 600 10.5px/1.4 var(--mono); letter-spacing: .06em; text-transform: uppercase; vertical-align: 1px; }

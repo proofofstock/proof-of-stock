@@ -93,7 +93,14 @@ function card ({ who, tone = '', plain, trader, dev, extra }) {
       extra))
   return li
 }
-const kv = (rows) => h('dl', { class: 'dm-kv' }, rows.filter(Boolean).map(([k, v, cls]) => [h('dt', {}, k), h('dd', { class: cls || null }, v)]))
+// The main terminal's own blocks (owner, 25.11: "as in the main terminal"), with its classes from style.css: fields with a
+// dotted leader, a card head with the chain mark and the state, link buttons.
+const kv = (rows) => h('div', { class: 'fields' }, rows.filter(Boolean).map(([k, v, cls]) => h('div', { class: 'field' }, h('span', { class: 'k' }, String(k).toLowerCase()), h('span', { class: 'dots-fill' }), h('span', { class: 'v' + (cls ? ' ' + cls : '') }, v))))
+const cardHead = (title, address, state, tone) => h('div', { class: 'cardhead' },
+  h('div', null, h('h2', null, title), h('div', { class: 'sub' }, h('span', { class: 'chainmark base' }, 'Base'), h('span', { class: 'dm-addr' }, address))),
+  state ? h('span', { class: `state ${tone}` }, state) : null)
+const ext = (href, text) => h('a', { class: 'btn link', href, target: '_blank', rel: 'noopener noreferrer nofollow' }, text, h('span', { class: 'i i-ext', 'aria-hidden': 'true' }))
+const tokenLinks = (address) => h('div', { class: 'actions' }, ext(`https://www.geckoterminal.com/base/tokens/${address}`, 'chart & pools on GeckoTerminal'), ext(`https://basescan.org/token/${address}`, 'contract on basescan.org'))
 
 // ── the steps ───────────────────────────────────────────────────────────────────────────────────────────────────────
 let ctx = {}
@@ -168,9 +175,12 @@ const draw = {
   passport: (e) => {
     const p = e.passport, r = p.reference || {}, closed = e.session && e.session !== 'regular'
     ctx.symbol = e.symbol; ctx.name = p.issuer && p.issuer.token_name
-    return card({ who: 'Passport', tone: 'ok',
-      plain: h('p', {}, `Its passport is clean: ${ctx.name || e.symbol} is still issued, nothing is frozen, and the issuer's price is ${usd(e.ref)}.`, closed ? ` The US market is closed right now (${e.session}), so that is the last close.` : ''),
-      trader: kv([['Token', `${e.symbol}${ctx.name ? ' · ' + ctx.name : ''}`], ['Issuer price', usd(e.ref)], ['Price age', age(r.age_s), r.age_s > 3600 ? 'warn' : null], ['Market', e.session || 'unknown', closed ? 'warn' : null], ['Minted', p.issuer.minted ? 'yes' : 'no', 'ok'], ['Paused', (p.issuer.paused || []).length ? p.issuer.paused.join(', ') : 'nothing', 'ok']]),
+    // One node per telling: a node has one parent, and the same head in two views would leave one of them without it.
+    const head = () => cardHead(`${e.symbol}${ctx.name ? ' · ' + ctx.name : ''}`, e.address, 'Issuer-listed', 'ok')
+    const listed = () => h('div', { class: 'plain ok' }, `Issuer-listed: this exact contract is on Coinbase's list of its stock tokens${p.registry_age_s != null ? ` (list read ${age(p.registry_age_s)} ago)` : ''}.`)
+    return card({ who: 'Passport', tone: 'ok', boxed: true,
+      plain: h('div', {}, head(), listed(), h('div', { class: 'plain' }, `Still issued, nothing is frozen, and the issuer's price is ${usd(e.ref)}.`, closed ? ` The US market is closed right now (${e.session}), so that is the last close.` : '')),
+      trader: h('div', {}, head(), kv([['issuer', 'Coinbase'], ['issuer price', usd(e.ref)], ['price age', age(r.age_s), r.age_s > 3600 ? 'warn' : null], ['market', e.session || 'unknown', closed ? 'warn' : null], ['minted', p.issuer.minted ? 'yes' : 'no', 'ok'], ['paused', (p.issuer.paused || []).length ? p.issuer.paused.join(', ') : 'nothing', 'ok'], p.issuer.isin ? ['isin', p.issuer.isin] : null]), listed()),
       dev: devBlock({ calls: e.wire, mcp: `stock_passport({ chain: "base", address: "${short(e.address)}" })` }) })
   },
   quote: (e) => {
@@ -180,16 +190,16 @@ const draw = {
     ctx.quote = e
     return card({ who: 'Quote', tone: ok ? 'ok' : 'bad',
       plain: h('p', {}, `The market quote, from an aggregator, gives ${e.tokens.toFixed(4)} ${e.symbol} for ${usd(e.usd)}: ${usd(e.price)} each, ${Math.abs(e.premium * 100).toFixed(2)}% ${e.premium >= 0 ? 'above' : 'below'} the issuer's price. `, ok ? 'That is fair: well inside my 3% limit.' : 'That is too far from the real price.'),
-      trader: h('div', {}, gauge(e.premium, e.maxPremium), kv([['Quote', 'market quote from KyberSwap\'s aggregator; Aerodrome shows its own at the swap'], ['Quoted price', usd(e.price)], ['Issuer price', usd(e.ref)], ['Gap', pct(e.premium), ok ? 'ok' : 'bad'], ['Limit', `±${(e.maxPremium * 100).toFixed(2)}%`], ['You get', `${e.tokens.toFixed(6)} ${e.symbol}`], ['Minimum received', `${minOut.toFixed(6)} ${e.symbol} (0.50% slippage)`], ['Route', pools.length ? pools.join(' → ') : 'KyberSwap'], e.routeSummary.gasUsd ? ['Gas', usd(e.routeSummary.gasUsd)] : null])),
+      trader: h('div', {}, gauge(e.premium, e.maxPremium), kv([['Quote', 'aggregator (KyberSwap)'], ['Quoted price', usd(e.price)], ['Issuer price', usd(e.ref)], ['Gap', pct(e.premium), ok ? 'ok' : 'bad'], ['Limit', `±${(e.maxPremium * 100).toFixed(2)}%`], ['You get', `${e.tokens.toFixed(6)} ${e.symbol}`], ['Minimum received', `${minOut.toFixed(6)} ${e.symbol} (0.50% slippage)`], ['Route', pools.length ? pools.join(' → ') : 'KyberSwap'], e.routeSummary.gasUsd ? ['Gas', usd(e.routeSummary.gasUsd)] : null])),
       dev: devBlock({ calls: e.wire, code: `// the quote must be for the checked contract, and within maxPremium of the reference\nprice = ${e.usd} / ${e.tokens.toFixed(8)} = ${e.price.toFixed(4)}\npremium = price / ${e.ref} - 1 = ${e.premium.toFixed(5)}  // |${e.premium.toFixed(5)}| ${ok ? '<=' : '>'} ${e.maxPremium}` }) })
   },
   link: (e) => card({ who: 'Ready', tone: 'done',
     plain: h('p', {}, `Ready. The swap opens on Aerodrome with the real contract already filled in. Aerodrome shows its own final price: accept it only up to ${usd(e.maxPrice)} per ${e.symbol}. You sign in your own wallet: I never touch your money.`),
-    trader: kv([['Venue', 'Aerodrome · Base'], ['Network', `Base, chain id ${e.chainId}`], ['Pay', 'USDC'], ['Receive', `${e.symbol} · ${e.address}`, 'mono'], ['Accept at most', `${usd(e.maxPrice)} per ${e.symbol}: the issuer's ${usd(e.ref)} + ${(e.maxPremium * 100).toFixed(0)}%`, 'warn'], ['Price there', 'Aerodrome\'s own; the quote above is the aggregator\'s'], ['Notice', 'Aerodrome may first ask you to accept its notice on restricted tokenized securities'], ['Before you sign', 'check this address in your wallet']]),
+    trader: kv([['Venue', 'Aerodrome · Base'], ['Network', `Base, chain id ${e.chainId}`], ['Pay', 'USDC'], ['Receive', `${e.symbol} · ${e.address}`, 'mono'], ['Accept at most', `${usd(e.maxPrice)} per ${e.symbol}: the issuer's ${usd(e.ref)} + ${(e.maxPremium * 100).toFixed(0)}%`, 'warn'], ['Price there', 'Aerodrome shows its own'], ['Notice', 'Aerodrome may ask you to accept its restricted-security notice'], ['Before you sign', 'check this address in your wallet']]),
     dev: devBlock({ code: `swapLink('${e.address}')\n// → ${e.link}` }),
     // The network line sits outside the three tellings: every reader sees it, whichever view is on.
     extra: [h('a', { class: 'dm-swap', href: e.link, target: '_blank', rel: 'noopener noreferrer' }, `Swap USDC → ${e.symbol} on Aerodrome`, h('span', { class: 'i i-ext', 'aria-hidden': 'true' })),
-      h('p', { class: 'dm-chain' }, h('b', {}, 'Base only. '), e.network)] }),
+      h('p', { class: 'dm-chain' }, h('b', {}, 'Base only. '), e.network), tokenLinks(e.address)] }),
   built: (e) => card({ who: 'Unsigned', tone: 'done',
     plain: h('p', {}, `For developers, I also built the transaction for your wallet ${short(e.from)}, through KyberSwap's router (the Aerodrome button needs none of this). It is not signed: nothing moves until you approve ${usd(ctx.ask.usd)} of USDC and sign the swap yourself.`),
     trader: kv([['Network', `Base, chain id ${e.tx.chainId}: your wallet must be on Base`, 'warn'], ['1 · Approve', `exactly ${usd(ctx.ask.usd)} USDC to the KyberSwap router, not unlimited`], ['2 · Swap', `to router ${short(KYBER_ROUTER)}, value 0`], ['Minimum received', ctx.quote ? `${(ctx.quote.tokens * (1 - ctx.quote.slippageBps / 1e4)).toFixed(6)} ${e.symbol}` : 'not quoted'], ['Signed', 'no']]),
