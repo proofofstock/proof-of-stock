@@ -22,13 +22,31 @@
       "name": "the guard the page runs is not the package's",
       "find": "'/guard/index.mjs': ['../../packages/proofofstock-guard/index.mjs',",
       "replace": "'/guard/index.mjs': ['api.js',",
-      "expect": "FAIL /stocks/guard/index.mjs is the package's index.mjs"
+      "expect": "FAIL the versioned index.mjs is the package's"
     },
     {
       "name": "the search the page runs is not the package's",
       "find": "'/guard/examples/agent-search.mjs': ['../../packages/proofofstock-guard/examples/agent-search.mjs',",
       "replace": "'/guard/examples/agent-search.mjs': ['api.js',",
-      "expect": "FAIL /stocks/guard/examples/agent-search.mjs is the package's agent-search.mjs"
+      "expect": "FAIL the versioned agent-search.mjs is the package's"
+    },
+    {
+      "name": "the guard's files are kept for a day at an address that never changes",
+      "find": "'cache-control': sub.startsWith('/guard/') ? 'no-cache' : 'public, max-age=86400'",
+      "replace": "'cache-control': 'public, max-age=86400'",
+      "expect": "FAIL the unversioned agent-buy.mjs is the same file, asked again every time"
+    },
+    {
+      "name": "any version of the guard is served",
+      "find": "if (gv[1] !== guardVersion || !STATIC[k]) return send(res, 404",
+      "replace": "if (!STATIC[k]) return send(res, 404",
+      "expect": "FAIL another version of the guard is not served"
+    },
+    {
+      "name": "the page names no versioned folder",
+      "find": ", guard: `guard/${guardVersion}/`, beacon:",
+      "replace": ", beacon:",
+      "expect": "FAIL the page names a versioned folder for the guard's files"
     }
   ]
 }

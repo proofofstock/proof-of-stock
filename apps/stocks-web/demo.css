@@ -17,8 +17,9 @@
 .dm-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent-hi); animation: dm-pulse 1s ease-in-out infinite; }
 @keyframes dm-pulse { 50% { opacity: .3; transform: scale(.7); } }
 
-.dm-log { display: flex; flex-direction: column; gap: 12px; min-height: 140px; max-height: min(66vh, 720px); margin: 0; padding: 18px 16px; list-style: none; overflow-y: auto; }
-.dm-log:empty::before { content: 'Press Run: the agent works it out live, step by step.'; margin: auto; color: var(--faint); font: 14px/1.5 var(--sans); text-align: center; }
+/* The log grows with the page: no box that scrolls inside the page (outside review, 25.11: the result hid below the list). */
+.dm-log { display: flex; flex-direction: column; gap: 12px; min-height: 140px; margin: 0; padding: 18px 16px; list-style: none; }
+.dm-log:empty::before { content: 'Pick a stock above or type one, then press Search. The agent works it out live, step by step.'; margin: auto; color: var(--faint); font: 14px/1.5 var(--sans); text-align: center; }
 .dm-card { display: grid; grid-template-columns: 82px minmax(0, 1fr); gap: 12px; align-items: start; animation: dm-in .35s ease both; }
 @keyframes dm-in { from { opacity: 0; transform: translateY(6px); } }
 .dm-who { padding-top: 13px; color: var(--faint); font: 600 10.5px/1 var(--mono); letter-spacing: .1em; text-transform: uppercase; text-align: right; }
@@ -136,6 +137,7 @@
 .dm-cand { display: grid; grid-template-columns: minmax(64px, max-content) minmax(0, 1fr) auto auto minmax(150px, max-content); align-items: center; gap: 4px 12px; padding: 8px 11px; border: 1px solid var(--hair); border-left: 3px solid var(--line); border-radius: 9px; background: #0b0d12; font: 13px/1.35 var(--sans); transition: border-color .3s, background .3s; }
 .dm-c-sym { color: var(--text); font: 600 12.5px/1.3 var(--mono); overflow-wrap: anywhere; }
 .dm-c-name { min-width: 0; color: var(--soft); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dm-cand:not(.ok) .dm-c-name { color: var(--faint); font-style: italic; font-size: 12px; }
 .dm-c-addr { color: var(--faint) !important; font-size: 11.5px !important; }
 .dm-c-liq { color: var(--dim); font: 11.5px/1 var(--mono); text-align: right; }
 .dm[data-view="plain"] .dm-c-liq, .dm[data-view="plain"] .dm-c-addr { display: none; }
@@ -175,3 +177,19 @@
 
 /* the wallet field: the Developer view only (owner, 25.11) */
 .dm:not([data-view="dev"]) .dm-dev-only { display: none; }
+
+/* narrow screens: the verdict pills say it in one word (outside review, 25.11) */
+@media (max-width: 640px) {
+  .dm-cand.grey .dm-c-badge { font-size: 0; } .dm-cand.grey .dm-c-badge::after { content: 'Unlisted'; font-size: 11px; }
+  .dm-cand.ok .dm-c-badge { font-size: 0; } .dm-cand.ok .dm-c-badge::after { content: 'Original'; font-size: 11px; }
+  .dm-cand.bad .dm-c-badge { font-size: 0; } .dm-cand.bad .dm-c-badge::after { content: 'Fake'; font-size: 11px; }
+}
+.dm-glossary { max-width: 70ch; margin: -6px 0 16px; color: var(--dim); font: 14px/1.55 var(--sans); }
+.dm-glossary b { color: var(--soft); font-weight: 600; }
+
+/* the simulated swap: plainly not a trade (owner, 25.11) */
+.dm-card.sim .dm-body { border-left-color: var(--warn); background: color-mix(in srgb, var(--warn) 6%, var(--glass-2)); }
+.dm-card.sim .dm-who { color: var(--warn); }
+.dm-sim { margin: 10px 0 0 !important; padding: 8px 11px; border: 1px dashed color-mix(in srgb, var(--warn) 55%, transparent); border-radius: 8px; color: #ffe2b0; font: 13.5px/1.5 var(--sans); }
+.dm-sim b { color: var(--warn); }
+.dm-buy { color: var(--accent-hi) !important; border-color: color-mix(in srgb, var(--accent-hi) 45%, var(--line)) !important; }

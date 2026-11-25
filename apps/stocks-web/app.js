@@ -458,6 +458,22 @@
     // A token not minted yet has no pool: only its contract is worth opening.
     return h('div', { class: 'actions' }, p.issuer && p.issuer.minted === false ? null : ext(p.links.dex, 'chart & pools on GeckoTerminal'), p.links.explorer ? ext(p.links.explorer, 'contract on ' + host(p.links.explorer)) : null)
   }
+  // The swap for a person (owner, 25.11: the buy button lives in the terminal, not in the Demo Agent, which only
+  // simulates). Only on the issuer's own token, on Base, minted: Aerodrome trades on Base only, and both sides of the link
+  // are pinned to Base's chain id, so a wallet left on another network cannot carry it there. The link is built from the
+  // passport's checked address alone. It says the price there is Aerodrome's, and where 3% over the issuer's price is.
+  const USDC_BASE = '0x833589fcd6edb6e08f4c7c32d4f71b54bda02913'
+  function swapBox (p) {
+    const i = p.issuer, ref = p.reference
+    if (p.chain !== 'base' || !i || i.minted === false || !/^0x[0-9a-fA-F]{40}$/.test(String(p.address))) return null
+    const href = 'https://aerodrome.finance/swap?from=' + USDC_BASE + '&to=' + String(p.address).toLowerCase() + '&chain0=8453&chain1=8453'
+    const price = ref && ref.price_usd > 0
+      ? 'Aerodrome shows its own price; the issuer\'s is ' + usd(ref.price_usd) + ', so over ' + usd(ref.price_usd * 1.03) + ' is more than 3% above it. '
+      : 'Aerodrome shows its own price; compare it with the issuer price above. '
+    return h('div', { class: 'swapbox' },
+      h('a', { class: 'btn swap', href, target: '_blank', rel: 'noopener noreferrer' }, 'Swap USDC → ' + i.symbol + ' on Aerodrome', h('span', { class: 'i i-ext', 'aria-hidden': 'true' })),
+      h('div', { class: 'line faint swap-note' }, 'Base only: keep your wallet on Base, and stop if any screen shows another network. ' + price + 'You sign in your own wallet; this site never does.'))
+  }
   // `strong`: the token copies a listed symbol or the issuer's naming, an impostor. Otherwise it only borrows a ticker,
   // and is called what it is: a token outside the registry. A token that resembles nothing (USDC, WETH) gets plain links.
   function impostorLinks (p, imitated, strong) {
@@ -610,6 +626,7 @@
       notesOf(p),
       listedCase,
       officialLinks(p),
+      swapBox(p),
       ...folds,
       embedFold(p),
       line('Listed says which contract is the issuer\'s, not that its price is fair or that it is safe to buy. Holder rights are set by the issuer\'s prospectus. This is not advice.', 'faint'))

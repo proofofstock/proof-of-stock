@@ -360,6 +360,11 @@ export function createStocksWeb ({
   // The page names its script and stylesheet by content hash, so a release reaches every visitor at once: the assets may
   // be cached, the page that names them may not.
   const version = (k) => crypto.createHash('sha256').update(static_[k].body).digest('hex').slice(0, 12)
+  // The guard package's files the Demo Agent imports, as one version. They import one another by relative paths, so the
+  // page loads them all under /guard/<version>/: a change to any of them is a new address, which no browser holds yet.
+  // Owner, 25.11: a browser kept the day-old agent-buy.mjs, still linking to KyberSwap, after the switch to Aerodrome.
+  const GUARD_KEYS = Object.keys(STATIC).filter((k) => k.startsWith('/guard/'))
+  const guardVersion = crypto.createHash('sha256').update(Buffer.concat(GUARD_KEYS.map((k) => static_[k].body))).digest('hex').slice(0, 12)
   static_['/'].body = Buffer.from(String(static_['/'].body).replace('href="style.css"', `href="style.css?v=${version('/style.css')}"`).replace('src="app.js"', `src="app.js?v=${version('/app.js')}"`).replace('src="beacon.js"', `src="beacon.js?v=${version('/beacon.js')}"`).replace('src="seal.js"', `src="seal.js?v=${version('/seal.js')}"`)
     .replaceAll('__MCP_URL__', publicOrigin + publicPath + '/mcp').replaceAll('__VERSION__', appVersion).replaceAll('__RELEASED__', released)
     .replace('<!--source-->', sourceUrl ? sourceIcon(sourceUrl) : '').replace('<!--exam-->', sourceUrl ? EXAM_CHIP_HTML : '')
@@ -1051,7 +1056,15 @@ export function createStocksWeb ({
       res.once('finish', () => { if (res.statusCode < 400) analytics.api(clientIp(req), req.headers, useRoute, n) })
     }
     if (sub === '/') { if (req.method === 'GET') analytics.load(clientIp(req), req.headers, '/'); return send(res, 200, pageFor(url), STATIC['/'][1], { 'cache-control': 'no-cache' }) }
-    if (STATIC[sub]) { const s = static_[sub]; return send(res, 200, s.body, s.type, { 'cache-control': 'public, max-age=86400' }) }
+    // The guard's files at their version: kept for good, since another version is another address. Any other version is gone.
+    const gv = /^\/guard\/([0-9a-f]{12})(\/.+)$/.exec(sub)
+    if (gv) {
+      const k = '/guard' + gv[2]
+      if (gv[1] !== guardVersion || !STATIC[k]) return send(res, 404, { error: 'not found' })
+      return send(res, 200, static_[k].body, static_[k].type, { 'cache-control': 'public, max-age=31536000, immutable' })
+    }
+    // The same files without a version are asked again each time, so an old copy is never run from a cache.
+    if (STATIC[sub]) { const s = static_[sub]; return send(res, 200, s.body, s.type, { 'cache-control': sub.startsWith('/guard/') ? 'no-cache' : 'public, max-age=86400' }) }
     // The old address of the changelog: it is a docs page now.
     if (sub === '/CHANGELOG.md') { res.writeHead(301, { location: publicPath + '/docs/changelog.md', 'cache-control': 'public, max-age=3600' }); return res.end() }
     // The paid route described for catalogues (x402scan reads /openapi.json first). Only where passes are sold.
@@ -1202,7 +1215,7 @@ export function createStocksWeb ({
     if (sub === '/demo') {
       analytics.load(clientIp(req), req.headers, '/demo')
       demoHtml ??= withPageHead('/demo', demoPage({ version: appVersion,
-        assets: { css: `style.css?v=${version('/style.css')}`, docsCss: `docs.css?v=${version('/docs.css')}`, demoCss: `demo.css?v=${version('/demo.css')}`, demoJs: `demo.js?v=${version('/demo.js')}`, beacon: `beacon.js?v=${version('/beacon.js')}` } }))
+        assets: { css: `style.css?v=${version('/style.css')}`, docsCss: `docs.css?v=${version('/docs.css')}`, demoCss: `demo.css?v=${version('/demo.css')}`, demoJs: `demo.js?v=${version('/demo.js')}`, guard: `guard/${guardVersion}/`, beacon: `beacon.js?v=${version('/beacon.js')}` } }))
       return send(res, 200, demoHtml, 'text/html; charset=utf-8', { 'cache-control': 'public, max-age=300', 'content-security-policy': demoCsp(SECURITY_HEADERS['content-security-policy']) })
     }
     if (!sub.startsWith('/api/')) return send(res, 404, { error: 'not found' })

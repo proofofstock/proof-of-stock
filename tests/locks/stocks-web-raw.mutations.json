@@ -8,8 +8,8 @@
   "mutations": [
     {
       "name": "a route serves the private copies",
-      "find": "    if (STATIC[sub]) { const s = static_[sub]; return send(res, 200, s.body, s.type, { 'cache-control': 'public, max-age=86400' }) }",
-      "replace": "    if (sub.startsWith('/stp-raw/')) { try { return send(res, 200, fs.readFileSync(path.join(path.dirname(roots.base), sub)), 'application/octet-stream', {}) } catch (_) {} }\n    if (STATIC[sub]) { const s = static_[sub]; return send(res, 200, s.body, s.type, { 'cache-control': 'public, max-age=86400' }) }",
+      "find": "    if (STATIC[sub]) { const s = static_[sub]; return send(res, 200, s.body, s.type, { 'cache-control': sub.startsWith('/guard/') ? 'no-cache' : 'public, max-age=86400' }) }",
+      "replace": "    if (sub.startsWith('/stp-raw/')) { try { return send(res, 200, fs.readFileSync(path.join(path.dirname(roots.base), sub)), 'application/octet-stream', {}) } catch (_) {} }\n    if (STATIC[sub]) { const s = static_[sub]; return send(res, 200, s.body, s.type, { 'cache-control': sub.startsWith('/guard/') ? 'no-cache' : 'public, max-age=86400' }) }",
       "expect": "FAIL no route serves a byte of the private copies, whatever the path"
     },
     {

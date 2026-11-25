@@ -7,8 +7,12 @@
 // ⚠ NOTHING HERE SIGNS, SENDS OR ASKS A WALLET. There is no key and no call to a wallet provider. The last card is a link
 // and, if the reader typed a public address, an unsigned transaction to copy.
 // ⚠ EVERYTHING FROM THE NETWORK IS TEXT. Answers are drawn with textContent only, never as HTML.
-import { searchFlow } from './guard/examples/agent-search.mjs'
-import { KYBER_ROUTER, USDC_BASE } from './guard/examples/agent-buy.mjs'
+// The guard's files, from the versioned folder the page names (stocks-web.mjs guardVersion): a change to any of them is
+// a new address, so no browser keeps running an old one from its cache (owner, 25.11). Anything else falls back to the
+// unversioned folder, which the server never lets a browser keep.
+const GUARD = new URL(/^guard\/[0-9a-f]{12}\/$/.test(document.body.dataset.guard || '') ? document.body.dataset.guard : 'guard/', location.href)
+const { searchFlow, parseIntent } = await import(new URL('examples/agent-search.mjs', GUARD).href)
+const { KYBER_ROUTER, USDC_BASE } = await import(new URL('examples/agent-buy.mjs', GUARD).href)
 
 const $ = (id) => document.getElementById(id)
 const log = $('dm-log'), form = $('dm-ask'), run = $('dm-run'), live = $('dm-live')
@@ -50,6 +54,9 @@ async function recordingFetch (url, init = {}) {
   const text = await r.text()
   let json = null; try { json = JSON.parse(text) } catch (_) {}
   let body = null; try { body = init.body ? JSON.parse(init.body) : null } catch (_) {}
+  // The market search's answer is full of names chosen by token creators, some offensive (outside review, 25.11): the
+  // Developer view gets its shape, not its names.
+  if (/^https:\/\/api\.geckoterminal\.com\//.test(String(url)) && json) json = { pools: (json.data || []).length, tokens: (json.included || []).length, names: 'set by the tokens\' creators, not shown' }
   wire.push({ method: init.method || 'GET', url: String(url), body, status: r.status, json })
   return new Response(text, { status: r.status, headers: r.headers })
 }
@@ -61,7 +68,9 @@ function trim (v, depth = 0) {
   if (v && typeof v === 'object') {
     if (depth > 3) return '{…}'
     const o = {}
-    for (const [k, x] of Object.entries(v)) o[k] = k === 'series' || k === 'route' && depth > 0 ? (Array.isArray(x) ? `[… ${x.length}]` : '…') : trim(x, depth + 1)
+    // A token off the issuer's list: its name and symbol are its creator's words, not ours to print.
+    const stranger = v.listed === false
+    for (const [k, x] of Object.entries(v)) o[k] = stranger && /^(name|symbol|token_name)$/.test(k) && x != null ? '(set by its creator, not shown)' : k === 'series' || k === 'route' && depth > 0 ? (Array.isArray(x) ? `[… ${x.length}]` : '…') : trim(x, depth + 1)
     return o
   }
   if (typeof v === 'string' && v.length > 90) return v.slice(0, 66) + '…' + v.slice(-12)
@@ -100,7 +109,6 @@ const cardHead = (title, address, state, tone) => h('div', { class: 'cardhead' }
   h('div', null, h('h2', null, title), h('div', { class: 'sub' }, h('span', { class: 'chainmark base' }, 'Base'), h('span', { class: 'dm-addr' }, address))),
   state ? h('span', { class: `state ${tone}` }, state) : null)
 const ext = (href, text) => h('a', { class: 'btn link', href, target: '_blank', rel: 'noopener noreferrer nofollow' }, text, h('span', { class: 'i i-ext', 'aria-hidden': 'true' }))
-const tokenLinks = (address) => h('div', { class: 'actions' }, ext(`https://www.geckoterminal.com/base/tokens/${address}`, 'chart & pools on GeckoTerminal'), ext(`https://basescan.org/token/${address}`, 'contract on basescan.org'))
 
 // ── the steps ───────────────────────────────────────────────────────────────────────────────────────────────────────
 let ctx = {}
@@ -113,17 +121,20 @@ const VERDICT = {
 const verdictOf = (v) => VERDICT[v.decision] || { tone: 'warn', badge: () => 'Could not check' }
 const liq = (n) => (n >= 1e6 ? '$' + (n / 1e6).toFixed(1) + 'M' : n >= 1e3 ? '$' + Math.round(n / 1e3) + 'K' : '$' + Math.round(n))
 const count = (n, one, many) => `${n} ${n === 1 ? one : many}`
+/** A stranger's symbol, shown only when it reads like the ticker itself (CRCLc, TSLA.D, TSLAX); anything else is its
+ * creator's word and stays hidden (outside review, 25.11: an offensive symbol came up for Tesla). */
+const shownSymbol = (s, ticker) => (new RegExp(`^${String(ticker).replace(/[^A-Z0-9]/gi, '')}[A-Za-z.]{0,3}$`, 'i').test(String(s || '')) ? String(s) : '•••')
 const draw = {
   search: (e) => {
     ctx.ticker = e.ticker
     return card({ who: 'Agent',
-      plain: h('p', {}, `Searching Base for ${ctx.query}, the way anyone would: every token whose name or symbol says ${e.ticker}.`),
-      trader: kv([['Looking for', `${ctx.query} · ${e.ticker}`], ['Chain', 'Base'], ['Search', 'GeckoTerminal, every pool'], ['Match', e.terms.join(' or ')]]),
+      plain: h('p', {}, `Got it: ${usd(e.usd)} of ${ctx.query} on Base. Searching Base for it the way anyone would: every token whose name or symbol says ${e.ticker}.`),
+      trader: kv([['Looking for', `${ctx.query} · ${e.ticker}`], ['Amount', `${usd(e.usd)} USDC`], ['Chain', 'Base'], ['Search', 'GeckoTerminal, every pool'], ['Match', e.terms.join(' or ')]]),
       dev: devBlock({ code: `await searchFlow({ query: ${JSON.stringify(ctx.query)}, ticker: ${JSON.stringify(e.ticker)} })\n// 1. searchCandidates: GeckoTerminal pools on Base, tokens carrying ${e.terms.join(' or ')}` }) })
   },
   candidates: (e) => {
     const list = h('ul', { class: 'dm-cands', 'aria-label': 'Tokens found' }, e.candidates.map((c) => h('li', { class: 'dm-cand', 'data-address': c.address },
-      h('span', { class: 'dm-c-sym' }, c.symbol || '?'), h('span', { class: 'dm-c-name' }, c.name || ''), h('code', { class: 'dm-c-addr' }, short(c.address)),
+      h('span', { class: 'dm-c-sym' }, shownSymbol(c.symbol, e.ticker)), h('span', { class: 'dm-c-name' }, 'name set by its creator, not shown'), h('code', { class: 'dm-c-addr' }, short(c.address)),
       h('span', { class: 'dm-c-liq' }, liq(c.liquidityUsd)), h('span', { class: 'dm-c-badge' }, 'unchecked'))))
     ctx.list = list
     return card({ who: 'Found', tone: e.candidates.length ? '' : 'warn',
@@ -152,6 +163,7 @@ const draw = {
         // The row being judged is on screen: the list sits above this card and may have scrolled away.
         row.scrollIntoView({ block: 'nearest', behavior: PACE ? 'smooth' : 'auto' })
         row.classList.add(d.tone); row.querySelector('.dm-c-badge').textContent = d.badge(v)
+        if (v.allow) { row.querySelector('.dm-c-name').textContent = v.name || ''; ctx.list.prepend(row) }
         await sleep(PACE ? 320 : 0)
       }
       summary.hidden = false; if (note) note.hidden = false
@@ -193,15 +205,22 @@ const draw = {
       trader: h('div', {}, gauge(e.premium, e.maxPremium), kv([['Quote', 'aggregator (KyberSwap)'], ['Quoted price', usd(e.price)], ['Issuer price', usd(e.ref)], ['Gap', pct(e.premium), ok ? 'ok' : 'bad'], ['Limit', `±${(e.maxPremium * 100).toFixed(2)}%`], ['You get', `${e.tokens.toFixed(6)} ${e.symbol}`], ['Minimum received', `${minOut.toFixed(6)} ${e.symbol} (0.50% slippage)`], ['Route', pools.length ? pools.join(' → ') : 'KyberSwap'], e.routeSummary.gasUsd ? ['Gas', usd(e.routeSummary.gasUsd)] : null])),
       dev: devBlock({ calls: e.wire, code: `// the quote must be for the checked contract, and within maxPremium of the reference\nprice = ${e.usd} / ${e.tokens.toFixed(8)} = ${e.price.toFixed(4)}\npremium = price / ${e.ref} - 1 = ${e.premium.toFixed(5)}  // |${e.premium.toFixed(5)}| ${ok ? '<=' : '>'} ${e.maxPremium}` }) })
   },
-  link: (e) => card({ who: 'Ready', tone: 'done',
-    plain: h('p', {}, `Ready. The swap opens on Aerodrome with the real contract already filled in. Aerodrome shows its own final price: accept it only up to ${usd(e.maxPrice)} per ${e.symbol}. You sign in your own wallet: I never touch your money.`),
-    trader: kv([['Venue', 'Aerodrome · Base'], ['Network', `Base, chain id ${e.chainId}`], ['Pay', 'USDC'], ['Receive', `${e.symbol} · ${e.address}`, 'mono'], ['Accept at most', `${usd(e.maxPrice)} per ${e.symbol}: the issuer's ${usd(e.ref)} + ${(e.maxPremium * 100).toFixed(0)}%`, 'warn'], ['Price there', 'Aerodrome shows its own'], ['Notice', 'Aerodrome may ask you to accept its restricted-security notice'], ['Before you sign', 'check this address in your wallet']]),
-    dev: devBlock({ code: `swapLink('${e.address}')\n// → ${e.link}` }),
-    // The network line sits outside the three tellings: every reader sees it, whichever view is on.
-    extra: [h('a', { class: 'dm-swap', href: e.link, target: '_blank', rel: 'noopener noreferrer' }, `Swap USDC → ${e.symbol} on Aerodrome`, h('span', { class: 'i i-ext', 'aria-hidden': 'true' })),
-      h('p', { class: 'dm-chain' }, h('b', {}, 'Base only. '), e.network), tokenLinks(e.address)] }),
+  // The last step (owner, 25.11: "the agent buys by itself, the button goes to the main terminal"). A live agent signs the
+  // swap with its own wallet; this one has none, so the swap is SIMULATED and says so in every view. It never claims a
+  // trade that did not happen. The way to buy for real is the swap button in the main terminal's passport.
+  link: (e) => {
+    const q = ctx.quote || {}, minOut = q.tokens ? q.tokens * (1 - q.slippageBps / 1e4) : null
+    const recv = q.tokens ? `${q.tokens.toFixed(6)} ${e.symbol}` : e.symbol
+    return card({ who: 'Swap', tone: 'sim',
+      plain: h('p', {}, `Swap simulated: ${usd(q.usd || ctx.usd)} USDC → ${recv} on Aerodrome. A live agent signs this itself with its own wallet, within the limits you give it, at no more than ${usd(e.maxPrice)} per ${e.symbol}. Here no money moved.`),
+      trader: kv([['Status', 'simulated: nothing sent', 'warn'], ['Would pay', `${usd(q.usd || ctx.usd)} USDC`], ['Would receive', recv], minOut ? ['Minimum received', `${minOut.toFixed(6)} ${e.symbol} (0.50% slippage)`] : null, ['Venue', 'Aerodrome · Base'], ['Price cap', `${usd(e.maxPrice)} per ${e.symbol}: the issuer's ${usd(e.ref)} + ${(e.maxPremium * 100).toFixed(0)}%`], ['Signed by', 'a live agent\'s own wallet; nobody here']]),
+      dev: devBlock({ code: `// A live agent (Coinbase AgentKit, say) runs the same check as an action, then swaps with its own wallet:\n//   import { guardAction } from '@proofofstock/guard/agentkit'\n//   1. check_stock_token_before_buy({ chain: 'base', tokenAddress: '${short(e.address)}' }) → ALLOW\n//   2. its own swap of ${usd(q.usd || ctx.usd)} USDC → ${e.symbol}, capped at ${usd(e.maxPrice)}\n// This page has no wallet: the swap is simulated, nothing is signed or sent.` }),
+      extra: [h('p', { class: 'dm-sim' }, h('b', {}, 'Simulation. '), 'No wallet, no key, no money moved. To buy it yourself, open its passport in the terminal: the swap button is there.'),
+        h('div', { class: 'actions' }, h('a', { class: 'btn link dm-buy', href: `./?base=${encodeURIComponent(e.symbol)}` }, `${e.symbol} in the terminal`, h('span', { class: 'i i-arrow', 'aria-hidden': 'true' })),
+          ext(`https://www.geckoterminal.com/base/tokens/${e.address}`, 'chart & pools on GeckoTerminal'), ext(`https://basescan.org/token/${e.address}`, 'contract on basescan.org'))] })
+  },
   built: (e) => card({ who: 'Unsigned', tone: 'done',
-    plain: h('p', {}, `For developers, I also built the transaction for your wallet ${short(e.from)}, through KyberSwap's router (the Aerodrome button needs none of this). It is not signed: nothing moves until you approve ${usd(ctx.ask.usd)} of USDC and sign the swap yourself.`),
+    plain: h('p', {}, `For developers, I also built the transaction for your wallet ${short(e.from)}, through KyberSwap's router (the simulated swap above needs none of this). It is not signed: nothing moves until you approve ${usd(ctx.ask.usd)} of USDC and sign the swap yourself.`),
     trader: kv([['Network', `Base, chain id ${e.tx.chainId}: your wallet must be on Base`, 'warn'], ['1 · Approve', `exactly ${usd(ctx.ask.usd)} USDC to the KyberSwap router, not unlimited`], ['2 · Swap', `to router ${short(KYBER_ROUTER)}, value 0`], ['Minimum received', ctx.quote ? `${(ctx.quote.tokens * (1 - ctx.quote.slippageBps / 1e4)).toFixed(6)} ${e.symbol}` : 'not quoted'], ['Signed', 'no']]),
     dev: devBlock({ calls: e.wire, code: `// 1. approve (USDC ${short(USDC_BASE)})\n${JSON.stringify(e.approve, null, 2)}\n// 2. swap\n${JSON.stringify({ ...e.tx, data: e.tx.data.slice(0, 74) + '…' }, null, 2)}` }),
     extra: copyButton(JSON.stringify({ approve: e.approve, swap: e.tx }, null, 2)) }),
@@ -258,19 +277,23 @@ async function typing () {
 let busy = false
 async function go () {
   if (busy) return
-  const query = cleanQuery($('dm-q').value), chip = chosenChip(query)
+  // The request in the reader's words, split the way the example splits it (owner, 25.11: "Tesla 7000$" is $7,000 of Tesla).
+  const said = String($('dm-q').value || '').trim().slice(0, 80), intent = parseIntent(said)
+  const query = cleanQuery(intent.query), chip = chosenChip(query)
   // The wallet is read in the Developer view only (owner, 25.11): elsewhere it is hidden, and a value typed earlier is ignored.
+  if (intent.usd != null) $('dm-usd').value = String(intent.usd)
+  if (!(Number($('dm-usd').value) > 0)) $('dm-usd').value = '20'
   const usdIn = Number($('dm-usd').value), from = document.body.dataset.view === 'dev' ? $('dm-from').value.trim() || null : null
-  if (!query) { $('dm-q').focus(); return }
+  if (!said) { $('dm-q').focus(); return }
   busy = true; run.disabled = true; live.hidden = false
   log.replaceChildren(); wire = []; ctx = { query, usd: usdIn > 0 ? usdIn : 20 }
-  await show(h('li', { class: 'dm-card you' }, h('span', { class: 'dm-who' }, 'You'), h('div', { class: 'dm-body' }, h('p', {}, `Find me ${query} on Base`))))
+  await show(h('li', { class: 'dm-card you' }, h('span', { class: 'dm-who' }, 'You'), h('div', { class: 'dm-body' }, h('p', {}, said))))
   const queue = []
   let wake = null
   // The calls a step made are the ones recorded since the step before it, taken as the flow reports it (drawing lags).
   const onStep = (e) => { queue.push({ e: { ...e, wire: takeWire() } }); if (wake) wake() }
   let done = false
-  const flow = searchFlow({ query, ticker: chip ? chip.dataset.ticker : null, usd: ctx.usd, from, endpoint: ENDPOINT, fetchImpl: recordingFetch, print: () => {}, onStep })
+  const flow = searchFlow({ query: said, ticker: chip ? chip.dataset.ticker : null, usd: ctx.usd, from, endpoint: ENDPOINT, fetchImpl: recordingFetch, print: () => {}, onStep })
     .catch(() => onStep({ step: 'stop', code: 3, outcome: 'unavailable', why: 'Something could not be read, so I do not buy.' }))
     .finally(() => { done = true; if (wake) wake() })
   // Draw as the steps arrive, at a reading pace; a step with nothing to show costs no time.

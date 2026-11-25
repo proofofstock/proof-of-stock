@@ -709,3 +709,9 @@ html:has(.tape) { scroll-padding-top: 72px; } /* the landing only: docs headings
 @media (max-width: 560px) { .embed-code { grid-template-columns: 1fr; } }
 /* The Telegram bot (23.11): a robot head, so it reads as a bot and not as the channel beside it. */
 .i-bot { --i: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='2.6' y='5.2' width='10.8' height='8' rx='2.2'/%3E%3Cpath d='M8 5.2V3'/%3E%3Ccircle cx='8' cy='2.3' r='0.7'/%3E%3Cpath d='M6 8.6v0.9M10 8.6v0.9M6.3 11.3h3.4M1.2 8.4v2M14.8 8.4v2'/%3E%3C/svg%3E"); }
+
+/* the swap on an issuer-listed Base token (app.js swapBox): the one filled button in a passport */
+.swapbox { margin-top: 10px; }
+.btn.swap { display: inline-flex; align-items: center; padding: 7px 14px; border-color: var(--accent); background: var(--accent); color: var(--on-accent); font: 600 13.5px/1.2 var(--sans); }
+.btn.swap:hover { border-color: var(--accent); color: var(--on-accent); filter: brightness(1.12); }
+.swap-note { margin-top: 6px; font-size: 12px; }

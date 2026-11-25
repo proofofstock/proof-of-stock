@@ -35,6 +35,24 @@
       "find": "if (found == null) return stop(3, 'unavailable', 'The market search could not be read, so I do not buy.')",
       "replace": "if (found == null) return stop(1, 'refused', 'No tokens.')",
       "expect": "FAIL the market search unreadable: exit 3, no quote"
+    },
+    {
+      "name": "the amount in the words is ignored",
+      "find": "  if (intent.usd != null) usd = intent.usd\n",
+      "replace": "",
+      "expect": "FAIL ...and the flow searches for the stock and quotes the amount"
+    },
+    {
+      "name": "the words are searched as they are",
+      "find": "  const q = cleanLabel(intent.query, 40)",
+      "replace": "  const q = cleanLabel(query, 40)",
+      "expect": "FAIL ...and the flow searches for the stock and quotes the amount"
+    },
+    {
+      "name": "Russian names are not understood",
+      "find": "  [/^(tesla|\\u0442\\u0435\\u0441\\u043b)/, 'Tesla'],",
+      "replace": "  [/^(tesla)/, 'Tesla'],",
+      "expect": "FAIL the stock and the amount come apart"
     }
   ]
 }

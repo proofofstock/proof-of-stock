@@ -5,7 +5,7 @@
 // could not read.
 //
 // Run: node packages/proofofstock-guard/examples/agent-search.test.mjs
-import { searchFlow, searchCandidates, cleanLabel, termsFor, GECKO } from './agent-search.mjs'
+import { searchFlow, searchCandidates, cleanLabel, termsFor, parseIntent, GECKO } from './agent-search.mjs'
 import { KYBER_ROUTER } from './agent-buy.mjs'
 
 let passed = 0, failed = 0
@@ -110,6 +110,24 @@ console.log('a name, not a ticker')
   check('the ticker comes from the issuer-listed search on Base', stepOf(r, 'search').ticker === 'CRCL' && r.calls[0].url === 'https://pos.test/api/find?q=Circle')
   const unknown = await go({ query: 'Acme' }, { find: () => ({ match: 'none', matches: [] }) })
   check('a name the issuer does not list on Base: refused, nothing searched', unknown.code === 1 && !unknown.calls.some((c) => c.url.startsWith(GECKO)))
+}
+
+console.log('a request in a person\'s words (owner, 25.11: "Tesla 7000$" was searched as a stock called "Tesla 7000")')
+{
+  const cases = [
+    ['Tesla 7000$', 'Tesla', 7000], ['buy $20 of SNDK on Base', 'SNDK', 20], ['\u043a\u0443\u043f\u0438 \u0442\u0435\u0441\u043b\u0443 \u043d\u0430 7000 \u0434\u043e\u043b\u043b\u0430\u0440\u043e\u0432', 'Tesla', 7000], ['\u0442\u0435\u0441\u043b\u044b \u043d\u0430 7 \u0442\u044b\u0441\u044f\u0447', 'Tesla', 7000],
+    ['nvidia 7k', 'NVIDIA', 7000], ['$2 circle', 'Circle', 2], ['TSLA 50 usdc', 'TSLA', 50], ['$7,000 tesla', 'Tesla', 7000], ['NVDA $1,250.50', 'NVDA', 1250.5],
+    ['7,5$ tesla', 'Tesla', 7.5], ['buy tesla for $50', 'Tesla', 50], ['Find me Tesla 7000 on Base', 'Tesla', 7000], ['Circle', 'Circle', null], ['apple', 'Apple', null], ['AAPL', 'AAPL', null],
+  ]
+  const bad = cases.filter(([t, q, u]) => { const r = parseIntent(t); return r.query !== q || r.usd !== u }).map(([t]) => `${t} -> ${JSON.stringify(parseIntent(t))}`)
+  check('the stock and the amount come apart, in any order, in English or Russian, with $, usd, k or \u0442\u044b\u0441\u044f\u0447', bad.length === 0, bad.join(' | '))
+  check('an amount alone names no stock', parseIntent('7000').query === '' && parseIntent('7000').usd === 7000)
+  const r = await go({ query: 'Tesla 7000$' }, { find: () => ({ match: 'exact', matches: [{ chain: 'base', symbol: 'CRCLc', name: 'Circle Internet Group Inc.' }] }) })
+  check('...and the flow searches for the stock and quotes the amount', r.calls[0].url === 'https://pos.test/api/find?q=Tesla' && stepOf(r, 'search').usd === 7000 && r.calls.some((c) => c.url.includes('/routes') && new URL(c.url).searchParams.get('amountIn') === '7000000000'), r.text)
+  const field = await go({ query: 'Circle', ticker: 'CRCL', usd: 5 })
+  check('without an amount in the words, the amount given beside them is used', field.calls.some((c) => c.url.includes('/routes') && new URL(c.url).searchParams.get('amountIn') === '5000000'))
+  const none = await go({ query: '7000 usd', ticker: null })
+  check('an amount with no stock: asked which stock, nothing bought', none.code === 2 && /which stock/.test(none.text))
 }
 
 console.log('anything unread stops it (exit 3)')

@@ -1,0 +1,34 @@
+{
+  "_finding": "Owner, 25.11: the buy button lives in the main terminal's passport. It may open a swap only for the issuer's own token on Base, to that exact address, pinned to Base; a slip puts a swap button on the wrong token or the wrong network.",
+  "target": "apps/stocks-web/app.js",
+  "runner": [
+    "node",
+    "apps/terminal-swap.test.mjs"
+  ],
+  "mutations": [
+    {
+      "name": "the swap shows on Robinhood Chain too",
+      "find": "if (p.chain !== 'base' || !i ||",
+      "replace": "if (!i ||",
+      "expect": "FAIL on Base only"
+    },
+    {
+      "name": "a token not minted yet gets a swap",
+      "find": "|| i.minted === false ",
+      "replace": "",
+      "expect": "FAIL on Base only"
+    },
+    {
+      "name": "the link lets the wallet choose the network",
+      "find": " + '&chain0=8453&chain1=8453'",
+      "replace": "",
+      "expect": "FAIL Aerodrome, from USDC on Base"
+    },
+    {
+      "name": "the swap leaves the issuer-listed card",
+      "find": "      officialLinks(p),\n      swapBox(p),\n",
+      "replace": "      officialLinks(p),\n",
+      "expect": "FAIL there is one swapBox"
+    }
+  ]
+}

@@ -51,13 +51,14 @@ export const STEPS = Object.freeze([
   ['The fakes and the unknown are dropped', 'A copy of the issuer\'s symbol is a fake. A token simply not on the list may be another issuer\'s: the agent cannot vouch for it, so it skips it too.'],
   ['The original', 'The one the issuer itself put on Base. The agent buys that one only, and reads its passport: still minted, not paused, the issuer\'s price.'],
   ['A live quote, held to that price', 'An aggregator (KyberSwap) quotes the swap. The agent refuses a price more than 3% from the issuer\'s, or a quote for any other contract.'],
-  ['A ready swap, unsigned', 'An Aerodrome link with the checked contract filled in, and the highest price to accept there: Aerodrome shows its own. You sign, or nothing happens.'],
+  ['The swap, simulated', 'A live agent swaps with its own wallet, within your limits, at no more than 3% over the issuer\'s price. This page has no wallet, so the swap is simulated and no money moves. To buy yourself, open the token\'s passport in the terminal.'],
 ])
 
 /**
  * @param {object} p
  * @param {string} p.version
- * @param {{ css: string, docsCss: string, demoCss: string, demoJs: string, beacon?: string }} p.assets
+ * @param {{ css: string, docsCss: string, demoCss: string, demoJs: string, guard?: string, beacon?: string }} p.assets  guard: the
+ *   versioned folder the guard's files are served under (stocks-web.mjs guardVersion); demo.js imports them from there
  */
 export function demoPage ({ version, assets }) {
   const views = VIEWS.map((v, i) => `<button type="button" class="dm-view" data-view="${esc(v.id)}" aria-pressed="${i === 0}" title="${esc(v.hint)}">${esc(v.label)}</button>`).join('')
@@ -78,15 +79,16 @@ export function demoPage ({ version, assets }) {
   <script type="module" src="${esc(assets.demoJs)}"></script>
   ${assets.beacon ? `<script src="${esc(assets.beacon)}" defer></script>` : ''}
 </head>
-<body class="dx ap dm" data-view="plain">
+<body class="dx ap dm" data-view="plain" data-guard="${esc(assets.guard || 'guard/')}">
   ${siteBar({ current: 'demo' })}
   <main class="ap-main dm-main">
     <section class="ap-hero dm-hero">
       <p class="ap-kicker">Demo Agent · live</p>
       <h1>Demo Agent <em>finds the real stock</em></h1>
-      <p class="ap-lede">Pick a stock. The agent searches Base the way anyone would and finds every token that carries the name. Proof of Stock tells the fakes from the issuer's original, and the agent buys the original only, at a price held to the issuer's. You sign; it never does.</p>
+      <p class="ap-lede">Pick a stock. The agent searches Base the way anyone would and finds every token that carries the name. Proof of Stock tells the fakes from the issuer's original, and the agent goes for the original only, at a price held to the issuer's. A live agent would then swap with its own wallet; here the swap is simulated and no money moves.</p>
+      <p class="dm-glossary">New to this? Coinbase issues tokenized stocks on <b>Base</b>, its network; their tickers end in "c" (CRCLc is Circle). You pay in <b>USDC</b>, a digital dollar. Anyone can make a token with the same name, so the agent checks which one Coinbase issued.</p>
       <ul class="dm-promise" aria-label="What this page never does">
-        <li><span class="i i-check" aria-hidden="true"></span>Never signs</li>
+        <li><span class="i i-check" aria-hidden="true"></span>Never signs: the swap is simulated</li>
         <li><span class="i i-check" aria-hidden="true"></span>No keys, no wallet connection</li>
         <li><span class="i i-check" aria-hidden="true"></span>Live data: market search, Proof of Stock, a live quote</li>
       </ul>

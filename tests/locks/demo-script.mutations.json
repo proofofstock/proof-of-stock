@@ -31,18 +31,6 @@
       "expect": "FAIL every verdict is credited to Proof of Stock"
     },
     {
-      "name": "the Base-only line beside the swap button is gone",
-      "find": "      h('p', { class: 'dm-chain' }, h('b', {}, 'Base only. '), e.network), tokenLinks(e.address)] }),",
-      "replace": "      tokenLinks(e.address)] }),",
-      "expect": "FAIL beside the swap button, in every view: the trade is on Base"
-    },
-    {
-      "name": "the aggregator's quote is passed off as the price on Aerodrome",
-      "find": "The market quote, from an aggregator, gives",
-      "replace": "The exchange gives",
-      "expect": "FAIL the quote is named as the aggregator's"
-    },
-    {
       "name": "the wallet is read in every view",
       "find": "from = document.body.dataset.view === 'dev' ? $('dm-from').value.trim() || null : null",
       "replace": "from = $('dm-from').value.trim() || null",
@@ -53,6 +41,48 @@
       "find": "h('div', { class: 'field' }, h('span', { class: 'k' }, String(k).toLowerCase()), h('span', { class: 'dots-fill' }), ",
       "replace": "h('div', { class: 'dm-row' }, h('span', { class: 'k' }, k), ",
       "expect": "FAIL the blocks are the main terminal's own"
+    },
+    {
+      "name": "the page imports the guard from the unversioned folder again",
+      "find": "const { searchFlow, parseIntent } = await import(new URL('examples/agent-search.mjs', GUARD).href)",
+      "replace": "const { searchFlow, parseIntent } = await import('./guard/examples/agent-search.mjs')",
+      "expect": "FAIL it runs searchFlow from the guard's example as served"
+    },
+    {
+      "name": "the amount in the words is dropped",
+      "find": "  if (intent.usd != null) $('dm-usd').value = String(intent.usd)\n",
+      "replace": "",
+      "expect": "FAIL the reader's words go to the example as typed"
+    },
+    {
+      "name": "strangers' names are printed in the list",
+      "find": "h('span', { class: 'dm-c-name' }, 'name set by its creator, not shown')",
+      "replace": "h('span', { class: 'dm-c-name' }, c.name || '')",
+      "expect": "FAIL strangers' names are never shown"
+    },
+    {
+      "name": "strangers' names are printed in the Developer view",
+      "find": "const stranger = v.listed === false",
+      "replace": "const stranger = false",
+      "expect": "FAIL strangers' names are never shown"
+    },
+    {
+      "name": "the demo claims a trade it did not make",
+      "find": "plain: h('p', {}, `Swap simulated: ",
+      "replace": "plain: h('p', {}, `Swapped successfully: ",
+      "expect": "FAIL the last step is a simulated swap"
+    },
+    {
+      "name": "the simulation note is gone",
+      "find": "h('p', { class: 'dm-sim' }, h('b', {}, 'Simulation. '), 'No wallet, no key, no money moved. To buy it yourself, open its passport in the terminal: the swap button is there.'),",
+      "replace": "",
+      "expect": "FAIL the last step is a simulated swap"
+    },
+    {
+      "name": "the quote is passed off as a price on Aerodrome",
+      "find": "The market quote, from an aggregator, gives",
+      "replace": "The exchange gives",
+      "expect": "FAIL the quote is named as the aggregator's"
     }
   ]
 }
