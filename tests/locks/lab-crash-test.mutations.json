@@ -1,0 +1,70 @@
+{
+  "_finding": "Owner, 25.11: the crash test asks which contract each agent tool would pick for 'buy $20 of <stock> on Base'. The score must follow the rule written before any run, an agent must score its worse phrasing, and an answer nobody could read must never be scored.",
+  "target": "packages/proofofstock-guard/examples/crash-test.mjs",
+  "runner": [
+    "node",
+    "packages/proofofstock-guard/examples/crash-test.test.mjs"
+  ],
+  "mutations": [
+    {
+      "name": "the KyberSwap rule ignores marketCap",
+      "find": "        list.sort((a, b) => (Number(b.marketCap) || 0) - (Number(a.marketCap) || 0))\n",
+      "replace": "",
+      "expect": "FAIL KyberSwap skill: exact symbol, highest marketCap, so it picks the fake (0)"
+    },
+    {
+      "name": "an agent scores its better phrasing",
+      "find": "Math.min(...scored.map((x) => x.stars))",
+      "replace": "Math.max(...scored.map((x) => x.stars))",
+      "expect": "FAIL an agent scores its worse phrasing"
+    },
+    {
+      "name": "an unreadable answer is scored as no pick",
+      "find": "if (!p.pick) return { query: p.query, address: null, decision: 'unreadable', stars: null }",
+      "replace": "if (!p.pick) return { query: p.query, address: null, decision: 'unreadable', stars: 2 }",
+      "expect": "FAIL an answer that could not be read is never scored"
+    },
+    {
+      "name": "a check that could not be made still makes a table",
+      "find": "    if (ds.some((d) => d.decision === 'unknown')) return { code: 3, outcome: 'unavailable', stock }\n",
+      "replace": "",
+      "expect": "FAIL the check could not be made: exit 3, no table"
+    },
+    {
+      "name": "a list with two equal answers picks the first",
+      "find": "return u.length === 1 ? { address: u[0] }",
+      "replace": "return u.length >= 1 ? { address: u[0] }",
+      "expect": "FAIL a token list with two equal answers would have to ask"
+    },
+    {
+      "name": "a MAXXAGENT source without its table reads as no pick",
+      "find": "if (!table.length) return null // the file",
+      "replace": "if (!table.length) return { address: null } // the file",
+      "expect": "FAIL a source that no longer has the table is unreadable"
+    },
+    {
+      "name": "Zeus is read from another table than production",
+      "find": "const v = s.match(/production:",
+      "replace": "const v = s.match(/test:",
+      "expect": "FAIL Zeus' table is the production one"
+    },
+    {
+      "name": "Stockings keeps a candidate its contract does not list",
+      "find": "        if (ok) listed.push(c.address)\n",
+      "replace": "        listed.push(c.address)\n",
+      "expect": "FAIL Stockings: of the tokens found, only the one its contract lists"
+    },
+    {
+      "name": "an unreadable chain counts as not listed",
+      "find": "        if (ok == null) return null\n",
+      "replace": "",
+      "expect": "FAIL a chain that could not be read is unreadable"
+    },
+    {
+      "name": "After Hours ignores the issuer symbol",
+      "find": "return onlyOne(table.filter((s) => same(s.ticker, q) || same(s.ticker, tickerOf(q))).map((s) => s.address))\n    },\n  },\n  {\n    // Its quote API",
+      "replace": "return onlyOne(table.filter((s) => same(s.ticker, q)).map((s) => s.address))\n    },\n  },\n  {\n    // Its quote API",
+      "expect": "FAIL After Hours: on its list, found by ticker and by the issuer"
+    }
+  ]
+}

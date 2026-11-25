@@ -1,0 +1,46 @@
+# deployment/systemd/stp-lab.service: the three files behind /lab (scripts/stocks/lab.mjs): the fake exchange's board,
+# the golden impostor of the week and the crash test. Reads each chain's impostors.json under /var/lib/pos, asks
+# DexScreener for the fakes' pool liquidity and the agent tools' public endpoints for their picks, and writes only
+# /var/lib/pos/lab. No key, no signing, no capability.
+[Unit]
+OnFailure=stp-alert@%n.service
+Description=Proof of Stock: the lab's board, weekly award and crash test
+After=stp-impostors.service
+
+[Service]
+Type=oneshot
+User=pos
+Group=pos
+WorkingDirectory=/opt/stp/current
+Environment=STOCKS_ROOT_BASE=/var/lib/pos/base
+Environment=STOCKS_ROOT_ROBINHOOD=/var/lib/pos/robinhood
+Environment=POS_LAB_DIR=/var/lib/pos/lab
+ExecStart=/usr/bin/node scripts/stocks/lab.mjs --out=/var/lib/pos/lab
+Nice=10
+TimeoutStartSec=15min
+NoNewPrivileges=true
+CapabilityBoundingSet=
+ProtectSystem=strict
+StateDirectory=pos/lab
+StateDirectoryMode=0755
+InaccessiblePaths=-/etc/pos -/etc/stp
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources @mount @reboot @swap @raw-io @module @debug @cpu-emulation @obsolete
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=stp-lab

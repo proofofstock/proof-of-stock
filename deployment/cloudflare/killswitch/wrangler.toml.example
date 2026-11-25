@@ -1,0 +1,30 @@
+# deployment/cloudflare/killswitch/wrangler.toml.example: copy to wrangler.toml (not committed) and fill the KV id.
+# Setup and clearing: deployment/KILLSWITCH.md.
+name = "pos-killswitch"
+main = "worker.mjs"
+compatibility_date = "2026-11-01"
+
+# Every minute: read both issuers and our server, decide, store.
+[triggers]
+crons = ["* * * * *"]
+
+# The routes that carry a verdict. Pages are not routed here and stay up.
+routes = [
+  { pattern = "proofofstock.xyz/verify*", zone_name = "proofofstock.xyz" },
+  { pattern = "proofofstock.xyz/api/*", zone_name = "proofofstock.xyz" },
+  { pattern = "proofofstock.xyz/mcp*", zone_name = "proofofstock.xyz" },
+  { pattern = "proofofstock.xyz/badge.svg*", zone_name = "proofofstock.xyz" },
+  { pattern = "proofofstock.xyz/tokenlist.json*", zone_name = "proofofstock.xyz" },
+  # The other hosts nginx serves /mcp on (deployment/nginx/proofofstock.xyz.conf): everything else there is a 301 to
+  # proofofstock.xyz, which passes through the routes above. Each needs its zone in the same Cloudflare account.
+  { pattern = "stockofproof.xyz/mcp*", zone_name = "stockofproof.xyz" },
+  { pattern = "www.stockofproof.xyz/mcp*", zone_name = "stockofproof.xyz" },
+  { pattern = "tickerproof.xyz/mcp*", zone_name = "tickerproof.xyz" },
+  { pattern = "www.tickerproof.xyz/mcp*", zone_name = "tickerproof.xyz" },
+]
+
+[[kv_namespaces]]
+binding = "POS_KS"
+id = "<the id wrangler prints for: npx wrangler kv namespace create POS_KS>"
+
+# Optional alert: npx wrangler secret put TG_TOKEN, then npx wrangler secret put TG_CHAT

@@ -72,9 +72,9 @@ permissions, never write (`ProtectSystem=strict` keeps everything but our own di
 ## 2. Stop the writers
 
 ```sh
-systemctl stop stp-peg.timer stp-impostors.timer stp-mirror.timer stp-anchor.timer stp-anchor-mirror.timer stp-health.timer
+systemctl stop stp-peg.timer stp-impostors.timer stp-mirror.timer stp-anchor.timer stp-anchor-mirror.timer stp-lab.timer stp-health.timer
 # wait for a run in progress to finish (the recorder takes up to 9 minutes)
-while systemctl show -p ActiveState --value stp-peg.service stp-impostors.service stp-mirror.service stp-anchor.service stp-anchor-mirror.service | grep -qE '^(activating|active|deactivating)$'; do sleep 5; done; echo stopped
+while systemctl show -p ActiveState --value stp-peg.service stp-impostors.service stp-mirror.service stp-anchor.service stp-anchor-mirror.service stp-lab.service | grep -qE '^(activating|active|deactivating)$'; do sleep 5; done; echo stopped
 ```
 
 The site keeps running on the old units and the old root meanwhile.
@@ -209,7 +209,7 @@ systemctl start stp-health.service; journalctl -u stp-health -n 3 --no-pager
 ## 6. Start the timers
 
 ```sh
-systemctl start stp-peg.timer stp-impostors.timer stp-mirror.timer stp-anchor.timer stp-anchor-mirror.timer stp-health.timer
+systemctl start stp-peg.timer stp-impostors.timer stp-mirror.timer stp-anchor.timer stp-anchor-mirror.timer stp-lab.timer stp-health.timer
 systemctl enable --now pos-backup.timer
 systemctl list-timers --no-pager | grep -E 'stp-|pos-'
 sh /opt/stp/current/scripts/deploy.sh --status
@@ -227,8 +227,8 @@ At any point after step 3. It carries what was recorded since the cutover back t
 lost, and restores the old units.
 
 ```sh
-systemctl stop stp-peg.timer stp-impostors.timer stp-mirror.timer stp-anchor.timer stp-anchor-mirror.timer stp-health.timer pos-backup.timer
-while systemctl show -p ActiveState --value stp-peg.service stp-impostors.service stp-mirror.service stp-anchor.service stp-anchor-mirror.service | grep -qE '^(activating|active|deactivating)$'; do sleep 5; done
+systemctl stop stp-peg.timer stp-impostors.timer stp-mirror.timer stp-anchor.timer stp-anchor-mirror.timer stp-lab.timer stp-health.timer pos-backup.timer
+while systemctl show -p ActiveState --value stp-peg.service stp-impostors.service stp-mirror.service stp-anchor.service stp-anchor-mirror.service stp-lab.service | grep -qE '^(activating|active|deactivating)$'; do sleep 5; done
 # the files only grew since the copy (append-only days and history) or were rewritten whole (pool book, lists):
 # copy them back over the frozen old ones, root-owned as before, deleting nothing
 for c in base robinhood; do rsync -a --chown=root:root /var/lib/pos/$c/stock-peg/ /var/lib/stp/$c/stock-peg/; done
@@ -237,7 +237,7 @@ cp -a /var/backups/pos-cutover/* /etc/systemd/system/
 systemctl daemon-reload
 systemctl restart stp-web.service
 curl -fsS -o /dev/null -w 'healthz %{http_code}\n' http://127.0.0.1:3005/healthz
-systemctl start stp-peg.timer stp-impostors.timer stp-mirror.timer stp-anchor.timer stp-anchor-mirror.timer stp-health.timer
+systemctl start stp-peg.timer stp-impostors.timer stp-mirror.timer stp-anchor.timer stp-anchor-mirror.timer stp-lab.timer stp-health.timer
 ```
 
 The code does not need rolling back: it runs the old units as before. `/var/lib/pos` stays as it was, for a second

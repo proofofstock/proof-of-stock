@@ -1,0 +1,34 @@
+{
+  "_finding": "Owner, 25.11: the lab page shows fakes only as warnings. No address may become a link to trade or chart it, a fake always stands beside its original, the deployers' text is escaped, and search engines are told to stay out.",
+  "target": "apps/stocks-lab-page.mjs",
+  "runner": [
+    "node",
+    "apps/lab-page.test.mjs"
+  ],
+  "mutations": [
+    {
+      "name": "a fake becomes a link",
+      "find": "<span class=\"lb-fake\" title=\"${esc(addr(fake))}\"><b>FAKE</b><code>${esc(short(fake))}</code></span>",
+      "replace": "<a class=\"lb-fake\" href=\"https://dexscreener.com/base/${esc(addr(fake))}\"><b>FAKE</b><code>${esc(short(fake))}</code></a>",
+      "expect": "FAIL no address is ever a link"
+    },
+    {
+      "name": "the original is left out beside the fake",
+      "find": "<span class=\"lb-vs\" aria-hidden=\"true\">≠</span><span class=\"lb-orig\" title=\"${esc(addr(original))}\"><b>ORIGINAL</b><code>${esc(short(original))}</code></span>",
+      "replace": "",
+      "expect": "FAIL every fake stands beside its original"
+    },
+    {
+      "name": "the richest fake's symbol is not escaped",
+      "find": "<small class=\"lb-rich\">${esc(r.richest.symbol)}",
+      "replace": "<small class=\"lb-rich\">${r.richest.symbol}",
+      "expect": "FAIL the deployer's text is escaped"
+    },
+    {
+      "name": "noindex is dropped",
+      "find": "  <meta name=\"robots\" content=\"noindex, nofollow\">\n",
+      "replace": "",
+      "expect": "FAIL search engines are told to stay out"
+    }
+  ]
+}

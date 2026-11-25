@@ -1,0 +1,52 @@
+{
+  "_finding": "Owner, 25.11: a token list for wallets. A wallet that imports it shows every entry as a token to buy, so what it may hold is the whole point: only issuer-listed tokens with known decimals, never an impostor, names inside the format's rules, and nothing from a stale issuer list.",
+  "target": "apps/stocks-tokenlist.mjs",
+  "runner": [
+    "node",
+    "apps/tokenlist.test.mjs"
+  ],
+  "mutations": [
+    {
+      "name": "a listed token with no known decimals is let in",
+      "find": "if (!ADDRESS_RE.test(a) || !Number.isInteger(d) || d < 0 || d > 255) continue",
+      "replace": "if (!ADDRESS_RE.test(a)) continue",
+      "expect": "FAIL only listed tokens with known decimals are in it"
+    },
+    {
+      "name": "addresses are served lower-case, not checksummed",
+      "find": "address: checksumAddress(a), name:",
+      "replace": "address: a, name:",
+      "expect": "FAIL addresses are checksummed, as wallets expect"
+    },
+    {
+      "name": "characters outside the format's set are kept in names",
+      "find": "s = [...s].filter((ch) => NAME_RE.test(ch)).join('').replace(/\\s+/g, ' ').trim()",
+      "replace": "s = s.replace(/\\s+/g, ' ').trim()",
+      "expect": "FAIL characters outside the set are dropped"
+    },
+    {
+      "name": "a long name is not cut",
+      "find": "  if (s.length > 40) {",
+      "replace": "  if (s.length > 4000) {",
+      "expect": "FAIL a name over 40 characters is cut at a word"
+    },
+    {
+      "name": "the schema check lets a bad name through",
+      "find": "|| !NAME_RE.test(t.name)) out.push(`${at}.name`)",
+      "replace": ") out.push(`${at}.name`)",
+      "expect": "FAIL ...and those checks do catch a broken entry"
+    },
+    {
+      "name": "the schema check lets a duplicate through",
+      "find": "if (seen.has(key)) out.push(`${at}: duplicate ${key}`)",
+      "replace": "",
+      "expect": "FAIL ...and those checks do catch a broken entry"
+    },
+    {
+      "name": "the version no longer moves with the read time",
+      "find": "patch: Math.floor((at % 86400e3) / 60e3)",
+      "replace": "patch: 0",
+      "expect": "FAIL the version is the read time"
+    }
+  ]
+}

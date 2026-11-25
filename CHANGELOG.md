@@ -12,7 +12,21 @@ The version is in `package.json`, and the site footer, the MCP `serverInfo.versi
 
 ## [Unreleased]
 
+### Changed
+- **`@proofofstock/guard` 0.3.0 does not take our word for it.** proofofstock.xyz is the one point every verdict passes through, so a "listed" answer is now believed only if:
+  - on Base, the address has the form every Coinbase stock token has (`0xb2` and twenty zero hex digits, pinned in the package);
+  - by default, the issuer's own list, read by the guard itself and chosen by the chain (never by the answer), has the address.
+
+  A proofofstock.xyz that was broken into can still refuse a buy, but can no longer make one. An address that fails either check is `unknown`, and `failOpen` does not let a contradicted answer through. `crossCheck` is now on by default outside a browser and keeps the issuer's list for a minute, one read per batch. In a browser the issuers' APIs cannot be read (they send no CORS headers), so there it stays off and the prefix check stands alone. New exports: `ISSUER_OF`, `ISSUER_ADDRESS_PREFIX`, `ISSUER_LIST_TTL_MS`, `ISSUER_FAIL_TTL_MS`, `ISSUER_MAX_PAGES`, `readIssuerList`.
+
+  After outside review:
+  - An address the issuer's list, read just now, does not have is refused even with `failOpen`, which stays for an issuer that could not be read.
+  - A failed read is kept for 15 seconds, so a batch asks the issuer once.
+  - Coinbase's list is followed page by page, up to 5.
+  - A Web Worker or Service Worker counts as a browser.
+
 ### Added
+- `/tokenlist.json`: the issuer-listed stock tokens that trade in a pool, as a Uniswap token list for wallets and DEX front ends to import (`apps/stocks-tokenlist.mjs`). Built only from issuer lists read in the last 15 minutes (503 otherwise), checked against the format's rules before it is served, and never holding an impostor: look-alikes stay at `/api/impostors`.
 - The Demo Agent at `/demo`, a tab after Home (and in the sitemap): an agent that finds a stock token the way anyone would, by searching the market for its name, and lets Proof of Stock tell the original from the rest. Pick a stock (Circle first: several tokens on Base carry its exact symbol); the page runs the guard's own `examples/agent-search.mjs` live in the browser: every token on Base that bears the name, from GeckoTerminal's search, is checked in one batch, each marked fake, not on the issuer's list, or original, and credited to Proof of Stock; the agent goes on with the original only, reads its passport, holds a live aggregator quote (KyberSwap) to the issuer's price and ends with an Aerodrome link and the highest price to accept there, since Aerodrome shows its own; or, for developers, an unsigned transaction through KyberSwap's router for a wallet address typed in the Developer view (the field shows there only, and is ignored in the other views). One switch tells the same run in plain words, as a trader's numbers (liquidity, price gap, price age, minimum received) or as the calls a developer makes. A token off the list is never called fake: it may be another issuer's. Nothing is signed and no key exists; only this page's CSP lets the browser reach GeckoTerminal, KyberSwap and Base's public RPC.
 - The Demo Agent understands a request in a person's words: "Tesla 7000$", "nvidia 7k", "$2 circle" or the same in Russian become a stock and an amount (`parseIntent` in `examples/agent-search.mjs`), Russian names included; an amount in the words fills the amount.
 - The Demo Agent ends with a simulated swap, said so in every view (owner, 25.11: the agent buys by itself; the button goes to the terminal). A live agent signs the swap with its own wallet, within its owner's limits and capped at the issuer's price + 3%; this page has no wallet, so nothing moves, and it links to the token's passport. The swap button moved there: an issuer-listed token on Base gets "Swap USDC → <symbol> on Aerodrome" in its passport, pinned to Base, with where 3% over the issuer's price is and that this site never signs.

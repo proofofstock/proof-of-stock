@@ -15,7 +15,7 @@ const check = (label, cond, detail) => {
   failed++; const l = '  FAIL ' + label + (detail ? ': ' + detail : ''); failures.push(l); console.log(l)
 }
 
-const REAL = '0x' + 'b2'.repeat(20), FAKE1 = '0x' + 'f1'.repeat(20), FAKE2 = '0x' + 'f2'.repeat(20), OTHER = '0x' + 'd1'.repeat(20), USDC = '0x833589fcd6edb6e08f4c7c32d4f71b54bda02913', MEME = '0x' + 'ee'.repeat(20)
+const REAL = '0xb2' + '0'.repeat(20) + 'b2'.repeat(9), FAKE1 = '0x' + 'f1'.repeat(20), FAKE2 = '0x' + 'f2'.repeat(20), OTHER = '0x' + 'd1'.repeat(20), USDC = '0x833589fcd6edb6e08f4c7c32d4f71b54bda02913', MEME = '0x' + 'ee'.repeat(20)
 const proof = { issuer: 'coinbase', addresses_sha256: 'a'.repeat(64), reproduce: 'curl ...', stale: false }
 const res = (status, body) => ({ status, json: async () => body })
 const tok = (address, symbol, name) => ({ id: 'base_' + address, type: 'token', attributes: { address, symbol, name } })
@@ -48,6 +48,8 @@ function world (over = {}) {
     if (u.pathname.endsWith('/routes')) return pick(w.routes, u.searchParams)
     if (u.pathname.endsWith('/route/build')) return pick(w.build, JSON.parse(init.body))
     if (u.host === 'mainnet.base.org') return pick(w.decimals, JSON.parse(init.body))
+    // The guard reads Coinbase's own list itself (0.3.0): the issuer-listed contract is on it, nothing else.
+    if (u.host === 'api.coinbase.com') return res(200, { tokens: [{ contract_address: REAL }] })
     return res(404, {})
   }
   return { fetchImpl, calls }

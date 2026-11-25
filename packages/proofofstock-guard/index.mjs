@@ -8,26 +8,51 @@
 // ⚠ IT FAILS CLOSED. If the registry cannot be read, the answer is "unknown" and the default is not to buy. A guard that
 // lets a trade through because it could not look is no guard. `failOpen: true` changes that, on the caller's word.
 // ⚠ NO EVIDENCE, NO BUY. A listed answer must carry the issuer list it was decided against (`list_proof`), not stale,
-// read within `maxRegistryAgeS`; otherwise it is "unknown". With `crossCheck: true` the guard also reads the issuer's
-// own list itself and buys only if the address is on it (checkListProof).
+// read within `maxRegistryAgeS`; otherwise it is "unknown".
+// ⚠ IT DOES NOT TAKE OUR WORD FOR IT (0.3.0, owner 25.11: the server is the one point every verdict passes through). A
+// "listed" answer is believed only if (1) on Base, the address has the form every Coinbase stock token has
+// (ISSUER_ADDRESS_PREFIX, pinned here, never read from an answer), and (2) by default, the issuer's own list, read by
+// the guard itself, has the address. The issuer is chosen by the chain, never by the answer. A proofofstock.xyz that
+// was broken into can then still refuse a buy, but cannot make one: anything that does not match is "unknown".
+// In a browser the issuers' APIs cannot be read (they send no CORS headers), so there crossCheck defaults to off and
+// the prefix is the check that stands.
 // ⚠ "NOT LISTED" IS NOT "FAKE". A token outside these two registries may be another issuer's genuine token. The guard
 // refuses it by default because it cannot vouch for it, and says so in those words.
 // ⚠ BAD INPUT IS A REFUSAL, NOT A THROW. beforeBuy never throws: a malformed address or chain is decision invalid_input.
 //
 // No dependencies; Node 20.19+ (ESM, also loadable with require()) or any runtime with fetch and WebCrypto.
 
-export const VERSION = '0.2.1'
+export const VERSION = '0.3.0'
 export const DEFAULT_ENDPOINT = 'https://proofofstock.xyz'
 export const MAX_BATCH = 50
 const ADDRESS = /^0x[0-9a-fA-F]{40}$/
 const CHAINS = new Set(['base', 'robinhood'])
 const CHAIN_ID = Object.freeze({ base: 8453, robinhood: 4663 })
+/** Whose list decides on each chain: by the chain, never by what an answer says. */
+export const ISSUER_OF = Object.freeze({ base: 'coinbase', robinhood: 'robinhood' })
+/**
+ * The start every issuer token address has on that chain. Coinbase creates its stock tokens at 0xb2 followed by twenty
+ * zero hex digits; a contract of one's own at such an address takes about 2^88 tries. Robinhood's addresses share no
+ * start, so it has none. Pinned: if Coinbase changes its scheme, every new token is "unknown" until this is updated.
+ */
+export const ISSUER_ADDRESS_PREFIX = Object.freeze({ base: '0xb200000000000000000000' })
+/** How long the guard keeps an issuer list it read itself: one read per batch, not one per token. */
+export const ISSUER_LIST_TTL_MS = 60_000
+/** How long a failed read of an issuer's list is kept: a batch of 50 asks once, not 50 times (outside review, 25.11). */
+export const ISSUER_FAIL_TTL_MS = 15_000
+/** Pages of an issuer's list the guard follows (Coinbase pages at 500), as the server's reader does. */
+export const ISSUER_MAX_PAGES = 5
+// A page, or a Web Worker or Service Worker: the issuers' APIs send no CORS headers to any of them (outside review, 25.11).
+const IN_BROWSER = (typeof globalThis.window !== 'undefined' && typeof globalThis.document !== 'undefined') || typeof globalThis.WorkerGlobalScope !== 'undefined'
 
 // The issuers' lists, read the way proofofstock.xyz reads them (evm/core/stocks/list-proof.mjs): the same addresses,
 // lowercase, sorted bytewise, one per line, each line ending in "\n", hashed with SHA-256. A test in the repository holds
 // the two in step on one fixture.
 const ISSUER_LISTS = Object.freeze({
-  coinbase: { url: 'https://api.coinbase.com/v1/tokenized-stocks?page_size=500', addresses: (b) => (Array.isArray(b?.tokens) && !b.next_page_token ? b.tokens.map((t) => t.contract_address) : null) },
+  coinbase: { url: 'https://api.coinbase.com/v1/tokenized-stocks?page_size=500', addresses: (b) => (Array.isArray(b?.tokens) && !b.next_page_token ? b.tokens.map((t) => t.contract_address) : null),
+    // Followed page by page by readIssuerList; checkListProof keeps the one-page recipe the proof's `reproduce` names.
+    page: (b) => (Array.isArray(b?.tokens) ? { addresses: b.tokens.map((t) => t.contract_address), next: b.next_page_token ? String(b.next_page_token) : null } : null),
+    pageUrl: (token) => 'https://api.coinbase.com/v1/tokenized-stocks?page_size=500&page_token=' + encodeURIComponent(token) },
   robinhood: { url: 'https://api.robinhood.com/rhj/assets', addresses: (b) => (Array.isArray(b?.assets) ? b.assets.map((a) => (Array.isArray(a.deployments) ? a.deployments : []).find((d) => String(d.chainId) === String(CHAIN_ID.robinhood))?.contractAddress).filter((x) => x != null) : null) },
 })
 
@@ -36,6 +61,34 @@ export async function addressesSha256 (addresses) {
   const text = addresses.map((a) => String(a).toLowerCase()).sort().map((a) => a + '\n').join('')
   const digest = await globalThis.crypto.subtle.digest('SHA-256', new TextEncoder().encode(text))
   return [...new Uint8Array(digest)].map((x) => x.toString(16).padStart(2, '0')).join('')
+}
+
+/** The issuer's list as the guard reads it itself: { list: Set of lowercase addresses, sha } or { list: null }. Never throws. */
+export async function readIssuerList (issuer, { fetchImpl = globalThis.fetch, timeoutMs = 15000 } = {}) {
+  const recipe = ISSUER_LISTS[issuer]
+  if (!recipe) return { list: null, sha: null }
+  const get = async (url) => {
+    const r = await fetchImpl(url, { signal: AbortSignal.timeout(timeoutMs), headers: { accept: 'application/json', 'user-agent': `proofofstock-guard/${VERSION}` } })
+    return r.status === 200 ? r.json() : null
+  }
+  try {
+    let addrs
+    if (recipe.page) {
+      // A list longer than a page is followed, up to ISSUER_MAX_PAGES; more than that is no list, never half of one.
+      addrs = []
+      let url = recipe.url
+      for (let i = 0; ; i++) {
+        const pg = recipe.page(await get(url))
+        if (!pg) return { list: null, sha: null }
+        addrs.push(...pg.addresses)
+        if (!pg.next) break
+        if (i + 1 >= ISSUER_MAX_PAGES) return { list: null, sha: null }
+        url = recipe.pageUrl(pg.next)
+      }
+    } else addrs = recipe.addresses(await get(recipe.url))
+    if (!addrs || !addrs.length) return { list: null, sha: null }
+    return { list: new Set(addrs.map((a) => String(a).toLowerCase())), sha: await addressesSha256(addrs) }
+  } catch (_) { return { list: null, sha: null } }
 }
 
 /**
@@ -80,10 +133,10 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
  * @param {number} [o.timeoutMs]        per request (default 8000)
  * @param {boolean} [o.failOpen]        allow a buy when the registry cannot be read (default false)
  * @param {number} [o.maxRegistryAgeS]  a listed answer from a list read longer ago than this is unknown (default 900)
- * @param {boolean} [o.crossCheck]      also read the issuer's own list and require the address on it (default false: it
- *                                      doubles the latency and calls the issuer's API)
+ * @param {boolean} [o.crossCheck]      also read the issuer's own list and require the address on it (default true
+ *                                      outside a browser, false in one: the issuers' APIs send no CORS headers)
  */
-export function createGuard ({ endpoint = DEFAULT_ENDPOINT, fetchImpl = globalThis.fetch, timeoutMs = 8000, failOpen = false, maxRegistryAgeS = 900, crossCheck = false, retryDelayMs = 500 } = {}) {
+export function createGuard ({ endpoint = DEFAULT_ENDPOINT, fetchImpl = globalThis.fetch, timeoutMs = 8000, failOpen = false, maxRegistryAgeS = 900, crossCheck = !IN_BROWSER, retryDelayMs = 500, now = () => Date.now() } = {}) {
   if (typeof fetchImpl !== 'function') throw new Error('no fetch available: pass fetchImpl')
   const base = endpoint.replace(/\/+$/, '')
   const headers = { accept: 'application/json', 'user-agent': `proofofstock-guard/${VERSION}` }
@@ -136,9 +189,38 @@ export function createGuard ({ endpoint = DEFAULT_ENDPOINT, fetchImpl = globalTh
     return { status: 'ok', body: { results, list_proofs: proofs } }
   }
 
+  // The issuer's own list, read by the guard itself, kept ISSUER_LIST_TTL_MS: one read serves a whole batch. A failed
+  // read is not kept, so the next token asks again.
+  const issuerReads = new Map() // issuer -> { at, p }
+  function issuerCheck (chain, p, tokenAddress) {
+    const issuer = ISSUER_OF[chain]
+    const hit = issuerReads.get(issuer)
+    let pending = hit && now() - hit.at < (hit.failed ? ISSUER_FAIL_TTL_MS : ISSUER_LIST_TTL_MS) ? hit.p : null
+    if (!pending) {
+      pending = readIssuerList(issuer, { fetchImpl, timeoutMs })
+      const entry = { at: now(), p: pending, failed: false }
+      issuerReads.set(issuer, entry)
+      // A failed read is kept, but only briefly: a batch asks once, and the next batch asks again.
+      pending.then((r) => { if (!r.list) entry.failed = true })
+    }
+    return pending.then((r) => {
+      if (!r.list) return { status: 'issuer_unavailable', address_in_issuer_list: null, issuer_sha256: null }
+      const on = r.list.has(String(tokenAddress).toLowerCase())
+      return { status: p && p.addresses_sha256 === r.sha ? 'match' : 'list_changed', address_in_issuer_list: on, issuer_sha256: r.sha }
+    })
+  }
+
   // A verify answer (with its list_proof) into the decision.
   async function decide (b, { chain, tokenAddress, claimedSymbol }) {
     if (b.listed) {
+      // Checked before anything else the answer says: a listed Base address without the issuer's form is not believed.
+      const prefix = ISSUER_ADDRESS_PREFIX[chain]
+      if (prefix && !String(tokenAddress).toLowerCase().startsWith(prefix)) {
+        return { allow: false, decision: 'unknown', reason: `${tokenAddress} was answered as listed, but it does not have the address form of every ${ISSUER_OF[chain]} stock token (${prefix}…). Not buying: the answer is not believed.`, use_instead: null, verify: b }
+      }
+      if (b.list_proof && b.list_proof.issuer != null && b.list_proof.issuer !== ISSUER_OF[chain]) {
+        return { allow: false, decision: 'unknown', reason: `${tokenAddress} was answered as listed against ${b.list_proof.issuer}'s list, but ${chain} is decided by ${ISSUER_OF[chain]}'s. Not buying.`, use_instead: null, verify: b }
+      }
       if (claimedSymbol && ticker(claimedSymbol) !== ticker(b.symbol)) {
         return { allow: false, decision: 'wrong_stock', reason: `${tokenAddress} is the issuer-listed ${b.symbol}, not ${claimedSymbol}. Check which stock was meant.`, use_instead: null, verify: b }
       }
@@ -149,7 +231,10 @@ export function createGuard ({ endpoint = DEFAULT_ENDPOINT, fetchImpl = globalTh
       const age = Number.isFinite(b.registry_age_s) ? b.registry_age_s : (p?.read_at ? Math.round((Date.now() - Date.parse(p.read_at)) / 1000) : null)
       if (age == null || age > maxRegistryAgeS) return unknown(`the issuer list was read ${age == null ? 'at an unknown time' : age + ' s ago'}, more than ${maxRegistryAgeS} s`)
       if (crossCheck) {
-        const c = await checkListProof(p, { address: tokenAddress, fetchImpl, timeoutMs })
+        const c = await issuerCheck(chain, p, tokenAddress)
+        // The issuer's own list, read just now, does not have it: that is an answer, not an outage, and failOpen never
+        // turns it into a buy (outside review, 25.11). failOpen stays for an issuer that could not be read.
+        if (c.address_in_issuer_list === false) return { allow: false, decision: 'unknown', reason: `${tokenAddress} was answered as listed, but the issuer's own list, read just now, does not have it. Not buying, whatever failOpen says.`, use_instead: null, verify: b, cross_check: c }
         if (c.address_in_issuer_list !== true) return { ...unknown(`the issuer's own list did not confirm it (${c.status})`), cross_check: c }
         return { allow: true, decision: 'listed', reason: `${b.symbol} at ${b.address} is on the ${b.registries_checked.join(', ')} registry, confirmed against the issuer's own list (${c.status}).`, use_instead: null, verify: b, cross_check: c }
       }

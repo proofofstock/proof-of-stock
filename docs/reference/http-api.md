@@ -33,6 +33,7 @@ curl -s 'https://proofofstock.xyz/verify?chain=base&address=0xaaaaaaaaaaaaaaaaaa
 - [`GET /api/matrix`](#route-matrix)
 - [`GET /api/status`](#route-status)
 - [`GET /api/exam`](#route-exam)
+- [`GET /tokenlist.json`](#route-tokenlist)
 - [Monitoring](#monitoring)
 
 <a id="basics"></a>
@@ -616,6 +617,36 @@ confirmed the block at that height really has it. For one answer with all of it,
 The data files themselves are available on request: hello@proofofstock.xyz. These routes are outside `/api/`, so
 they do not count against the per-client rate limit. Both carry `Access-Control-Allow-Origin: *`; the index is
 `Cache-Control: public, max-age=300` and a file `max-age=3600`. A name that is not an anchor file is a 404.
+
+---
+
+<a id="route-tokenlist"></a>
+## `GET /tokenlist.json`
+
+The issuer-listed stock tokens as a token list in the [Uniswap Token Lists](https://tokenlists.org) format, for
+wallets and DEX front ends to import. Any origin may fetch it (`Access-Control-Allow-Origin: *`); it is cached for five
+minutes and costs no rate-limit units.
+
+```sh
+curl -fsS https://proofofstock.xyz/tokenlist.json
+```
+
+**What is in it.** Every token that is on its issuer's own published list for that chain, read within the last 15
+minutes, **and** trades in a pool on that chain, so its decimals are known from the chain. A listed token with no pool
+cannot be bought on a DEX and is left out. Each entry carries `extensions.issuer`, and `extensions.isin` and
+`extensions.multiplier` where the issuer publishes them. Names are the issuer's, fitted to the format's character set
+and 40 characters.
+
+**What is never in it: impostors.** A wallet that imports a token list adds every entry to its token picker, so a list
+of fakes in this format would put the fakes in front of people. Look-alikes are at [`/api/impostors`](#route-impostors),
+a JSON of warnings that no wallet imports as tokens.
+
+**Version.** `timestamp` is when the oldest of the issuer lists was read; `version.minor` is that UTC day and
+`version.patch` the minute of it, so a client sees a newer version after every read.
+
+**When an issuer list is stale.** 503, `{ "error": ... }`, `Retry-After: 60`: no list is built from an old copy, the
+same rule every verdict keeps. Before the list is served it is checked against the format's rules; a list that fails
+them is withheld (500) rather than served.
 
 ---
 

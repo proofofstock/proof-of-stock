@@ -1,5 +1,5 @@
 {
-  "_finding": "The guard is what stands between an agent and a fake stock token. It must refuse when it could not check (failing open would let every trade through during an outage), refuse an impostor, and refuse a listed token of a different stock from the one asked for.",
+  "_finding": "The guard is what stands between an agent and a fake stock token. It must refuse when it could not check (failing open would let every trade through during an outage), refuse an impostor, and refuse a listed token of a different stock from the one asked for. Owner, 25.11: the server is the one point every verdict passes through, so the guard does not take its word: a listed Base address must have the issuer's pinned form, and by default the issuer's own list, read by the guard itself and chosen by the chain, must have it.",
   "target": "packages/proofofstock-guard/index.mjs",
   "runner": [
     "node",
@@ -35,6 +35,72 @@
       "find": "      if (r.status === 503 && attempt === 0)",
       "replace": "      if ((r.status === 503 || r.status === 429) && attempt === 0)",
       "expect": "FAIL a 429 is not retried"
+    },
+    {
+      "name": "the Base prefix is not checked",
+      "find": "      if (prefix && !String(tokenAddress).toLowerCase().startsWith(prefix)) {",
+      "replace": "      if (false) {",
+      "expect": "FAIL a server that says \"listed\" for a Base address without the issuer"
+    },
+    {
+      "name": "failOpen lets a contradicted answer through",
+      "find": "return { allow: false, decision: 'unknown', reason: `${tokenAddress} was answered as listed, but it does not have",
+      "replace": "return { allow: failOpen, decision: 'unknown', reason: `${tokenAddress} was answered as listed, but it does not have",
+      "expect": "FAIL ...and failOpen does not let it through"
+    },
+    {
+      "name": "crossCheck is off by default again",
+      "find": "crossCheck = !IN_BROWSER,",
+      "replace": "crossCheck = false,",
+      "expect": "FAIL by default the guard reads the issuer"
+    },
+    {
+      "name": "the answer chooses the issuer",
+      "find": "      if (b.list_proof && b.list_proof.issuer != null && b.list_proof.issuer !== ISSUER_OF[chain]) {",
+      "replace": "      if (false) {",
+      "expect": "FAIL an answer that names another issuer"
+    },
+    {
+      "name": "the issuer list is read for every token",
+      "find": "let pending = hit && now() - hit.at < (hit.failed ? ISSUER_FAIL_TTL_MS : ISSUER_LIST_TTL_MS) ? hit.p : null",
+      "replace": "let pending = null",
+      "expect": "FAIL one read of the issuer"
+    },
+    {
+      "name": "failOpen buys a token the issuer list does not have",
+      "find": "        if (c.address_in_issuer_list === false) return { allow: false, decision: 'unknown',",
+      "replace": "        if (c.address_in_issuer_list === false) return { allow: failOpen, decision: 'unknown',",
+      "expect": "FAIL failOpen never buys a token the issuer"
+    },
+    {
+      "name": "a failed issuer read is not kept",
+      "find": "      pending.then((r) => { if (!r.list) entry.failed = true })",
+      "replace": "      pending.then((r) => { if (!r.list) issuerReads.delete(issuer) })",
+      "expect": "FAIL ...a batch with the issuer down asks the issuer once"
+    },
+    {
+      "name": "a failed issuer read is kept as long as a good one",
+      "find": "(hit.failed ? ISSUER_FAIL_TTL_MS : ISSUER_LIST_TTL_MS)",
+      "replace": "ISSUER_LIST_TTL_MS",
+      "expect": "FAIL an issuer that could not be read is \"unknown\"; the failure is kept briefly"
+    },
+    {
+      "name": "the Coinbase list is not followed past its first page",
+      "find": "        if (!pg.next) break\n",
+      "replace": "        break\n",
+      "expect": "FAIL a Coinbase list longer than a page is followed to its end"
+    },
+    {
+      "name": "past the page cap, half a list is used",
+      "find": "        if (i + 1 >= ISSUER_MAX_PAGES) return { list: null, sha: null }\n",
+      "replace": "        if (i + 1 >= ISSUER_MAX_PAGES) break\n",
+      "expect": "FAIL ...but not past"
+    },
+    {
+      "name": "a worker is taken for a server",
+      "find": " || typeof globalThis.WorkerGlobalScope !== 'undefined'",
+      "replace": "",
+      "expect": "FAIL crossCheck is on by default outside a browser, off in one, a Web Worker"
     }
   ]
 }

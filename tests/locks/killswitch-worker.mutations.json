@@ -1,0 +1,34 @@
+{
+  "_finding": "Outside review, 25.11: a failed or stale KV read let a run write tripped:false over a trip. The trip is now its own key, written once and never by a run; a store that could not be read is no run; a trip that was read is always obeyed, with no bypass; a broken store on a request lets it pass.",
+  "target": "deployment/cloudflare/killswitch/worker.mjs",
+  "runner": [
+    "node",
+    "deployment/cloudflare/killswitch/killswitch.test.mjs"
+  ],
+  "mutations": [
+    {
+      "name": "a failed read is taken as a fresh start",
+      "find": "  if (!trip.ok || !prev.ok) {",
+      "replace": "  if (false) {",
+      "expect": "FAIL a failed read of the store is no run"
+    },
+    {
+      "name": "a run takes the trip from the state it read",
+      "find": "  const r = decide(prev.value, obs, now(), undefined, { tripped: Boolean(trip.value) })",
+      "replace": "  const r = decide(prev.value, obs, now(), undefined, { tripped: Boolean(prev.value && prev.value.tripped) })",
+      "expect": "FAIL a run that read an old state cannot clear the trip"
+    },
+    {
+      "name": "a tripped state is not obeyed",
+      "find": "    if (t.ok && t.value) {",
+      "replace": "    if (false) {",
+      "expect": "FAIL tripped: /verify answers 503"
+    },
+    {
+      "name": "a broken store closes the site",
+      "find": "try { const v = await env.POS_KS.get(key, { type: 'json', cacheTtl }); return { ok: true, value: v && typeof v === 'object' ? v : null } } catch (_) { return { ok: false, value: null } }",
+      "replace": "try { const v = await env.POS_KS.get(key, { type: 'json', cacheTtl }); return { ok: true, value: v && typeof v === 'object' ? v : null } } catch (_) { return { ok: true, value: { at: 'x' } } }",
+      "expect": "FAIL KV unreadable on a request: it passes"
+    }
+  ]
+}

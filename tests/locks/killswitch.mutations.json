@@ -1,0 +1,88 @@
+{
+  "_finding": "Owner, 25.11: the server is the one point every verdict passes through, so a switch outside it stops every verdict route when our list disagrees with the issuer. After outside review (25.11): strikes are per chain and only a clean comparison clears them, the probe comes from the issuer's own list, a long silence on our side alerts, a listing we saw first gets its grace, a stale list is unknown, Coinbase is read page by page, odd spellings of a blocked path are blocked, and the state is written only on change.",
+  "target": "deployment/cloudflare/killswitch/logic.mjs",
+  "runner": [
+    "node",
+    "deployment/cloudflare/killswitch/killswitch.test.mjs"
+  ],
+  "mutations": [
+    {
+      "name": "an issuer outage reads as an empty list",
+      "find": "    if (!g.ok) return { state: 'unknown', why: `issuer ${issuer} answered ${g.status}` }",
+      "replace": "    if (!g.ok) return { state: 'ok', addresses: [] }",
+      "expect": "FAIL the issuer answering 503"
+    },
+    {
+      "name": "no grace for a delisting",
+      "find": "          if (t != null && now - t <= GRACE_MS) continue // the issuer delisted it moments ago",
+      "replace": "          if (false) continue",
+      "expect": "FAIL the issuer delists a token we still list"
+    },
+    {
+      "name": "no grace for a listing we saw first",
+      "find": "          if (now - oursSeen[c][a] < GRACE_MS) continue",
+      "replace": "          if (false) continue",
+      "expect": "FAIL a listing new on our list"
+    },
+    {
+      "name": "a run that compared nothing clears the strikes",
+      "find": "    strikes[c] = mine.length ? before + 1 : compared ? 0 : before",
+      "replace": "    strikes[c] = mine.length ? before + 1 : 0",
+      "expect": "FAIL strikes are per chain, and a run that did not compare does not clear them"
+    },
+    {
+      "name": "no warm-up",
+      "find": "  const warm = now - firstRun >= WARMUP_MS",
+      "replace": "  const warm = true",
+      "expect": "FAIL a fresh start: strikes counted, no trip during the warm-up"
+    },
+    {
+      "name": "the Base prefix is not checked",
+      "find": "      if (cfg.prefix) for (const a of ours.listed) if (!a.startsWith(cfg.prefix))",
+      "replace": "      if (false) for (const a of ours.listed) if (!a.startsWith(cfg.prefix))",
+      "expect": "FAIL a Base address without the issuer prefix trips"
+    },
+    {
+      "name": "the proof is not checked against our list",
+      "find": "  else if (await addressesSha256(listed) !== p.addresses_sha256)",
+      "replace": "  else if (false)",
+      "expect": "FAIL our list not hashing to the list_proof that names it trips"
+    },
+    {
+      "name": "a stale list is compared",
+      "find": "    if (p.stale === true) return { state: 'unknown', why: 'our server says its issuer list is stale' }\n",
+      "replace": "",
+      "expect": "FAIL our server saying its own list is stale"
+    },
+    {
+      "name": "the fixed probe only",
+      "find": "  for (let i = 0; i < PROBE_TRIES && pool.length; i++) probes.push(pool[Math.floor(random() * pool.length)])\n",
+      "replace": "",
+      "expect": "FAIL the probe is drawn from the issuer"
+    },
+    {
+      "name": "the silence on our side is not alerted",
+      "find": "    if (long && !obj(p.unknown_alerted)[c]) alerts.push(",
+      "replace": "    if (false) alerts.push(",
+      "expect": "FAIL our side giving nothing to compare while the issuer answers"
+    },
+    {
+      "name": "the state is written every run",
+      "find": "  const persist = changed || due",
+      "replace": "  const persist = true",
+      "expect": "FAIL a quiet hour writes the state at most 10 times"
+    },
+    {
+      "name": "Coinbase read as one page",
+      "find": "    url = recipe.pageUrl(pg.next)\n",
+      "replace": "    return { state: 'ok', addresses: out.map((a) => String(a).toLowerCase()) }\n",
+      "expect": "FAIL a Coinbase list over several pages is read whole"
+    },
+    {
+      "name": "the path is matched raw",
+      "find": "export const isBlocked = (pathname) => BLOCKED.test(normalizePath(pathname)) || BLOCKED.test(pathname)",
+      "replace": "export const isBlocked = (pathname) => BLOCKED.test(pathname)",
+      "expect": "FAIL ...an odd spelling of a blocked path is blocked too"
+    }
+  ]
+}

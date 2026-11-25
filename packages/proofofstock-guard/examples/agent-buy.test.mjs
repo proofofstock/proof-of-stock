@@ -12,7 +12,7 @@ const check = (label, cond, detail) => {
   failed++; const l = '  FAIL ' + label + (detail ? ': ' + detail : ''); failures.push(l); console.log(l)
 }
 
-const FAKE = '0x' + '35'.repeat(20), REAL = '0x' + 'b2'.repeat(20), OTHER = '0x' + 'cd'.repeat(20), WALLET = '0x' + 'ee'.repeat(20)
+const FAKE = '0x' + '35'.repeat(20), REAL = '0xb2' + '0'.repeat(20) + 'b2'.repeat(9), OTHER = '0xb2' + '0'.repeat(20) + 'cd'.repeat(9), WALLET = '0x' + 'ee'.repeat(20)
 const proof = { issuer: 'coinbase', addresses_sha256: 'a'.repeat(64), reproduce: 'curl ...', stale: false }
 const listed = (address, symbol) => ({ address, listed: true, symbol, registries_checked: ['coinbase:base'], registry_age_s: 60, list_proof: proof })
 const res = (status, body) => ({ status, json: async () => body })
@@ -40,6 +40,8 @@ function world (over = {}) {
     if (u.pathname.endsWith('/routes')) return pick(w.routes, u.searchParams)
     if (u.pathname.endsWith('/route/build')) return pick(w.build, JSON.parse(init.body))
     if (u.host === 'mainnet.base.org') return pick(w.decimals, JSON.parse(init.body))
+    // The guard reads Coinbase's own list itself (0.3.0): the issuer-listed contract is on it, nothing else.
+    if (u.host === 'api.coinbase.com') return res(200, { tokens: [REAL, OTHER].map((a) => ({ contract_address: a })) })
     throw new Error('unexpected request ' + url)
   }
   return { fetchImpl, calls }
@@ -107,7 +109,7 @@ console.log('the swap link')
   check('the link opens Aerodrome, which trades on Base only, with both sides pinned to Base (owner, 25.11)', /^https:\/\/aerodrome\.finance\/swap\?from=0x[0-9a-f]{40}&to=0x[0-9a-f]{40}&chain0=8453&chain1=8453$/.test(r.link))
   check('...with the highest price to accept there: Aerodrome shows its own, the quote above is the aggregator\'s', /accept at most \$669\.50 per SNDKc \(3\.0% above the issuer's \$650\.00\)/.test(r.text), r.text)
   check('...and the person is told the trade is on Base, and to stop on any other network', r.text.includes(BASE_ONLY) && /on Base/.test(BASE_ONLY) && /stop/.test(BASE_ONLY))
-  check('swapLink takes a contract address only', swapLink('NVDA') === null && swapLink('0x12') === null && swapLink('0x' + 'B2'.repeat(20)) === want)
+  check('swapLink takes a contract address only', swapLink('NVDA') === null && swapLink('0x12') === null && swapLink(REAL.toUpperCase().replace('0X', '0x')) === want)
 }
 
 console.log('the unsigned swap')

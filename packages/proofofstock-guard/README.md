@@ -7,8 +7,18 @@ answer comes from [proofofstock.xyz](https://proofofstock.xyz).
 - **Never trades.** The guard reads one public endpoint and returns a decision.
 - **Fails closed.** If the registry cannot be read, it does not allow the buy, unless you set `failOpen`.
 - **No evidence, no buy.** A listed answer must carry the issuer list it was decided against (`list_proof`), not stale
-  and read within `maxRegistryAgeS` (900 s). With `crossCheck: true` the guard also reads the issuer's own list and buys
-  only if the address is on it.
+  and read within `maxRegistryAgeS` (900 s).
+- **It does not take our word for it (0.3.0).** A listed answer is believed only if, on Base, the address has the
+  form of every Coinbase stock token (`0xb2` and twenty zero hex digits, pinned in the package), and, by default, the
+  issuer's own list, read by the guard itself, has the address. The issuer is chosen by the chain, never by the answer.
+  So a proofofstock.xyz that was broken into could still refuse a buy, but could not make one. In a browser the
+  issuers' APIs cannot be read (no CORS), so `crossCheck` defaults to off there and the prefix check stands alone.
+  Two limits, said plainly:
+  - **The prefix is pinned.** If Coinbase ever creates stock tokens at a new kind of address, this version answers
+    `unknown` for them (a refusal, never a crash) until a new version updates the pin.
+  - **Only 0.3.0 and later check this.** Agents on 0.2.x still take a listed answer as it comes; update to get it.
+  - **`failOpen` covers an outage, not a contradiction.** An issuer that cannot be read may be let through with `failOpen`; an issuer's list that was read and does not have the address never is.
+  - **A failed read of the issuer's list is kept for 15 seconds**, so a batch asks once. Coinbase's list is followed page by page, up to 5 pages.
 - **Never throws on bad input.** `beforeBuy` answers `invalid_input` instead.
 - **"Not listed" is not "fake".** A token outside these two registries may be another issuer's genuine token. The guard
   refuses it because it cannot vouch for it, and says so in those words.
@@ -66,7 +76,7 @@ const ds = await guard.beforeBuyMany('base', [{ tokenAddress: '0x…', claimedSy
 | `timeoutMs` | `8000` | per request; a network error or a 503 is asked once more, a 429 never |
 | `failOpen` | `false` | allow the buy when it cannot check |
 | `maxRegistryAgeS` | `900` | a listed answer from a list read longer ago is `unknown` |
-| `crossCheck` | `false` | also read the issuer's own list (doubles the latency, calls the issuer's API) |
+| `crossCheck` | `true` (`false` in a browser) | also read the issuer's own list, once a minute at most, and require the address on it |
 
 ## Verify it yourself
 

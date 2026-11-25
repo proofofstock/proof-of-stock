@@ -1,0 +1,12 @@
+[Unit]
+Description=Proof of Stock: the lab's files every 6 hours, after the impostor list
+
+[Timer]
+OnBootSec=15min
+OnCalendar=*-*-* 00/6:53:00
+RandomizedDelaySec=2min
+Persistent=true
+Unit=stp-lab.service
+
+[Install]
+WantedBy=timers.target

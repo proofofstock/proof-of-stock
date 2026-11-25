@@ -1,0 +1,28 @@
+{
+  "_finding": "Owner, 25.11: /lab lives behind Cloudflare Access, so a deploy alone must never open it: it is a plain 404 until the host sets POS_LAB=on, and when on it is noindex and never cached.",
+  "target": "apps/stocks-web.mjs",
+  "runner": [
+    "node",
+    "apps/lab-page.test.mjs"
+  ],
+  "mutations": [
+    {
+      "name": "the lab is on by default",
+      "find": "lab = process.env.POS_LAB === 'on',",
+      "replace": "lab = process.env.POS_LAB !== 'off',",
+      "expect": "FAIL the default is off"
+    },
+    {
+      "name": "the off switch does not cover the page",
+      "find": "      if (!lab) return send(res, 404, { error: 'not found' })\n",
+      "replace": "",
+      "expect": "FAIL off (the default): /stocks/lab is a plain 404"
+    },
+    {
+      "name": "the page may be cached and indexed",
+      "find": "const hidden = { 'cache-control': 'private, no-store', 'x-robots-tag': 'noindex, nofollow' }",
+      "replace": "const hidden = { 'cache-control': 'public, max-age=300' }",
+      "expect": "FAIL ...noindex in the header too, and never cached"
+    }
+  ]
+}

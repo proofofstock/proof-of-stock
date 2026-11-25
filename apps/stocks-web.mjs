@@ -58,8 +58,10 @@ import { metaFor, injectMeta, withHead, headOf } from '../evm/core/stocks/page-m
 import { robotsTxt, securityTxt, sitemapXml, sitemapUrls, docUrl, homeJsonLd, docJsonLd, pageJsonLd } from './stocks-seo.mjs'
 import { createMcpHttp, SUPPORTED_VERSIONS, MAX_VERIFY_BATCH, toolsFor, freshnessOf, GAPS_LIMIT } from './stocks-mcp-http.mjs'
 import { siteBar } from './stocks-nav.mjs'
+import { buildTokenList, tokenListProblems, TOKEN_LIST_PATH } from './stocks-tokenlist.mjs'
 import { apiPage } from './stocks-api-page.mjs'
 import { demoPage, demoCsp } from './stocks-demo-page.mjs'
+import { labPage } from './stocks-lab-page.mjs'
 import { verifyToken, badgeSvg, badgeState, issuerPrefixOf, ISSUER_LABEL as VERIFY_ISSUER_LABEL, REGISTRY_FRESH_S } from '../evm/core/stocks/verify.mjs'
 import { mintedOf } from '../evm/core/stocks/registries.mjs'
 import { createDocsRenderer } from './stocks-docs.mjs'
@@ -288,12 +290,17 @@ export function createStocksWeb ({
   // 402index.io's domain claim (22.11): the SHA-256 hash of the token it issues, which it reads at
   // /.well-known/402index-verify.txt. The hash only, never the token; on the host, like the Glama claim, never in git.
   index402Hash = process.env.STP_402INDEX_HASH || null,
+  // /lab (owner, 25.11): the fake exchange and the crash test, behind Cloudflare Access and linked from nowhere. Off unless
+  // the host says POS_LAB=on in /etc/pos/web.env, set once the Access rule exists: a deploy alone never opens it.
+  lab = process.env.POS_LAB === 'on',
+  labDir = process.env.POS_LAB_DIR || '/var/lib/pos/lab',
 } = {}) {
   const registries = new Map() // chain → { records, at, error }
   // Addresses that were listed and have left the registry, since this process started: chain → Map(address → { at, symbol }).
   const delisted = new Map(Object.keys(CHAINS).map((c) => [c, new Map()]))
   const windows = Object.fromEntries(Object.keys(CHAINS).map((c) => [c, createWindowCache({ root: roots[c], windowH, now })]))
   const names = new Map() // chain → Map(address → { symbol, name }), from stock-names.json
+  const decimalsBook = new Map() // chain → Map(address → decimals), from the recorder's pool book: the token list's decimals
   const impostors = new Map() // chain → the parsed impostors.json, or { error }
   const buckets = new Map() // client key → { sec, n, slots }: its last second seen, units in the window, units per second
   const history = createHistoryStore({ roots, now, log })
@@ -360,6 +367,9 @@ export function createStocksWeb ({
   // The page names its script and stylesheet by content hash, so a release reaches every visitor at once: the assets may
   // be cached, the page that names them may not.
   const version = (k) => crypto.createHash('sha256').update(static_[k].body).digest('hex').slice(0, 12)
+  // The lab's stylesheet is served under /lab only, with the page, so nothing of the lab answers while it is off.
+  const labCss = fs.readFileSync(path.join(STATIC_DIR, 'lab.css'))
+  const labCssV = crypto.createHash('sha256').update(labCss).digest('hex').slice(0, 12)
   // The guard package's files the Demo Agent imports, as one version. They import one another by relative paths, so the
   // page loads them all under /guard/<version>/: a change to any of them is a new address, which no browser holds yet.
   // Owner, 25.11: a browser kept the day-old agent-buy.mjs, still linking to KyberSwap, after the switch to Aerodrome.
@@ -458,11 +468,32 @@ export function createStocksWeb ({
       names.set(chain, new Map(Object.entries(j.names || {}).map(([a, [symbol, name]]) => [a, { symbol: symbol ?? null, name: name ?? null }])))
     } catch (_) { if (!names.has(chain)) names.set(chain, new Map()) }
   }
+  // The pool book's decimals, learned from the chain by the recorder: read whole, the last good copy kept.
+  function refreshDecimals (chain) {
+    try {
+      const j = JSON.parse(fs.readFileSync(path.join(roots[chain], 'stock-peg', 'pool-book.json'), 'utf8'))
+      decimalsBook.set(chain, new Map(Object.entries(j.decimals || {}).filter(([a, d]) => /^0x[0-9a-f]{40}$/.test(a) && Number.isInteger(d)).map(([a, d]) => [a, d])))
+    } catch (_) { if (!decimalsBook.has(chain)) decimalsBook.set(chain, new Map()) }
+  }
+  // /tokenlist.json, built once per read of the issuer lists and of the pool book (the cache key says which).
+  let tokenListCache = { key: null, body: null }
+  function tokenList () {
+    const missing = Object.keys(CHAINS).filter((c) => !freshRecords(c))
+    if (missing.length) return { missing }
+    const key = Object.keys(CHAINS).map((c) => registries.get(c).at + ':' + (decimalsBook.get(c)?.size ?? 0)).join('|')
+    if (tokenListCache.key === key) return { body: tokenListCache.body }
+    const chains = Object.keys(CHAINS).map((c) => ({ chainId: CHAINS[c].chainId, issuer: CHAINS[c].issuer, records: freshRecords(c), decimals: decimalsBook.get(c) || new Map() }))
+    const list = buildTokenList({ chains, at: Math.min(...Object.keys(CHAINS).map((c) => registries.get(c).at)), logoURI: `${publicOrigin}${publicPath}/logo.png` })
+    const problems = tokenListProblems(list)
+    if (problems.length) { log(`[tokenlist] ${problems.length} problems, first: ${problems[0]}`); return { problems } }
+    tokenListCache = { key, body: list }
+    return { body: list }
+  }
   async function refreshAll () {
     // Not awaited: a slow GitHub must not hold the start of the site or a registry refresh.
     exam.refresh().catch(() => {})
     glama.refresh().catch(() => {})
-    await Promise.all(Object.keys(CHAINS).flatMap((c) => [refreshRegistry(c), windows[c].refresh(), Promise.resolve(refreshImpostors(c)), Promise.resolve(refreshNames(c)), Promise.resolve(history.refresh(c))]))
+    await Promise.all(Object.keys(CHAINS).flatMap((c) => [refreshRegistry(c), windows[c].refresh(), Promise.resolve(refreshImpostors(c)), Promise.resolve(refreshNames(c)), Promise.resolve(refreshDecimals(c)), Promise.resolve(history.refresh(c))]))
   }
 
   // The wall of findings, written into the page so a reader that runs no script sees the board, not "Loading" (22.11).
@@ -1072,6 +1103,15 @@ export function createStocksWeb ({
       if (!x402.enabled) return send(res, 404, { error: 'not found' })
       return send(res, 200, openApi, undefined, { 'cache-control': 'public, max-age=3600', 'access-control-allow-origin': '*' })
     }
+    // The issuer-listed tokens as a Uniswap token list (apps/stocks-tokenlist.mjs), for wallets and DEX front ends:
+    // any origin may fetch it, and no impostor is ever in it.
+    if (sub === TOKEN_LIST_PATH) {
+      const t = tokenList()
+      const cors = { 'access-control-allow-origin': '*' }
+      if (t.missing) return send(res, 503, { error: `the ${t.missing.join(' and ')} issuer list has not been read in the last ${REGISTRY_FRESH_S / 60} minutes; no token list is given from an old copy` }, undefined, { ...cors, 'retry-after': '60' })
+      if (t.problems) return send(res, 500, { error: 'the token list failed its own schema check and is withheld' }, undefined, cors)
+      return send(res, 200, t.body, undefined, { ...cors, 'cache-control': 'public, max-age=300' })
+    }
     if (sub === '/robots.txt') return send(res, 200, robots, 'text/plain; charset=utf-8', { 'cache-control': 'public, max-age=3600' })
     if (sub === '/.well-known/mcp-registry-auth') return registryAuth ? send(res, 200, registryAuth, 'text/plain; charset=utf-8', { 'cache-control': 'public, max-age=300' }) : send(res, 404, { error: 'not found' })
     if (sub === '/.well-known/security.txt') return send(res, 200, securityTxt(site, sourceUrl, now()), 'text/plain; charset=utf-8', { 'cache-control': 'public, max-age=3600' })
@@ -1217,6 +1257,16 @@ export function createStocksWeb ({
       demoHtml ??= withPageHead('/demo', demoPage({ version: appVersion,
         assets: { css: `style.css?v=${version('/style.css')}`, docsCss: `docs.css?v=${version('/docs.css')}`, demoCss: `demo.css?v=${version('/demo.css')}`, demoJs: `demo.js?v=${version('/demo.js')}`, guard: `guard/${guardVersion}/`, beacon: `beacon.js?v=${version('/beacon.js')}` } }))
       return send(res, 200, demoHtml, 'text/html; charset=utf-8', { 'cache-control': 'public, max-age=300', 'content-security-policy': demoCsp(SECURITY_HEADERS['content-security-policy']) })
+    }
+    // /lab: noindex, never cached, read fresh from the three files scripts/stocks/lab.mjs writes. Off, it is a plain 404.
+    if (sub === '/lab' || sub === '/lab/lab.css') {
+      if (!lab) return send(res, 404, { error: 'not found' })
+      const hidden = { 'cache-control': 'private, no-store', 'x-robots-tag': 'noindex, nofollow' }
+      if (sub === '/lab/lab.css') return send(res, 200, labCss, 'text/css; charset=utf-8', hidden)
+      const read = (f) => { try { return JSON.parse(fs.readFileSync(path.join(labDir, f), 'utf8')) } catch (_) { return null } }
+      const html = labPage({ board: read('board.json'), golden: read('golden.json'), crash: read('crash.json'), version: appVersion,
+        assets: { css: `style.css?v=${version('/style.css')}`, docsCss: `docs.css?v=${version('/docs.css')}`, labCss: `lab/lab.css?v=${labCssV}` } })
+      return send(res, 200, html, 'text/html; charset=utf-8', hidden)
     }
     if (!sub.startsWith('/api/')) return send(res, 404, { error: 'not found' })
 

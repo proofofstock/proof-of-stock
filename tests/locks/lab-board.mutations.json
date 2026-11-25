@@ -1,0 +1,52 @@
+{
+  "_finding": "Owner, 25.11: the fake exchange is built from aggregates of our impostor list. An unread pool must never pass for an empty one, the weekly award may only go up within its week, and the deployer the list holds is never copied out. Money gathered is only the WETH or stablecoin side of a fake's pools: DexScreener's liquidity figure prices the fake's own side by the fake.",
+  "target": "scripts/stocks/lab.mjs",
+  "runner": [
+    "node",
+    "scripts/stocks/lab.test.mjs"
+  ],
+  "mutations": [
+    {
+      "name": "an unread pool is not counted apart",
+      "find": "    if (!l) { row.unread++; continue }\n",
+      "replace": "    if (!l) continue\n",
+      "expect": "FAIL an unread pool is counted apart, never as zero"
+    },
+    {
+      "name": "a failed batch is taken as empty",
+      "find": "    if (!pairs) { unread += batch.length; continue }\n",
+      "replace": "    if (!pairs) { unread += batch.length; pairs = [] }\n",
+      "expect": "FAIL a batch that failed is unread, not empty"
+    },
+    {
+      "name": "a later, poorer fake takes the week",
+      "find": "if (best && (!weeks[week] || best.liquidity_usd > weeks[week].liquidity_usd)) weeks[week] = best",
+      "replace": "if (best) weeks[week] = best",
+      "expect": "FAIL a poorer fake later in the week does not take the title"
+    },
+    {
+      "name": "the deployer is copied",
+      "find": "kind: it.kind, first_seen_at: it.first_seen_at || null }",
+      "replace": "kind: it.kind, first_seen_at: it.first_seen_at || null, deployer: it.deployer }",
+      "expect": "FAIL the deployer is never copied"
+    },
+    {
+      "name": "a fake symbol is shown with its link",
+      "find": "const label = (v) => cleanLabel(symbolLabel(String(v ?? '')) || '', 24) || '?'",
+      "replace": "const label = (v) => symbolLabel(String(v ?? '')) || '?'",
+      "expect": "FAIL a fake's symbol is the deployer's text"
+    },
+    {
+      "name": "both sides of the pool are counted as money",
+      "find": "e.usd += realSideUsd(p, a, reference); e.reported += reported",
+      "replace": "e.usd += reported; e.reported += reported",
+      "expect": "FAIL the same pool twice in an answer counts once"
+    },
+    {
+      "name": "any counterpart counts, not only a reference asset",
+      "find": "if (token === base && reference.has(quote))",
+      "replace": "if (token === base)",
+      "expect": "FAIL a pool against anything but a reference asset is zero"
+    }
+  ]
+}

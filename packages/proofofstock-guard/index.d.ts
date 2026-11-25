@@ -69,9 +69,11 @@ export interface GuardOptions {
   failOpen?: boolean
   /** a listed answer from a list read longer ago is unknown; default 900 */
   maxRegistryAgeS?: number
-  /** also read the issuer's own list and require the address on it; default false */
+  /** also read the issuer's own list and require the address on it; default true outside a browser, false in one */
   crossCheck?: boolean
   retryDelayMs?: number
+  /** the clock, for tests (ms) */
+  now?: () => number
 }
 
 export interface BuyRequest { chain: Chain, tokenAddress: string, claimedSymbol?: string }
@@ -89,3 +91,15 @@ export const MAX_BATCH: number
 export function createGuard (options?: GuardOptions): Guard
 export function addressesSha256 (addresses: string[]): Promise<string>
 export function checkListProof (proof: ListProof | null | undefined, options?: { address?: string | null, fetchImpl?: typeof fetch, timeoutMs?: number }): Promise<CrossCheck>
+/** Whose list decides on each chain: by the chain, never by an answer. */
+export const ISSUER_OF: Readonly<{ base: 'coinbase', robinhood: 'robinhood' }>
+/** The address start every issuer token has on that chain (Base only; Robinhood has none). Pinned. */
+export const ISSUER_ADDRESS_PREFIX: Readonly<{ base: string }>
+/** How long the guard keeps an issuer list it read itself, in ms. */
+export const ISSUER_LIST_TTL_MS: number
+/** How long a failed read of an issuer's list is kept, in ms. */
+export const ISSUER_FAIL_TTL_MS: number
+/** Pages of an issuer's list the guard follows. */
+export const ISSUER_MAX_PAGES: number
+/** The issuer's list as the guard reads it itself: lowercase addresses and their SHA-256, or null when unreadable. */
+export function readIssuerList (issuer: 'coinbase' | 'robinhood', options?: { fetchImpl?: typeof fetch, timeoutMs?: number }): Promise<{ list: Set<string> | null, sha: string | null }>
