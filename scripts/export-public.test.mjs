@@ -97,6 +97,8 @@ try {
     check('Dependabot watches actions and npm in the public copy, and is absent from the private repository',
       fs.existsSync(dep) && /package-ecosystem: github-actions/.test(fs.readFileSync(dep, 'utf8')) && /package-ecosystem: npm/.test(fs.readFileSync(dep, 'utf8')) &&
       !fs.existsSync(path.join(repo, '.github/dependabot.yml')))
+    // CodeQL's init and analyze must move together: one pull request per ecosystem, never one per action.
+    check('...grouping every update of an ecosystem into one pull request', (fs.readFileSync(dep, 'utf8').match(/patterns: \['\*'\]/g) || []).length === 2)
     check('the public CI runs on hosted runners', /runs-on: ubuntu-latest/.test(ci) && !/self-hosted/i.test(ci))
     // The private .gitignore is a map of what is worth taking (owner, 24.11): the public one is plain patterns only.
     const ign = fs.readFileSync(path.join(r.dest, '.gitignore'), 'utf8')

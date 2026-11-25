@@ -69,6 +69,8 @@ check('no exam without the truth: an issuer list that cannot be read stops it', 
 const wf = fs.readFileSync(new URL('../.github/workflows/exam.yml', import.meta.url), 'utf8')
 check('the workflow runs daily in the public repository only, on GitHub\'s runners, actions by commit', /if: github\.repository == 'proofofstock\/proof-of-stock'/.test(wf) && /runs-on: ubuntu-latest/.test(wf) && !/self-hosted/.test(wf) && /cron:/.test(wf) && (wf.match(/uses: [^\n]+/g) || []).every((l) => /@[0-9a-f]{40}\b/.test(l)))
 check('...and writes to the exam branch only, never to main', /git push origin HEAD:exam/.test(wf) && !/push origin (HEAD:)?main/.test(wf) && /contents: write/.test(wf))
+// Scorecard marks down a workflow whose top-level token can write: the write belongs to the job that pushes.
+check('...with a read-only token at the top and write only on the exam job', /^permissions:\n  contents: read$/m.test(wf) && /^    permissions:\n      contents: write$/m.test(wf) && !/^permissions:\n  contents: write/m.test(wf))
 
 console.log(`\n${passed} passed, ${failed} failed`)
 if (failed) { for (const x of failures) console.log(x); process.exit(1) }

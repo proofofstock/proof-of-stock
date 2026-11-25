@@ -84,7 +84,8 @@ YML
 
 # Dependabot: in the public copy only. Its pull requests there run on GitHub's hosted runners with no secrets; in the
 # private repository they would run a new package version's install scripts on our own runner. An update it proposes
-# is taken into the private repository and comes back with the next export.
+# is taken into the private repository and comes back with the next export. One pull request per ecosystem: CodeQL's
+# init and analyze only work at the same version, and one at a time they each failed (25.11).
 cat > "$DEST/.github/dependabot.yml" <<'YML'
 version: 2
 updates:
@@ -92,12 +93,18 @@ updates:
     directory: /
     schedule:
       interval: weekly
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 2
+    groups:
+      actions:
+        patterns: ['*']
   - package-ecosystem: npm
     directory: /
     schedule:
       interval: weekly
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 2
+    groups:
+      npm:
+        patterns: ['*']
 YML
 
 # .gitignore: the private one explains, file by file, what is kept off the repository and why: where the keys live on
