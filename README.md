@@ -4,6 +4,7 @@
 [![Licence: MIT](https://img.shields.io/badge/licence-MIT-blue)](LICENSE)
 [![Public exam](https://img.shields.io/endpoint?url=https%3A%2F%2Fproofofstock.xyz%2Fapi%2Fexam%2Fbadge.json)](https://github.com/proofofstock/proof-of-stock/tree/exam)
 [![Proof of Stock MCP connector: tool definition quality and endpoint health on Glama](https://glama.ai/mcp/connectors/xyz.proofofstock/proof-of-stock/badges/score.svg)](https://glama.ai/mcp/connectors/xyz.proofofstock/proof-of-stock)
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/proofofstock/proof-of-stock/badge)](https://scorecard.dev/viewer/?uri=github.com/proofofstock/proof-of-stock)
 
 ## At a glance
 
