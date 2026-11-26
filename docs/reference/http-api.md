@@ -34,6 +34,7 @@ curl -s 'https://proofofstock.xyz/verify?chain=base&address=0xaaaaaaaaaaaaaaaaaa
 - [`GET /api/status`](#route-status)
 - [`GET /api/exam`](#route-exam)
 - [`GET /tokenlist.json`](#route-tokenlist)
+- [`GET /denylist.json`](#route-denylist)
 - [Monitoring](#monitoring)
 
 <a id="basics"></a>
@@ -679,6 +680,43 @@ as `accepted`), each carrying the signed EIP-3009 `transferWithAuthorization`. T
 settlement receipt rides out in the version paid: `X-PAYMENT-RESPONSE` or `PAYMENT-RESPONSE` (base64 JSON: `success`,
 `transaction`, `network`, `payer`). From then until the pass ends the limiter measures that client against 600 units a
 minute and asks for nothing more.
+
+<a id="route-denylist"></a>
+## `GET /denylist.json`
+
+Every look-alike we flag right now, on both chains, as one file, for wallets, DEX front ends, trackers and security
+APIs that warn before a swap without asking per address. Free, any origin (`Access-Control-Allow-Origin: *`), cached
+for five minutes.
+
+```sh
+curl -sS https://proofofstock.xyz/denylist.json
+```
+
+**It is not a token list.** A wallet that imports a token list adds every entry to its token picker, so this file has
+its own shape and no `tokens` array.
+
+| Field | What it is |
+|---|---|
+| `format` | `pos-denylist/1` |
+| `warning` | what every address in the file is, in one sentence |
+| `sources.<chain>` | `chainId`, `flagged_at` (when that chain's flags were last computed, every 6 hours) and `count` |
+| `entries[]` | one per flagged address, newest first within a chain |
+| `entries[].address` | the look-alike's contract, lower case |
+| `entries[].imitates` | `symbol` and `ticker` of the issuer's token it copies, and `issuer_address`, that token's own contract (null while the list locks hold it) |
+| `entries[].kind` | `registry_symbol`, `issuer_name_suffix` or `registry_name` ([methodology](../explanation/methodology.md)) |
+| `entries[].first_seen_at` | when our collector first saw the token |
+| `entries[].evidence` | its page on the site, with the evidence |
+
+**What is not in it.**
+- The look-alike's own symbol and name. They are text its creator chose, and the reader is often a program. The
+  evidence page shows them, labelled.
+- Closed cases, the dated archive and a feed of changes. Those are on request: hello@proofofstock.xyz.
+- A borrowed ticker alone (`ticker`). It is counted, never flagged.
+
+**When it is not answered.**
+- `503` with `Retry-After: 60` while either chain's list of flags cannot be read. No half list is ever served.
+- `500` if the file fails its own check: no token fields, no stranger's text, no duplicate.
+- While the [kill switch](../../deployment/KILLSWITCH.md) is tripped, `503` from the switch.
 
 <a id="route-pass"></a>
 ### `GET /api/pass`

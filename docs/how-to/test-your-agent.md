@@ -30,9 +30,22 @@ Nothing is bought, signed or sent. Your agent only names an address, or refuses.
 **1. Start.**
 
 ```sh
-curl -fsS -X POST https://proofofstock.xyz/api/agent-test \
-  -H 'content-type: application/json' -d '{"label": "My Agent"}'
+curl -sS -X POST https://proofofstock.xyz/api/agent-test
 ```
+
+That starts a test with no label, in any shell. With a label, in bash or zsh:
+
+```sh
+curl -sS -X POST https://proofofstock.xyz/api/agent-test -H 'content-type: application/json' -d '{"label": "My Agent"}'
+```
+
+In PowerShell, which passes quotes to `curl` differently:
+
+```powershell
+Invoke-RestMethod -Method Post -Uri https://proofofstock.xyz/api/agent-test -ContentType 'application/json' -Body (@{ label = 'My Agent' } | ConvertTo-Json)
+```
+
+Leave out `-f`: it hides the error message we send back.
 
 `label` is optional: 1 to 40 ASCII letters, digits, spaces and `-._&`. It may not name us, an issuer or a chain, or
 claim approval.
@@ -53,9 +66,14 @@ Six tests an hour from one address.
 **3. Answer.**
 
 ```sh
-curl -fsS -X POST https://proofofstock.xyz/api/agent-test/<test_id>/answers \
-  -H 'content-type: application/json' \
-  -d '{"answer_key": "ak_...", "answers": [{"n": 1, "address": "0x..."}, {"n": 2, "refuse": true}, ...]}'
+curl -sS -X POST https://proofofstock.xyz/api/agent-test/<test_id>/answers -H 'content-type: application/json' -d '{"answer_key": "ak_...", "answers": [{"n": 1, "address": "0x..."}, {"n": 2, "refuse": true}, ...]}'
+```
+
+In PowerShell:
+
+```powershell
+$body = @{ answer_key = 'ak_...'; answers = @(@{ n = 1; address = '0x...' }, @{ n = 2; refuse = $true }) } | ConvertTo-Json -Depth 3
+Invoke-RestMethod -Method Post -Uri https://proofofstock.xyz/api/agent-test/<test_id>/answers -ContentType 'application/json' -Body $body
 ```
 
 Exactly six entries, `n` 1 to 6, each with one of `address` or `"refuse": true`. A malformed body gets `400` and does
@@ -80,7 +98,7 @@ whether the tester ran the test before. A badge does not identify an agent. It i
 ## Check a result without trusting us
 
 ```sh
-curl -fsS https://proofofstock.xyz/api/agent-test/<test_id> > receipt.json
+curl -sS https://proofofstock.xyz/api/agent-test/<test_id> -o receipt.json
 node scripts/agent-test-check.mjs receipt.json
 ```
 

@@ -917,12 +917,14 @@
     empty.hidden = ev.length > 0
     rows.closest('.board-wrap').hidden = ev.length === 0 // no empty table head over the empty-state line
     rows.replaceChildren(...ev.map((e) => {
-      const tr = h('tr', { class: 'click', tabindex: '0' },
+      // The time of this event (the board is sorted by it); a close or a listing also says when the token was flagged.
+      const since = e.event === 'opened' || !e.flagged_at ? null : h('span', { class: 'board-why' }, 'flagged ' + age(Math.round((Date.now() - Date.parse(e.flagged_at)) / 1000)))
+      const tr = h('tr', { class: e.event === 'gone' ? 'click closed' : 'click', tabindex: '0' },
         h('td', null, CHAIN_LABEL[e.chain] || e.chain),
         h('td', null, h('code', null, e.symbol || '?'), e.name ? h('span', { class: 'board-name' }, String(e.name).replace(/\s+/g, ' ').slice(0, 28)) : null),
         h('td', null, e.imitates_symbol || (e.kind === 'issuer_name_suffix' ? "the issuer's naming" : '?'),
           h('span', { class: 'board-why' }, e.kind === 'registry_name' ? 'by name' : e.kind === 'ticker' ? 'by ticker' : e.kind === 'registry_symbol' ? 'by symbol' : e.kind === 'issuer_name_suffix' ? 'by naming' : '')),
-        h('td', null, age(Math.round((Date.now() - Date.parse(e.flagged_at || e.at)) / 1000))),
+        h('td', null, age(Math.round((Date.now() - Date.parse(e.at)) / 1000)), since),
         h('td', { class: e.event === 'listed' ? 'warn' : '' }, (e.event === 'gone' && GONE_WHY[e.gone_reason]) || BOARD_STATUS[e.event] || e.event))
       const open = () => { act('board', 'open'); toTerminal(); passport(e.chain, e.address, e.address) }
       tr.addEventListener('click', open)

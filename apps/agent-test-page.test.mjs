@@ -90,7 +90,7 @@ console.log('outside review of the code, second reviewer (26.11)')
 console.log('the explainer (2.3)')
 {
   const html = explainerPage({ assets, origin: 'https://proofofstock.xyz', exampleId: 'at_' + 'e'.repeat(32) })
-  check('it shows the start and answer calls', html.includes('curl -fsS -X POST https://proofofstock.xyz/api/agent-test') && html.includes('/answers'))
+  check('it shows the start and answer calls', html.includes('curl -sS -X POST https://proofofstock.xyz/api/agent-test') && html.includes('/answers'))
   check('the limits are on the first screen, and passing needs all six', html.includes('We cannot see who or what wrote the answers') && html.includes('Passing needs all six right.'))
   check('it says what is public, hiding and the badge log rule', html.includes('What is public about a result') && html.includes('/hide') && html.includes('logged without the page that embeds it'))
   check('it links the example result when there is one', html.includes('agent-test/at_' + 'e'.repeat(32)) && !explainerPage({ assets, origin: 'x' }).includes('See an example result'))

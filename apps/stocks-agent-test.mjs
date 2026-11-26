@@ -283,11 +283,12 @@ export function createAgentTest ({ dir, now = () => Date.now(), origin, inputsFo
 
 /** Read a JSON body for the agent-test routes: application/json only, at most MAX_BODY bytes. */
 export async function readJsonBody (req) {
-  if (!/^application\/json\s*(;|$)/i.test(String(req.headers['content-type'] || ''))) return { status: 415, error: 'Content-Type must be application/json' }
   const chunks = []
   let size = 0
   for await (const c of req) { size += c.length; if (size > MAX_BODY) return { status: 413, error: 'request too large' }; chunks.push(c) }
   const raw = Buffer.concat(chunks).toString('utf8')
+  // No body at all: a start without a label, so `curl -X POST <url>` works in bash, cmd and PowerShell alike (27.11).
   if (!raw.trim()) return { json: {} }
-  try { return { json: JSON.parse(raw) } } catch { return { status: 400, error: 'the body is not JSON' } }
+  if (!/^application\/json\s*(;|$)/i.test(String(req.headers['content-type'] || ''))) return { status: 415, error: "a body must be JSON and say so: add -H 'content-type: application/json'" }
+  try { return { json: JSON.parse(raw) } } catch { return { status: 400, error: 'the body is not JSON. In PowerShell, build it with ConvertTo-Json (see /agent-test); in a POSIX shell, wrap it in single quotes' } }
 }

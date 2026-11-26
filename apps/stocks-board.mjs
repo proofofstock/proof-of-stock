@@ -55,11 +55,12 @@ export function boardOf (casesByChain, { now = Date.now(), hideRh = false } = {}
   const rows = ev.map((e) => {
     const copies = e.imitates_symbol || (e.kind === 'issuer_name_suffix' ? "the issuer's naming" : '?')
     const status = (e.event === 'gone' && GONE_WHY[e.gone_reason]) || BOARD_STATUS[e.event] || e.event
-    return '<tr class="click" tabindex="0">' +
+    const since = (e.event === 'opened' || !e.flagged_at) ? '' : `<span class="board-why">flagged ${esc(age(Math.round((now - Date.parse(e.flagged_at)) / 1000)))}</span>`
+    return `<tr class="click${e.event === 'gone' ? ' closed' : ''}" tabindex="0">` +
       `<td>${esc(CHAIN_LABEL[e.chain] || e.chain)}</td>` +
       `<td><code>${shortAddress(e.address)}</code></td>` +
       `<td>${esc(copies)}<span class="board-why">${why(e.kind)}</span></td>` +
-      `<td>${esc(age(Math.round((now - Date.parse(e.flagged_at || e.at)) / 1000)))}</td>` +
+      `<td>${esc(age(Math.round((now - Date.parse(e.at)) / 1000)))}${since}</td>` +
       `<td${e.event === 'listed' ? ' class="warn"' : ''}>${esc(status)}</td></tr>`
   })
   return { counts, rows, empty: ev.length === 0 }

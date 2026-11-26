@@ -60,6 +60,7 @@ import { robotsTxt, securityTxt, sitemapXml, sitemapUrls, docUrl, homeJsonLd, do
 import { createMcpHttp, SUPPORTED_VERSIONS, MAX_VERIFY_BATCH, toolsFor, freshnessOf, GAPS_LIMIT } from './stocks-mcp-http.mjs'
 import { siteBar } from './stocks-nav.mjs'
 import { buildTokenList, tokenListProblems, TOKEN_LIST_PATH } from './stocks-tokenlist.mjs'
+import { buildDenylist, denylistProblems, DENYLIST_PATH } from './stocks-denylist.mjs'
 import { apiPage } from './stocks-api-page.mjs'
 import { demoPage, demoCsp } from './stocks-demo-page.mjs'
 import { labPage } from './stocks-lab-page.mjs'
@@ -1251,6 +1252,17 @@ export function createStocksWeb ({
       if (t.missing) return send(res, 503, { error: `the ${t.missing.join(' and ')} issuer list has not been read in the last ${REGISTRY_FRESH_S / 60} minutes; no token list is given from an old copy` }, undefined, { ...cors, 'retry-after': '60' })
       if (t.problems) return send(res, 500, { error: 'the token list failed its own schema check and is withheld' }, undefined, cors)
       return send(res, 200, t.body, undefined, { ...cors, 'cache-control': 'public, max-age=300' })
+    }
+    // Every look-alike flagged right now, both chains, one file (apps/stocks-denylist.mjs; owner, 27.11): free, any
+    // origin. Not a token list. Answered only when both chains' flag lists have been read.
+    if (sub === DENYLIST_PATH) {
+      const cors = { 'access-control-allow-origin': '*' }
+      const unread = Object.keys(CHAINS).filter((c) => !impostors.get(c)?.items)
+      if (unread.length) return send(res, 503, { error: `the ${unread.join(' and ')} list of flags could not be read right now` }, undefined, { ...cors, 'retry-after': '60' })
+      const d = buildDenylist({ origin: publicOrigin + publicPath, at: new Date(now()).toISOString(), chains: Object.keys(CHAINS).map((c) => ({ chain: c, chainId: CHAINS[c].chainId, generated_at: impostors.get(c).generated_at ?? null, items: impostors.get(c).items, listedAddressOf: (a) => originalOf(c, a).listed_address })) })
+      const problems = denylistProblems(d)
+      if (problems.length) { log(`[denylist] ${problems.length} problems, first: ${problems[0]}`); return send(res, 500, { error: 'the list failed its own check and is withheld' }, undefined, cors) }
+      return send(res, 200, d, undefined, { ...cors, 'cache-control': 'public, max-age=300' })
     }
     if (sub === '/robots.txt') return send(res, 200, robots, 'text/plain; charset=utf-8', { 'cache-control': 'public, max-age=3600' })
     if (sub === '/.well-known/mcp-registry-auth') return registryAuth ? send(res, 200, registryAuth, 'text/plain; charset=utf-8', { 'cache-control': 'public, max-age=300' }) : send(res, 404, { error: 'not found' })

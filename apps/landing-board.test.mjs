@@ -80,11 +80,23 @@ for (const hideRh of [false, true]) {
   check('a page that hides Robinhood Chain shows the board for Base alone', base.counts === 'Open cases: 93 on Base. This week: 63 new events.' && !base.rows.join('').includes('Robinhood'), base.counts)
 }
 
+console.log('the time column is the event time (owner, 27.11)')
+{
+  const now = Date.parse('2026-11-27T12:00:00Z')
+  const gone = { event: 'gone', at: '2026-11-26T12:00:00Z', flagged_at: '2026-11-19T12:00:00Z', address: '0x' + '1'.repeat(40), kind: 'registry_name', imitates_symbol: 'TRONc', gone_reason: 'rule_narrowed' }
+  const open = { event: 'opened', at: '2026-11-27T09:00:00Z', flagged_at: '2026-11-27T09:00:00Z', address: '0x' + '2'.repeat(40), kind: 'registry_symbol', imitates_symbol: 'HOODc' }
+  const b = boardOf({ base: { events: [gone, open], counts: { open: 1 }, count: 2 } }, { now })
+  check('a close shows when it closed, and under it when the token was flagged', b.rows[1].includes('<td>24 h ago<span class="board-why">flagged 8 days ago</span></td>'), b.rows[1])
+  check('...and is dimmed as history, not a live flag', b.rows[1].startsWith('<tr class="click closed"'))
+  check('an open case shows only its own time', b.rows[0].includes('<td>3 h ago</td>') && !b.rows[0].includes('closed'))
+  check('the header names the column after the event, not the flag', fs.readFileSync(new URL('./stocks-web/index.html', import.meta.url), 'utf8').includes('<th scope="col">when</th>'))
+}
+
 console.log('the page carries it')
 {
   const page = withBoard(html, boardOf(cases, { now: NOW }))
   const board = (page.match(/<section class="board"[\s\S]*?<\/section>/) || [''])[0]
-  check('the page is written with the rows, so a reader without scripts sees them', (board.match(/<tr class="click"/g) || []).length === BOARD_LIMIT && !/Loading the case archive/.test(board))
+  check('the page is written with the rows, so a reader without scripts sees them', (board.match(/<tr class="click( closed)?"/g) || []).length === BOARD_LIMIT && !/Loading the case archive/.test(board))
   check('...and the counts sentence in place of "Loading"', board.includes('<p class="board-counts" id="board-counts">Open cases: 93 on Base, 7 on Robinhood Chain.'))
   check('...the token cells name contracts, and the script will write the names in', board.includes('<td><code>0x0000…0001</code></td>') && !board.includes('board-name"'))
   check('...the empty-state line stays hidden and blank while there are rows', board.includes('<p class="board-empty" id="board-empty" hidden></p>') && !board.includes(BOARD_EMPTY))

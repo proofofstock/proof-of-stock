@@ -15,6 +15,7 @@ routes = [
   { pattern = "proofofstock.xyz/mcp*", zone_name = "proofofstock.xyz" },
   { pattern = "proofofstock.xyz/badge.svg*", zone_name = "proofofstock.xyz" },
   { pattern = "proofofstock.xyz/tokenlist.json*", zone_name = "proofofstock.xyz" },
+  { pattern = "proofofstock.xyz/denylist.json*", zone_name = "proofofstock.xyz" },
   # The agent test's result pages and badges: while the switch is tripped, no grade is shown (docs/agent-test-tz.md §5.5).
   # Its API is under /api/* already.
   { pattern = "proofofstock.xyz/agent-test*", zone_name = "proofofstock.xyz" },
