@@ -28,3 +28,10 @@
 .at-main td.at-mono, .at-main pre, .at-main code { font-family: var(--mono); }
 .at-tasks td.at-text { min-width: 200px; max-width: 340px; }
 .at-tasks td.at-why { min-width: 170px; }
+/* The explainer (/agent-test): lists inside the ap-* cards of docs.css. */
+.at-points { margin: 4px 0 0; padding-left: 18px; color: var(--soft); font: 14.5px/1.6 var(--sans); }
+.at-points li { margin: 0 0 6px; }
+.at-points li::marker { color: var(--faint); }
+.at-points.at-wide { max-width: 76ch; margin: 0 0 16px; }
+.ap-ask code, .ap-params code { font: 12.5px/1.4 var(--mono); color: #c9d8ff; overflow-wrap: anywhere; }
+.ap-ex pre#at-prompt { white-space: pre-wrap; }

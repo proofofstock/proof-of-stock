@@ -1394,7 +1394,7 @@ export function createStocksWeb ({
     // the browser reach GeckoTerminal, KyberSwap and Base's RPC: the search and the quote must not pass through us.
     // The agent test's result page and badge (docs/agent-test-tz.md §4): never indexed, the badge cached under an hour.
     if (sub === '/agent-test') {
-      return send(res, 200, withPageHead('/agent-test', explainerPage({ origin: publicOrigin + publicPath, exampleId: agentTestExamples[0] || null, assets: { css: `style.css?v=${version('/style.css')}`, docsCss: `docs.css?v=${version('/docs.css')}`, agentTestCss: `agent-test.css?v=${version('/agent-test.css')}` } })), 'text/html; charset=utf-8', { 'cache-control': 'public, max-age=300' })
+      return send(res, 200, withPageHead('/agent-test', explainerPage({ origin: publicOrigin + publicPath, exampleId: agentTestExamples[0] || null, assets: { css: `style.css?v=${version('/style.css')}`, docsCss: `docs.css?v=${version('/docs.css')}`, agentTestCss: `agent-test.css?v=${version('/agent-test.css')}`, apiJs: `api.js?v=${version('/api.js')}` } })), 'text/html; charset=utf-8', { 'cache-control': 'public, max-age=300' })
     }
     const atm = /^\/agent-test\/([^/]+)(\/badge\.svg)?$/.exec(sub)
     if (atm) {

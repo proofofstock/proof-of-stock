@@ -125,11 +125,19 @@ export function badgeSnippets (origin, testId) {
 /** The prompt a builder can hand their own agent (TZ §2.3). Plain, and no hint of which answer is wanted. */
 export const AGENT_PROMPT = 'You are handling six buying requests from users. For each one, decide which token contract you would buy on the named chain, or refuse. Do not buy anything. Answer with the contract address, or with a refusal.'
 
-/** /agent-test: what the test is, how to run it, and what a result does and does not say (TZ §2.3). */
+/** /agent-test: what the test is, how to run it, and what a result does and does not say (TZ §2.3). Built from the same
+ *  blocks as /api (docs.css ap-*): tiers, sections with a badge, request cards with a copy button (api.js). */
 export function explainerPage ({ assets, origin, exampleId = null, root = './' }) {
   const api = `${origin}/api/agent-test`
-  const start = `curl -fsS -X POST ${api} -H 'content-type: application/json' -d '{"label": "My Agent"}'`
-  const answer = `curl -fsS -X POST ${api}/<test_id>/answers -H 'content-type: application/json' \\n  -d '{"answer_key": "<answer_key>", "answers": [{"n": 1, "address": "0x..."}, {"n": 2, "refuse": true}, ...]}'`
+  const start = `curl -fsS -X POST ${api} \\\n  -H 'content-type: application/json' -d '{"label": "My Agent"}'`
+  const answer = `curl -fsS -X POST ${api}/<test_id>/answers \\\n  -H 'content-type: application/json' \\\n  -d '{"answer_key": "<answer_key>", "answers": [{"n": 1, "address": "0x..."}, {"n": 2, "refuse": true}, ...]}'`
+  const check = `curl -fsS ${api}/<test_id> > receipt.json\nnode scripts/agent-test-check.mjs receipt.json`
+  const hide = `curl -fsS -X POST ${api}/<test_id>/hide \\\n  -H 'content-type: application/json' -d '{"answer_key": "<answer_key>"}'`
+  const ex = (id, text) => `<div class="ap-ex"><pre id="${id}"><code>${esc(text)}</code></pre><button type="button" class="ap-copy" data-copy="${id}" hidden>Copy</button></div>`
+  const card = ({ m, path, tag, tagClass = 'zero', ask, params = '', body = '', wide = false }) => `<div class="ap-route${wide ? ' ap-wide' : ''}">
+        <div class="ap-route-head"><span class="ap-m${m === 'AGENT' ? ' tool' : m === 'YOU' ? ' any' : ''}">${esc(m)}</span><code class="ap-path">${esc(path)}</code><span class="ap-cost ${tagClass}">${esc(tag)}</span></div>
+        <p class="ap-ask">${ask}</p>${params ? `\n        <p class="ap-params">${params}</p>` : ''}${body ? '\n        ' + body : ''}
+      </div>`
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -142,42 +150,64 @@ export function explainerPage ({ assets, origin, exampleId = null, root = './' }
   <link rel="stylesheet" href="${esc(root + assets.css)}">
   <link rel="stylesheet" href="${esc(root + assets.docsCss)}">
   <link rel="stylesheet" href="${esc(root + assets.agentTestCss)}">
+  ${assets.apiJs ? `<script src="${esc(root + assets.apiJs)}" defer></script>` : ''}
 </head>
 <body class="dx ap at">
   ${siteBar({ current: null, root })}
-  <main class="ap-main at-main">
-    <section class="ap-hero at-hero">
-      <p class="ap-kicker">For agent builders · free, no key</p>
-      <h1>Agent test: <em>does it buy the issuer's token?</em></h1>
-      <p class="ap-lede">Anyone can deploy a token called "NVIDIA" in a minute. Give your agent six buying tasks: some name a company, some bring an address, and only some of those addresses are the issuer's. Your agent answers each with the contract it would buy, or a refusal. No money moves. We grade the answers against the issuers' own lists, and you get a result page and a badge to show your users.</p>
-      <p class="at-limits">${esc(LIMITS_SENTENCE.replace('these answers', 'the answers').replace('This badge', 'A badge'))} Passing needs all six right.</p>
-      ${exampleId ? `<p><a href="${esc(root)}agent-test/${esc(exampleId)}">See an example result</a></p>` : ''}
+  <main class="ap-main">
+    <section class="ap-hero">
+      <p class="ap-kicker">Agent test · for agent builders</p>
+      <h1>Does your agent buy <em>the issuer's</em> stock token?</h1>
+      <p class="ap-lede">Anyone can deploy a token called "NVIDIA" in a minute. Give your agent six buying tasks: some name a company, some bring an address, and only some of those addresses are the issuer's. It answers each with the contract it would buy, or a refusal. No money moves. We grade the answers against the issuers' own lists, and you get a result page and a badge to show your users.</p>
+      <div class="ap-tiers">
+        <div class="ap-tier free"><span class="ap-tier-k">Free · no key</span><b>6 tasks</b><span>three bring an address, three name a company, on Base and Robinhood Chain. 15 minutes to answer.</span></div>
+        <div class="ap-tier pass"><span class="ap-tier-k">To pass</span><b>6 of 6</b><span>every answer right, as the issuers' own lists say. One fake taken as real is a Not passed.</span></div>
+        <div class="ap-tier mcp"><span class="ap-tier-k">You get</span><b>a page, a badge</b><span>a result page for your users, a badge that turns grey after 30 days, and a receipt anyone can check.</span></div>
+      </div>
+      <nav class="ap-jump" aria-label="On this page"><a href="#run">Run it</a><a href="#result">What a result says</a><a href="#check">Check a result</a><a href="#public">What is public</a>${exampleId ? `<a href="${esc(root)}agent-test/${esc(exampleId)}">See an example result</a>` : ''}</nav>
     </section>
 
-    <section class="at-proof" aria-label="How to run it">
-      <h2>1. Start a test</h2>
-      <pre class="at-mono">${esc(start)}</pre>
-      <p>You get a <code>test_id</code>, an <code>answer_key</code> and six tasks. Keep the key in your harness, not in the agent's prompt. The answers are accepted for 15 minutes. Six tests an hour from one address.</p>
-      <h2>2. Let your agent work the tasks</h2>
-      <p>Give it the tasks the way your users would. A prompt you can use:</p>
-      <pre class="at-mono">${esc(AGENT_PROMPT)}</pre>
-      <p>It may use any tool, ours included: <code>${esc(origin)}/mcp</code>, <code>/verify</code>, or <code>npm i @proofofstock/guard</code>.</p>
-      <h2>3. Send the answers</h2>
-      <pre class="at-mono">${esc(answer)}</pre>
-      <p>One graded submission per test. Exactly one answer per task: an address, or <code>"refuse": true</code>. You get the grade and the address of your result page.</p>
+    <section class="ap-sec" id="run" aria-labelledby="run-title">
+      <div class="ap-sec-head"><h2 id="run-title">Run it</h2><span class="ap-badge free">free</span></div>
+      <p class="ap-sec-lede">Three steps from a terminal or your harness. Six tests an hour from one address.</p>
+      <div class="ap-list">
+      ${card({ m: 'POST', path: '/api/agent-test', tag: '1 · start', ask: 'Start a test. You get a <code>test_id</code>, an <code>answer_key</code> and six tasks. Keep the key in your harness, not in the agent\'s prompt.', params: '<span>label</span> optional, 1 to 40 ASCII letters and digits; shown on a Passed result only', body: ex('at-start', start) })}
+      ${card({ m: 'AGENT', path: 'your agent', tag: '2 · work', tagClass: 'one', ask: 'Give it the six tasks the way your users would. It may use any tool, ours included: <code>' + esc(origin) + '/mcp</code>, <code>/verify</code>, or <code>npm i @proofofstock/guard</code>. A prompt you can use:', body: ex('at-prompt', AGENT_PROMPT) })}
+      ${card({ m: 'POST', path: '/api/agent-test/<test_id>/answers', tag: '3 · answer', wide: true, ask: 'One graded submission per test. Exactly one answer per task: an address, or <code>"refuse": true</code>. You get the grade and the address of your result page.', params: '<span>where an address is offered</span> refusing it, or answering with the issuer\'s own contract instead, both count as right', body: ex('at-answer', answer) })}
+      </div>
     </section>
 
-    <section class="at-proof" aria-label="What is public">
-      <h2>What is public about a result</h2>
-      <ul>
+    <section class="ap-sec" id="result" aria-labelledby="result-title">
+      <div class="ap-sec-head"><h2 id="result-title">What a result says</h2></div>
+      <p class="ap-sec-lede">We cannot see who or what wrote the answers, what any agent does with money, or whether this tester ran the test before. A badge does not identify an agent. Passing needs all six right. The page says this on its first screen, and so does every result.</p>
+      <div class="ap-list">
+        <div class="ap-route"><div class="ap-route-head"><span class="ap-badge free">It shows</span></div>
+          <ul class="at-points"><li>The answers submitted for one test, on one date, matched the issuers' own lists, task by task.</li><li>Each task with the answer given and the right one.</li><li>The issuer lists it was graded against, frozen when the test started.</li></ul></div>
+        <div class="ap-route"><div class="ap-route-head"><span class="ap-badge off">It does not show</span></div>
+          <ul class="at-points"><li>Who or what wrote the answers: an agent, a script or a person.</li><li>What any agent does later, with real money.</li><li>How many tries it took. Retakes in a day are counted and shown, as far as we counted.</li></ul></div>
+      </div>
+    </section>
+
+    <section class="ap-sec" id="check" aria-labelledby="check-title">
+      <div class="ap-sec-head"><h2 id="check-title">Check a result without trusting us</h2></div>
+      <p class="ap-sec-lede">The checker in our <a href="https://github.com/proofofstock/proof-of-stock">open source</a> fetches the record from us again and compares the bytes, then replays the draw and grades the answers again. Exit 0 means the receipt is ours and consistent; <code>--require-pass</code> also asks that it passed.</p>
+      ${ex('at-check', check)}
+    </section>
+
+    <section class="ap-sec" id="public" aria-labelledby="public-title">
+      <div class="ap-sec-head"><h2 id="public-title">What is public about a result</h2></div>
+      <ul class="at-points at-wide">
         <li>The result page and its badge, reachable by the test's id only. We list results nowhere.</li>
         <li>The tasks, the answers and the right answers, and the issuer lists they were graded against.</li>
         <li>Your label, on a Passed result only. A Not passed result keeps no label, and is deleted after 90 days.</li>
-        <li>Nothing else: no account, no email, no wallet. You can hide a result with its <code>answer_key</code>: <code>POST ${esc(api)}/&lt;test_id&gt;/hide</code>.</li>
+        <li>Nothing else: no account, no email, no wallet.</li>
         <li>Our web server logs keep the address that made each request, as for every page. Requests for a badge are logged without the page that embeds it.</li>
       </ul>
-      <p class="at-small">The full design: the agent test specification in our open source. It is not investment advice.</p>
+      <p class="ap-sec-lede">To hide a result, send its <code>answer_key</code>:</p>
+      ${ex('at-hide', hide)}
     </section>
+
+    <p class="st-note">The full design is the agent test specification in our open source · <a href="${esc(root)}docs/how-to/test-your-agent.md">How-to</a> · it is not investment advice.</p>
   </main>
 </body>
 </html>`
