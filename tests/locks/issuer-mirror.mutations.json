@@ -1,0 +1,232 @@
+{
+  "_finding": "Owner, 25.11 (docs/list-locks-tz.md v3, after two outside reviews): the factory mirror becomes a source a verdict will rest on, so it records only finalized creations, checks every log before it counts, records success apart from an attempt, and is read by one validator that refuses a file from other pins or an older schema. Each recorded creation is checked against the chain again once a day and taken back if the chain no longer holds it; a missing receipt alone never revokes. A creation is revoked only on proof from the block (the recorded block replaced, or holding no such log), never on a missing receipt or transaction, and a valid log read later restores it. The lookup and the reconcile take only a log that passes tokenOf, for the address looked for, inside the block found; the bisection keeps to its budget and paces its calls.",
+  "target": "scripts/stocks/issuer-mirror.mjs",
+  "runner": [
+    "node",
+    "scripts/stocks/issuer-mirror.test.mjs"
+  ],
+  "mutations": [
+    {
+      "name": "no finalized block falls back to the head",
+      "find": "    if (!isBlock(target) || !Number.isFinite(targetTime)) throw new Error('rpc eth_getBlockByNumber: no finalized block')",
+      "replace": "    if (!isBlock(target) || !Number.isFinite(targetTime)) { target = 99_000_000 }",
+      "expect": "FAIL an RPC that cannot say which block is finalized is an error"
+    },
+    {
+      "name": "the emitter is not checked",
+      "find": "  if (String(log.address || '').toLowerCase() !== cfg.factory) return null\n",
+      "replace": "",
+      "expect": "FAIL a log emitted by another contract is not a token"
+    },
+    {
+      "name": "a removed log counts",
+      "find": "  if (log.removed === true) return null\n",
+      "replace": "",
+      "expect": "FAIL a removed log (a reorganisation) is not a token"
+    },
+    {
+      "name": "the block range is not checked",
+      "find": "  if (range && (block < range.from || block > range.to)) return null\n",
+      "replace": "",
+      "expect": "FAIL a log outside the block range asked is not believed"
+    },
+    {
+      "name": "a failure is recorded as success",
+      "find": "    m.last_error = msg\n  }",
+      "replace": "    m.last_error = msg\n    m.last_ok = { at: new Date(clock()).toISOString(), started_at: new Date(start).toISOString(), target_block: m.scanned_to ?? 0, target_block_time: new Date(clock()).toISOString() }\n  }",
+      "expect": "FAIL ...and the failure moves updated_at and last_error, never last_ok"
+    },
+    {
+      "name": "the factory pin is not checked",
+      "find": " || m.factory !== cfg.factory",
+      "replace": "",
+      "expect": "FAIL schema 1, another chain, another factory, topic or start block: not read"
+    },
+    {
+      "name": "a last_ok in the future is believed",
+      "find": " && at <= now + FUTURE_SKEW_MS",
+      "replace": "",
+      "expect": "FAIL a last_ok in the future counts as none"
+    },
+    {
+      "name": "an untrusted file is scanned on, not rebuilt",
+      "find": "  let m = readMirror(dir, chain, clock())",
+      "replace": "  let m = (() => { try { const x = JSON.parse(fs.readFileSync(file, 'utf8')); return x.chain === chain ? { schema: 2, ...x } : null } catch (_) { return null } })()",
+      "expect": "FAIL ...rebuilds from the factory"
+    },
+    {
+      "name": "a moved block is not checked",
+      "find": "  if (String(receipt.blockHash || '').toLowerCase() !== token.block_hash) return { ok: false, why: 'the transaction is in another block now' }\n",
+      "replace": "",
+      "expect": "FAIL another block, a failed transaction, a missing log or a log for another token"
+    },
+    {
+      "name": "an RPC failure revokes",
+      "find": "      t.revoke = proof.why\n    } catch (e) { error = String(e && e.message || e).slice(0, 200); break }",
+      "replace": "      t.revoke = proof.why\n    } catch (e) { error = String(e && e.message || e).slice(0, 200); t.revoke = 'rpc'; break }",
+      "expect": "FAIL an RPC that fails ends the run and revokes nothing"
+    },
+    {
+      "name": "checked tokens are rechecked every run",
+      "find": "  const due = m.tokens.filter((t) => age(t) >= every)",
+      "replace": "  const due = m.tokens.filter((t) => age(t) >= 0)",
+      "expect": "FAIL a token never checked is checked; one checked an hour ago is not due"
+    },
+    {
+      "name": "a waiting address is looked for at once",
+      "find": "now - Date.parse(w.since) >= CONFIRM_MS && ",
+      "replace": "",
+      "expect": "FAIL an address on the list the factory has not been seen creating is noted as waiting, not looked for at once"
+    },
+    {
+      "name": "a looked-for address is looked for every run",
+      "find": " && (!w.looked_at || now - Date.parse(w.looked_at) >= LOOKUP_EVERY_MS)",
+      "replace": "",
+      "expect": "FAIL ...and not looked for again until LOOKUP_EVERY_MS has passed"
+    },
+    {
+      "name": "an address that left the list keeps waiting",
+      "find": "  for (const a of Object.keys(waiting)) if (!onList.has(a) || known.has(a)) delete waiting[a]",
+      "replace": "  for (const a of Object.keys(waiting)) if (known.has(a)) delete waiting[a]",
+      "expect": "FAIL an address that left the list stops waiting"
+    },
+    {
+      "name": "the reconcile adds nothing",
+      "find": "      for (const l of logs) { const t = tokenOf(chain, l, { from, to }); if (t && !known.has(t.address)) { addCreation(m, t, clock()); known.add(t.address); added++ } }\n      r.at = to + 1",
+      "replace": "      r.at = to + 1",
+      "expect": "FAIL the reconcile reads the range again"
+    },
+    {
+      "name": "the reconcile never rests",
+      "find": "    if (r.finished_at && start - Date.parse(r.finished_at) < RECONCILE_EVERY_MS) return { ok: true, error: null, calls: 0, added: 0, at: null }\n",
+      "replace": "",
+      "expect": "FAIL ...rests a week before starting over"
+    },
+    {
+      "name": "a creation the second RPC contradicts is kept",
+      "find": "        if (!proof.absent) { t.second_at = new Date(clock()).toISOString(); confirmed++ } else t.revoke = 'the second RPC does not hold it: ' + proof.why",
+      "replace": "        if (!proof.absent) { t.second_at = new Date(clock()).toISOString(); confirmed++ }",
+      "expect": "FAIL ...one it holds is confirmed (second_at); one whose block it proves replaced is revoked"
+    },
+    {
+      "name": "the second RPC is the logs gateway itself",
+      "find": "export const secondRpcOf = (chain, env = process.env) => { const cfg = MIRRORS[chain]; return (cfg && (env[cfg.secondEnv] || cfg.second)) || null }",
+      "replace": "export const secondRpcOf = (chain, env = process.env) => { const cfg = MIRRORS[chain]; return (cfg && (env[cfg.secondEnv] || cfg.rpc)) || null }",
+      "expect": "FAIL Base has a built-in second RPC run by another operator"
+    },
+    {
+      "name": "the file is written in place",
+      "find": "  try { const tmp = file + '.tmp-' + process.pid; fs.writeFileSync(tmp, JSON.stringify(m)); fs.renameSync(tmp, file) } catch (e) { error = error || String(e && e.message || e).slice(0, 200) }\n  return { ok: !error, error, throttled,",
+      "replace": "  try { fs.writeFileSync(file, JSON.stringify(m)) } catch (e) { error = error || String(e && e.message || e).slice(0, 200) }\n  return { ok: !error, error, throttled,",
+      "expect": "FAIL the mirror file is written beside and renamed into place"
+    },
+    {
+      "name": "the host's RPC is ignored",
+      "find": "  const url = env[cfg.env] || cfg.rpc\n  const file",
+      "replace": "  const url = cfg.rpc\n  const file",
+      "expect": "FAIL STP_LOGS_RPC_<CHAIN> replaces the source"
+    },
+    {
+      "name": "a refused file is kept only once",
+      "find": "    try { if (fs.existsSync(file)) fs.copyFileSync(file, path.join(dir, `mirror.refused-${new Date(clock()).toISOString().replace(/[:.]/g, '-')}.json`)) } catch (_) {}",
+      "replace": "    try { if (fs.existsSync(file)) fs.copyFileSync(file, path.join(dir, 'mirror.refused.json')) } catch (_) {}",
+      "expect": "FAIL ...rebuilds from the factory"
+    },
+    {
+      "name": "a node that cannot give the block proves absence",
+      "find": "  if (!block || !HASH32.test(String(block.hash || '').toLowerCase())) return null",
+      "replace": "  if (!block || !HASH32.test(String(block.hash || '').toLowerCase())) return { absent: true, why: 'no block' }",
+      "expect": "FAIL no receipt, no transaction, and the node cannot give the block either"
+    },
+    {
+      "name": "a missing receipt revokes without asking the block",
+      "find": "Anything short of proof is \"could not check\".\n      const proof = await provenAbsent(chain, t, rpc)\n",
+      "replace": "Anything short of proof is \"could not check\".\n      const proof = { absent: true, why: 'no receipt' }\n",
+      "expect": "FAIL no receipt and no transaction (a pruned index), but the block still holds the creation"
+    },
+    {
+      "name": "a replaced block is not taken as proof",
+      "find": "  if (String(block.hash).toLowerCase() !== t.block_hash) return { absent: true, why: 'the recorded block is no longer the chain\\'s block at that height' }\n",
+      "replace": "",
+      "expect": "FAIL the recorded block is no longer the chain"
+    },
+    {
+      "name": "a valid log does not restore a revoked token",
+      "find": "  if (was >= 0) { m.revoked.splice(was, 1); m.tokens.push({ ...t, restored_at: new Date(now).toISOString() }) } else m.tokens.push(t)",
+      "replace": "  m.tokens.push(t)",
+      "expect": "FAIL a revoked token whose valid creation log a scan reads again is restored"
+    },
+    {
+      "name": "a refused file loses its revocations",
+      "find": "      if (kept.length) m.revoked = kept\n",
+      "replace": "",
+      "expect": "FAIL a refused file is rebuilt, but its well-formed revocations are kept"
+    },
+    {
+      "name": "the bisection makes up its own record",
+      "find": ".map((l) => tokenOf(chain, l, { from: lo, to: lo })).find((x) => x && x.address === a)",
+      "replace": ".map(() => ({ address: a, block: lo, block_hash: '0x' + '0'.repeat(64), tx: '0x' + '0'.repeat(64), log_index: 0 })).find((x) => x && x.address === a)",
+      "expect": "FAIL bisection: a log from another emitter"
+    },
+    {
+      "name": "the bisection takes a log for another token",
+      "find": ".map((l) => tokenOf(chain, l, { from: lo, to: lo })).find((x) => x && x.address === a)",
+      "replace": ".map((l) => tokenOf(chain, l, { from: lo, to: lo })).find((x) => x)",
+      "expect": "FAIL bisection: a log from another emitter"
+    },
+    {
+      "name": "the bisection takes a log outside the block found",
+      "find": ".map((l) => tokenOf(chain, l, { from: lo, to: lo })).find((x) => x && x.address === a)",
+      "replace": ".map((l) => tokenOf(chain, l)).find((x) => x && x.address === a)",
+      "expect": "FAIL ...and a log for the right token but outside the block found is refused too"
+    },
+    {
+      "name": "the rescan adds tokens nobody looked for",
+      "find": "if (t && due.includes(t.address)) add(t)",
+      "replace": "if (t) add(t)",
+      "expect": "FAIL Robinhood"
+    },
+    {
+      "name": "the budget is checked only between addresses",
+      "find": "          while (lo < hi && !over()) {",
+      "replace": "          while (lo < hi) {",
+      "expect": "FAIL the budget is checked inside the bisection"
+    },
+    {
+      "name": "the calls are not paced",
+      "find": "  const call = async (method, params) => { if (calls++ && pace > 0) await sleep(pace); return rpc(method, params) }",
+      "replace": "  const call = async (method, params) => { calls++; return rpc(method, params) }",
+      "expect": "FAIL ...and the calls are paced"
+    },
+    {
+      "name": "a revoked token on the list is not looked for",
+      "find": "  const known = new Set(m.tokens.map((t) => t.address))\n  const onList",
+      "replace": "  const known = new Set([...m.tokens, ...(m.revoked || [])].map((t) => t.address))\n  const onList",
+      "expect": "FAIL a revoked token on the list is looked for"
+    },
+    {
+      "name": "a refused file loses its waiting list",
+      "find": "        if (Object.keys(aw).length) m.awaiting = aw\n",
+      "replace": "",
+      "expect": "FAIL a refused file keeps its waiting list"
+    },
+    {
+      "name": "the reconcile believes any log",
+      "find": "      for (const l of logs) { const t = tokenOf(chain, l, { from, to }); if (t && !known.has(t.address)) { addCreation(m, t, clock()); known.add(t.address); added++ } }",
+      "replace": "      for (const l of logs) { const t = tokenOf(chain, { ...l, address: MIRRORS[chain].factory, removed: false, topics: [MIRRORS[chain].topic0, ...(l.topics || []).slice(1)] }, { from, to }); if (t && !known.has(t.address)) { addCreation(m, t, clock()); known.add(t.address); added++ } }",
+      "expect": "FAIL the reconcile refuses another emitter"
+    },
+    {
+      "name": "the second RPC revokes on a missing receipt alone",
+      "find": "        const proof = await provenAbsent(chain, t, rpc)\n        if (!proof) continue\n",
+      "replace": "        const proof = { absent: true, why: 'no receipt' }\n",
+      "expect": "FAIL no receipt, no transaction, no block from the second RPC"
+    },
+    {
+      "name": "the second RPC confirms nothing from the block",
+      "find": "        if (!proof.absent) { t.second_at = new Date(clock()).toISOString(); confirmed++ } else t.revoke",
+      "replace": "        if (!proof.absent) { } else t.revoke",
+      "expect": "FAIL no receipt, but the second RPC"
+    }
+  ]
+}

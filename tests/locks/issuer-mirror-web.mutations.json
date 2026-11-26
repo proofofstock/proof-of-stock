@@ -1,0 +1,22 @@
+{
+  "_finding": "Outside review, 25.11: the web process read mirror.json with its own check of the chain only, so a file from other pins stayed usable for verdicts. It now goes through the scanner's validator, and a factory fact needs a mirror that reached its finalized target.",
+  "target": "apps/stocks-web.mjs",
+  "runner": [
+    "node",
+    "apps/stocks-web.test.mjs"
+  ],
+  "mutations": [
+    {
+      "name": "the web reads the mirror without the validator",
+      "find": "    try { m = validMirror(JSON.parse(fs.readFileSync(path.join(roots[chain], 'stock-peg', 'mirror.json'), 'utf8')), chain, now()) } catch (_) { m = null }",
+      "replace": "    try { m = JSON.parse(fs.readFileSync(path.join(roots[chain], 'stock-peg', 'mirror.json'), 'utf8')) } catch (_) { m = null }",
+      "expect": "FAIL ...a mirror file with another factory is not believed"
+    },
+    {
+      "name": "a mirror behind its target still speaks",
+      "find": "    if (!mirrorCaughtUp(m)) return null\n",
+      "replace": "    if (!m) return null\n",
+      "expect": "FAIL ...a mirror still catching up with the chain claims nothing"
+    }
+  ]
+}

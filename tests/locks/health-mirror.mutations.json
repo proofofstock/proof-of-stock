@@ -1,0 +1,34 @@
+{
+  "_finding": "Outside review, 25.11: the stale-mirror alert read updated_at, which a failing run also writes, so a broken mirror looked fresh. Freshness is now the last run that reached its finalized target.",
+  "target": "scripts/stocks/health-check.mjs",
+  "runner": [
+    "node",
+    "scripts/stocks/issuer-mirror.test.mjs"
+  ],
+  "mutations": [
+    {
+      "name": "freshness read from the last attempt",
+      "find": "mirror?.last_ok?.target_block_time ? Math.round((now - Date.parse(mirror.last_ok.target_block_time)) / 1000) : null",
+      "replace": "mirror?.updated_at ? Math.round((now - Date.parse(mirror.updated_at)) / 1000) : null",
+      "expect": "FAIL a fresh attempt but no finalized block for hours: alerts"
+    },
+    {
+      "name": "a backfill pages",
+      "find": "  const backfilling = mirror && okAge == null && !mirror.last_error && tryAge != null && tryAge <= 7200\n",
+      "replace": "  const backfilling = false\n",
+      "expect": "FAIL a first backfill that is moving without an error"
+    },
+    {
+      "name": "a revocation does not alert",
+      "find": "  put('mirror-revoked:' + chain, recent.length > 0,",
+      "replace": "  put('mirror-revoked:' + chain, false,",
+      "expect": "FAIL the health check alerts on a revocation of the last 7 days"
+    },
+    {
+      "name": "freshness read from the last success, not the block",
+      "find": "const okAge = mirror?.last_ok?.target_block_time ? Math.round((now - Date.parse(mirror.last_ok.target_block_time)) / 1000) : null",
+      "replace": "const okAge = mirror?.last_ok?.at ? Math.round((now - Date.parse(mirror.last_ok.at)) / 1000) : null",
+      "expect": "FAIL a finalized block stuck for days"
+    }
+  ]
+}

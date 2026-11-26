@@ -129,7 +129,7 @@ console.log('the chain mirror of the issuer list')
   check('...tokens the factory made that the list leaves out never alert', said.every((x) => x.bad === false))
   said.length = 0
   mirrorChecks(put, 'Base', 'base', { updated_at: '2026-11-12T19:00:00Z' }, now)
-  check('...a mirror not updated for 2 hours says so, and one still backfilling compares nothing', said.length === 1 && said[0].key === 'mirror-stale:base' && said[0].bad === true)
+  check('...a mirror not updated for 2 hours says so, and one still backfilling compares nothing', said.filter((x) => x.bad).map((x) => x.key).join() === 'mirror-stale:base' && !said.some((x) => x.key.startsWith('mirror-list')))
   said.length = 0
   mirrorChecks(put, 'Base', 'base', undefined, now)
   check('...and a chain without a mirror says nothing', said.length === 0)

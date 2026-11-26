@@ -38,6 +38,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { isEntryPoint } from '../scripts/lib/invoked-directly.mjs'
 import { CHAINS } from '../scripts/stocks/stock-peg.mjs'
+import { validMirror, caughtUp as mirrorCaughtUp } from '../scripts/stocks/issuer-mirror.mjs'
 import { COINBASE_URL, ROBINHOOD_ASSETS_URL, ROBINHOOD_PRICES_URL } from '../evm/core/stocks/registries.mjs'
 import { MIN_POOL_LIQUIDITY_USD } from '../evm/core/stocks/peg.mjs'
 import { RECORDER_CADENCE_S } from '../evm/core/stocks/passport.mjs'
@@ -738,8 +739,9 @@ export function createStocksWeb ({
     const hit = mirrorCache.get(chain)
     if (hit && now() - hit.at < 60e3) return hit.m
     let m = null
-    try { m = JSON.parse(fs.readFileSync(path.join(roots[chain], 'stock-peg', 'mirror.json'), 'utf8')) } catch (_) { m = null }
-    if (m && m.chain !== chain) m = null
+    // The same validator the scanner uses (scripts/stocks/issuer-mirror.mjs validMirror): schema, pins, block numbers,
+    // times. A file it rejects is no mirror here either (outside review, 25.11).
+    try { m = validMirror(JSON.parse(fs.readFileSync(path.join(roots[chain], 'stock-peg', 'mirror.json'), 'utf8')), chain, now()) } catch (_) { m = null }
     const byAddress = m ? new Map((m.tokens || []).map((t) => [t.address, t])) : null
     const v = m ? { ...m, byAddress } : null
     mirrorCache.set(chain, { at: now(), m: v })
@@ -747,10 +749,14 @@ export function createStocksWeb ({
   }
   function factoryFact (chain, address) {
     const m = mirrorOf(chain)
-    if (!m || m.head == null || m.scanned_to == null || m.scanned_to < m.head) return null
+    // Only a mirror that reached its last finalized target says anything, and only up to that block.
+    if (!mirrorCaughtUp(m)) return null
     const t = m.byAddress.get(String(address).toLowerCase()) || null
-    const base = { source: 'the issuer\'s token factory on chain, a second source beside the issuer\'s list (not the list itself)', factory: m.factory, checked_to_block: m.scanned_to, as_of: m.updated_at || null }
-    return t ? { created: true, ...base, block: t.block, tx: t.tx, log_index: t.log_index } : { created: false, ...base }
+    const base = { source: 'the issuer\'s token factory on chain, a second source beside the issuer\'s list (not the list itself)', factory: m.factory, checked_to_block: m.last_ok.target_block, finalized: true, as_of: m.last_ok.at, rpc_sources: m.sources === 2 ? 2 : 1 }
+    if (t) return { created: true, ...base, block: t.block, block_hash: t.block_hash, tx: t.tx, log_index: t.log_index, checked_at: t.checked_at || null, second_rpc_at: t.second_at || null }
+    // Recorded once, then no longer on the chain (issuer-mirror.mjs revalidateMirror): said, with when and why.
+    const gone = (m.revoked || []).find((r) => r.address === String(address).toLowerCase())
+    return gone ? { created: false, ...base, revoked: { at: gone.revoked_at, why: gone.why, tx: gone.tx } } : { created: false, ...base }
   }
 
   /** The one-bit answer for an address (evm/core/stocks/verify.mjs), from memory only. */

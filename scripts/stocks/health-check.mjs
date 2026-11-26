@@ -130,8 +130,25 @@ export async function baseBalance (address, { env = process.env, fetchImpl = fet
  */
 export function mirrorChecks (put, name, chain, mirror, now) {
   if (mirror === undefined) return
-  const age = mirror?.updated_at ? Math.round((now - Date.parse(mirror.updated_at)) / 1000) : null
-  put('mirror-stale:' + chain, mirror === null || age == null || age > 7200, mirror === null || age == null ? name + ': the chain mirror of the issuer list has not been built yet.' : age > 7200 ? name + ': the chain mirror of the issuer list was last updated ' + Math.round(age / 60) + ' min ago (it runs every 15).' : name + ': the chain mirror of the issuer list is updated again.')
+  // Freshness is the age of the newest finalized block the mirror has reached (last_ok.target_block_time), never the
+  // last attempt (updated_at: a failing RPC looked fresh) nor the last success (last_ok.at: a finalized block stuck for
+  // days was reached again every run and looked fresh; outside reviews, 25.11). Normal is about half an hour: the
+  // finality lag plus one run. A first backfill that is moving, without an error, is reported but does not page.
+  const okAge = mirror?.last_ok?.target_block_time ? Math.round((now - Date.parse(mirror.last_ok.target_block_time)) / 1000) : null
+  const tryAge = mirror?.updated_at ? Math.round((now - Date.parse(mirror.updated_at)) / 1000) : null
+  const backfilling = mirror && okAge == null && !mirror.last_error && tryAge != null && tryAge <= 7200
+  const bad = mirror === null || (okAge == null ? !backfilling : okAge > 7200)
+  const err = mirror?.last_error ? ` Last error: ${String(mirror.last_error).slice(0, 120)}.` : ''
+  put('mirror-stale:' + chain, bad,
+    mirror === null ? name + ': the chain mirror of the issuer list has not been built yet, or its file is not one this code trusts (it is rebuilt from the start).'
+      : backfilling ? name + ': the chain mirror is backfilling to the finalized block (scanned to ' + mirror.scanned_to + ').'
+        : okAge == null ? name + ': the chain mirror has never reached a finalized block.' + err
+          : okAge > 7200 ? name + ': the newest finalized block the chain mirror has reached is ' + Math.round(okAge / 60) + ' min old (normally about 30): the mirror, or the chain\'s finality, is stuck.' + err
+            : name + ': the chain mirror of the issuer list is caught up again.')
+  // A creation the chain no longer holds (scripts/stocks/issuer-mirror.mjs revalidateMirror): a person looks. It stays
+  // bad for 7 days after the last revocation, so it is seen, then rests; the record stays in the mirror for good.
+  const recent = (mirror?.revoked || []).filter((r) => now - Date.parse(r.revoked_at) <= 7 * 864e5)
+  put('mirror-revoked:' + chain, recent.length > 0, recent.length ? name + ': ' + recent.length + ' token creation(s) the issuer\'s factory was recorded making are no longer on the chain (first ' + recent[0].address + ': ' + recent[0].why + '). Look before trusting it.' : name + ': no token creation has been taken back in the last 7 days.')
   const c = mirror?.comparison
   if (!c) return
   const odd = c.on_list_not_created || []
