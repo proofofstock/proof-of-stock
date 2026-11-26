@@ -1,0 +1,22 @@
+{
+  "_finding": "Outside review, 25.11: the MCP batch is where an agent checks many addresses at once; a held address must fail the batch closed and name itself and its reason, never be dropped from it.",
+  "target": "apps/stocks-mcp-http.mjs",
+  "runner": [
+    "node",
+    "apps/list-gate.test.mjs"
+  ],
+  "mutations": [
+    {
+      "name": "a held address is dropped from the batch",
+      "find": "          if (r.status === 'unavailable') return fail(r.body.reason ?",
+      "replace": "          if (r.status === 'unavailable') continue\n          if (false) return fail(r.body.reason ?",
+      "expect": "FAIL MCP verify_stock_tokens: a batch with a held address fails closed"
+    },
+    {
+      "name": "the batch fails without saying why",
+      "find": "return fail(r.body.reason ? `No verdict for ${r.body.address} on ${chain}: the issuer's list names it, but the chain does not back it (${r.body.reason}). No answer is given for the batch rather than a wrong one.` :",
+      "replace": "return fail(false ? 0 :",
+      "expect": "FAIL MCP verify_stock_tokens: a batch with a held address fails closed"
+    }
+  ]
+}

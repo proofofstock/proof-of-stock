@@ -197,7 +197,7 @@ console.log('in the site')
   const roots = { base: path.join(tmp, 'rb'), robinhood: path.join(tmp, 'rr') }
   // nginx is what talks to the app on the real host: the peer is loopback, which the counter ignores, and the visitor's
   // own address arrives in X-Real-IP, which the app trusts only from loopback. The tests ask the same way.
-  const app = createStocksWeb({ roots, fetchImpl: async () => ({ ok: false, status: 503, json: async () => ({}) }), now: () => Date.parse('2026-11-10T12:00:00Z'), log: () => {}, analytics: { dir, ignore: '203.0.113.9', interfaces: () => ({}) } })
+  const app = createStocksWeb({ listLocks: false, roots, fetchImpl: async () => ({ ok: false, status: 503, json: async () => ({}) }), now: () => Date.parse('2026-11-10T12:00:00Z'), log: () => {}, analytics: { dir, ignore: '203.0.113.9', interfaces: () => ({}) } })
   const { port } = await app.start(0, '127.0.0.1')
   const get = (p, h = {}) => fetch(`http://127.0.0.1:${port}${p}`, { headers: { 'user-agent': CHROME, 'x-real-ip': '198.51.100.7', ...h } })
   const html = await (await get('/stocks/')).text()

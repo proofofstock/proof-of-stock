@@ -97,7 +97,7 @@ console.log('the server: every route that carries the text')
   const fetchImpl = async (url) => String(url).startsWith(COINBASE_URL)
     ? { ok: true, status: 200, json: async () => ({ tokens: [{ contract_address: LISTED, symbol: 'NVDAc', name: 'NVIDIA', isin: 'US67066G1040', multiplier: '1', nav_price: '100', nav_price_updated_at: '2026-11-11T11:00:00Z', total_supply: '5' }] }) }
     : { ok: false, status: 503, json: async () => ({}) }
-  const app = createStocksWeb({ roots: { base: root, robinhood: path.join(tmp, 'rh') }, fetchImpl, now: () => NOW, log: () => {}, analytics: { enabled: false } })
+  const app = createStocksWeb({ listLocks: false, roots: { base: root, robinhood: path.join(tmp, 'rh') }, fetchImpl, now: () => NOW, log: () => {}, analytics: { enabled: false } })
   const { port } = await app.start(0, '127.0.0.1')
   let ip = 0
   const get = (u) => fetch(`http://127.0.0.1:${port}/stocks${u}`, { headers: { 'x-real-ip': '198.51.100.' + (++ip) } })
@@ -152,7 +152,7 @@ console.log('the server: every route that carries the text')
   const rhFetch = async (url) => String(url).startsWith(ROBINHOOD_ASSETS_URL)
     ? { ok: true, status: 200, json: async () => ({ assets: [{ tokenSymbol: 'NVDA', tokenName: 'NVIDIA  Robinhood Token', isin: 'US67066G1040', currentMultiplier: '1', status: 'ASSET_STATUS_ACTIVE', deployments: [{ chainId: 4663, contractAddress: RH_LISTED }] }] }) }
     : String(url).startsWith(ROBINHOOD_PRICES_URL) ? { ok: true, status: 200, json: async () => ({ quotes: [] }) } : { ok: false, status: 503, json: async () => ({}) }
-  const app2 = createStocksWeb({ roots: { base: path.join(tmp, 'none'), robinhood: rhRoot }, fetchImpl: rhFetch, now: () => NOW, log: () => {}, analytics: { enabled: false } })
+  const app2 = createStocksWeb({ listLocks: false, roots: { base: path.join(tmp, 'none'), robinhood: rhRoot }, fetchImpl: rhFetch, now: () => NOW, log: () => {}, analytics: { enabled: false } })
   const { port: port2 } = await app2.start(0, '127.0.0.1')
   const p2 = await (await fetch(`http://127.0.0.1:${port2}/stocks/api/passport?chain=robinhood&address=${OTHER}`)).json()
   check('a long name known only from the impostor list: resembles is decided on the full name', p2.resembles?.kind === 'issuer_name_suffix' && p2.impostor_listing != null, JSON.stringify({ r: p2.resembles, e: p2.error }))

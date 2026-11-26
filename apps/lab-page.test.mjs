@@ -85,7 +85,7 @@ const labDir = path.join(root, 'lab')
 fs.mkdirSync(labDir)
 fs.writeFileSync(path.join(labDir, 'board.json'), JSON.stringify(board))
 fs.writeFileSync(path.join(labDir, 'golden.json'), JSON.stringify(golden))
-const opts = { roots: { base: path.join(root, 'b'), robinhood: path.join(root, 'r') }, fetchImpl: async () => ({ ok: false, status: 503, json: async () => ({}) }), log: () => {}, analytics: { enabled: false }, exam: { url: null }, x402Module: null, labDir }
+const opts = { listLocks: false, roots: { base: path.join(root, 'b'), robinhood: path.join(root, 'r') }, fetchImpl: async () => ({ ok: false, status: 503, json: async () => ({}) }), log: () => {}, analytics: { enabled: false }, exam: { url: null }, x402Module: null, labDir }
 const off = createStocksWeb({ ...opts, lab: false })
 const on = createStocksWeb({ ...opts, lab: true })
 const a = await off.start(0, '127.0.0.1'), b = await on.start(0, '127.0.0.1')

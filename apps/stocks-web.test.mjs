@@ -73,7 +73,7 @@ fs.writeFileSync(path.join(histDir, 'cases-2026-11-07.jsonl'), [
 fs.writeFileSync(path.join(histDir, 'cases-2026-11-08.jsonl'), ev({ event: 'listed', at: '2026-11-08T12:23:00Z', source: 'observed', address: Y, symbol: 'AAPLc', registry_symbol: 'AAPLc' }) + '\n')
 fs.writeFileSync(path.join(histDir, 'registry-2026-11-07.jsonl'), JSON.stringify({ _schema_version: '1.0', chain_id: 8453, issuer: 'coinbase', fetched_at: '2026-11-07T12:52:00Z', hash: 'sha256:' + 'ab'.repeat(32), prev_hash: null, records: 1, added: [A], removed: [], changed: [], body: [{ address: A, symbol: 'NVDAc' }] }) + '\n')
 
-const app = createStocksWeb({ roots: { base: baseRoot, robinhood: rhRoot }, fetchImpl, now: () => NOW, log: () => {} })
+const app = createStocksWeb({ listLocks: false, roots: { base: baseRoot, robinhood: rhRoot }, fetchImpl, now: () => NOW, log: () => {} })
 const { port } = await app.start(0, '127.0.0.1')
 const get = (p, opts = {}) => fetch(`http://127.0.0.1:${port}${p}`, opts)
 
@@ -237,7 +237,7 @@ console.log('the history archive')
       // Review of #60: a failed read keeps the last good list and its stamp, says stale, and is not cached; a good read
       // clears it.
       let down = false
-      const flaky = createStocksWeb({ roots: { base: baseRoot, robinhood: rhRoot }, fetchImpl: (u) => (down && String(u).startsWith(COINBASE_URL) ? Promise.reject(new Error('down')) : fetchImpl(u)), now: () => NOW, log: () => {} })
+      const flaky = createStocksWeb({ listLocks: false, roots: { base: baseRoot, robinhood: rhRoot }, fetchImpl: (u) => (down && String(u).startsWith(COINBASE_URL) ? Promise.reject(new Error('down')) : fetchImpl(u)), now: () => NOW, log: () => {} })
       const { port: fp } = await flaky.start(0, '127.0.0.1')
       const ver = () => fetch(`http://127.0.0.1:${fp}/stocks/api/verify?chain=base&address=${A}`)
       const before = (await (await ver()).json()).list_proof
@@ -253,7 +253,7 @@ console.log('the history archive')
       // 24.11): before, only /verify said so, and the passport, find, list, the page and the board kept answering
       // ISSUER-LISTED from the old copy for as long as the issuer was unreachable.
       let down = false, t = NOW
-      const st = createStocksWeb({ roots: { base: baseRoot, robinhood: rhRoot }, fetchImpl: (u) => (down && String(u).startsWith(COINBASE_URL) ? Promise.reject(new Error('down')) : fetchImpl(u)), now: () => t, log: () => {}, analytics: { enabled: false }, exam: { url: null }, glama: { url: null } })
+      const st = createStocksWeb({ listLocks: false, roots: { base: baseRoot, robinhood: rhRoot }, fetchImpl: (u) => (down && String(u).startsWith(COINBASE_URL) ? Promise.reject(new Error('down')) : fetchImpl(u)), now: () => t, log: () => {}, analytics: { enabled: false }, exam: { url: null }, glama: { url: null } })
       const { port: sp } = await st.start(0, '127.0.0.1')
       const g = (u, init = {}) => fetch(`http://127.0.0.1:${sp}/stocks${u}`, { ...init, headers: { 'x-real-ip': '198.51.100.61', ...(init.headers || {}) } })
       const call = async (name, args) => (await (await g('/mcp', { method: 'POST', headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream' }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args } }) })).json()).result
@@ -284,7 +284,7 @@ console.log('the history archive')
       const tok = (a, sym) => ({ contract_address: a, symbol: sym, name: sym, isin: 'US0000000000', multiplier: '1', nav_price: '1', nav_price_updated_at: '2026-11-06T21:00:00Z', total_supply: '5' })
       const B2 = '0x' + 'b2'.repeat(20), B3 = '0x' + 'b3'.repeat(20)
       let tokens = [tok(A, 'NVDAc'), tok(B2, 'AAAc'), tok(B3, 'BBBc')], t = NOW
-      const em = createStocksWeb({ roots: { base: baseRoot, robinhood: rhRoot }, fetchImpl: (u) => (String(u).startsWith(COINBASE_URL) ? Promise.resolve({ ok: true, status: 200, json: async () => ({ tokens }) }) : fetchImpl(u)), now: () => t, log: () => {}, analytics: { enabled: false }, exam: { url: null }, glama: { url: null } })
+      const em = createStocksWeb({ listLocks: false, roots: { base: baseRoot, robinhood: rhRoot }, fetchImpl: (u) => (String(u).startsWith(COINBASE_URL) ? Promise.resolve({ ok: true, status: 200, json: async () => ({ tokens }) }) : fetchImpl(u)), now: () => t, log: () => {}, analytics: { enabled: false }, exam: { url: null }, glama: { url: null } })
       const { port: ep } = await em.start(0, '127.0.0.1')
       const v = async (a) => (await fetch(`http://127.0.0.1:${ep}/stocks/api/verify?chain=base&address=${a}`, { headers: { 'x-real-ip': '198.51.100.62' } })).json()
       tokens = []; t += 60e3; await em.refreshAll()
@@ -419,13 +419,13 @@ console.log('a host that asked for paid passes and did not get the module')
   process.env.STP_X402_PAY_TO = '0x832554618e3c03447c50505e3d8af5ab537dd17f'
   const said = []
   try {
-    createStocksWeb({ roots: { base: baseRoot, robinhood: rhRoot }, fetchImpl, now: () => NOW, log: (m) => said.push(String(m)), analytics: { enabled: false }, exam: { url: null }, x402Module: null })
+    createStocksWeb({ listLocks: false, roots: { base: baseRoot, robinhood: rhRoot }, fetchImpl, now: () => NOW, log: (m) => said.push(String(m)), analytics: { enabled: false }, exam: { url: null }, x402Module: null })
   } finally {
     if (before === undefined) delete process.env.STP_X402_PAY_TO; else process.env.STP_X402_PAY_TO = before
   }
   check('...and the site says so at startup, in one line, naming what to do about it', said.includes(X402_MISSING_LINE) && /host files directory/.test(X402_MISSING_LINE), said.join(' | ').slice(0, 90))
   const quiet = []
-  createStocksWeb({ roots: { base: baseRoot, robinhood: rhRoot }, fetchImpl, now: () => NOW, log: (m) => quiet.push(String(m)), analytics: { enabled: false }, exam: { url: null }, x402Module: null })
+  createStocksWeb({ listLocks: false, roots: { base: baseRoot, robinhood: rhRoot }, fetchImpl, now: () => NOW, log: (m) => quiet.push(String(m)), analytics: { enabled: false }, exam: { url: null }, x402Module: null })
   check('...and says nothing of the kind on a host that never asked for passes', !quiet.some((m) => m.includes('[x402]')), quiet.join(' | ').slice(0, 80))
 }
 
@@ -458,7 +458,7 @@ if (!x402mod) {
     if (method === 'eth_getTransactionReceipt') return { transactionHash: params[0], status: '0x1', blockNumber: '0x100', logs: [{ address: '0x833589fcd6edb6e08f4c7c32d4f71b54bda02913', topics: [TRANSFER_TOPIC, '0x' + '0'.repeat(24) + payer.slice(2), '0x' + '0'.repeat(24) + payTo.slice(2)], data: '0x2710' }] }
     throw new Error('unexpected ' + method)
   }
-  const app402 = createStocksWeb({ roots: { base: baseRoot, robinhood: rhRoot }, fetchImpl, now: () => t, log: () => {}, analytics: { enabled: false }, exam: { url: null }, x402: { payTo, key: walletKey, rpcImpl } })
+  const app402 = createStocksWeb({ listLocks: false, roots: { base: baseRoot, robinhood: rhRoot }, fetchImpl, now: () => t, log: () => {}, analytics: { enabled: false }, exam: { url: null }, x402: { payTo, key: walletKey, rpcImpl } })
   const { port: pp } = await app402.start(0, '127.0.0.1')
   const hit = (p, o = {}) => fetch(`http://127.0.0.1:${pp}${p}`, o)
   const ip = { 'x-real-ip': '203.0.113.42' }
@@ -566,7 +566,7 @@ console.log('the payment state carries the sales read from Base')
     throw new Error('unexpected ' + method)
   }
   const stand = () => ({ enabled: true, wallet: W, priceUsd: '0.01', passMinutes: 10, passRate: 600, pausedUntil: () => 0, passActive: () => false, accepts: () => null, purchase: async () => ({ ok: false, error: 'not in this test' }) })
-  const appS = createStocksWeb({ roots: { base: baseRoot, robinhood: rhRoot }, fetchImpl, log: () => {}, analytics: { enabled: false }, exam: { url: null }, x402: { payTo: PAYEE }, x402Module: stand, baseCall: saleChain })
+  const appS = createStocksWeb({ listLocks: false, roots: { base: baseRoot, robinhood: rhRoot }, fetchImpl, log: () => {}, analytics: { enabled: false }, exam: { url: null }, x402: { payTo: PAYEE }, x402Module: stand, baseCall: saleChain })
   const { port: ps } = await appS.start(0, '127.0.0.1')
   try {
     const state = async () => (await fetch(`http://127.0.0.1:${ps}/stocks/api/status/payments`)).json()
@@ -577,11 +577,11 @@ console.log('the payment state carries the sales read from Base')
     for (let i = 0; i < 50 && !(withSales = await state()).sales?.latest; i++) await new Promise((r) => setTimeout(r, 20))
     check('the payment state carries the sales as Base has them: the count of the wallet and its latest settlement', withSales.sales?.settlement_transactions === 1 && withSales.sales.latest?.transaction === '0x' + 'c1'.repeat(32) && withSales.sales.latest.payer === '0x' + 'ab'.repeat(20) && withSales.sales.latest.ours === false, JSON.stringify(withSales.sales))
   } finally { await appS.stop() }
-  const appC = createStocksWeb({ roots: { base: baseRoot, robinhood: rhRoot }, fetchImpl, log: () => {}, analytics: { enabled: false }, exam: { url: null }, x402: { payTo: PAYEE }, x402Module: () => ({ ...stand(), settlesV2: 'cdp' }), baseCall: saleChain })
+  const appC = createStocksWeb({ listLocks: false, roots: { base: baseRoot, robinhood: rhRoot }, fetchImpl, log: () => {}, analytics: { enabled: false }, exam: { url: null }, x402: { payTo: PAYEE }, x402Module: () => ({ ...stand(), settlesV2: 'cdp' }), baseCall: saleChain })
   const { port: pcd } = await appC.start(0, '127.0.0.1')
   try { check('a module that settles v2 through Coinbase says so in the payment state', (await (await fetch(`http://127.0.0.1:${pcd}/stocks/api/status/payments`)).json()).settles_v2 === 'cdp') } finally { await appC.stop() }
   const offCalls = []
-  const appOff = createStocksWeb({ roots: { base: baseRoot, robinhood: rhRoot }, fetchImpl, log: () => {}, analytics: { enabled: false }, exam: { url: null }, x402: {}, x402Module: () => ({ enabled: false, passActive: () => false, accepts: () => null, purchase: async () => ({ ok: false }) }), baseCall: async (m) => { offCalls.push(m); return '0x0' } })
+  const appOff = createStocksWeb({ listLocks: false, roots: { base: baseRoot, robinhood: rhRoot }, fetchImpl, log: () => {}, analytics: { enabled: false }, exam: { url: null }, x402: {}, x402Module: () => ({ enabled: false, passActive: () => false, accepts: () => null, purchase: async () => ({ ok: false }) }), baseCall: async (m) => { offCalls.push(m); return '0x0' } })
   const { port: po } = await appOff.start(0, '127.0.0.1')
   let off
   try { off = await (await fetch(`http://127.0.0.1:${po}/stocks/api/status/payments`)).json(); await new Promise((r) => setTimeout(r, 30)) } finally { await appOff.stop() }
@@ -604,8 +604,8 @@ console.log('x402 v2 on the wire, and the pass as a route')
     purchase: async (h, k) => (h === 'good' ? (passes.set(k, Date.now() + 600e3), { ok: true, header: 'v1-receipt', headerV2: 'v2-receipt' }) : { ok: false, status: 402, error: 'the signature does not belong to the payer' }),
   })
   const quiet = async () => '0x0'
-  const appP = createStocksWeb({ roots: { base: baseRoot, robinhood: rhRoot }, fetchImpl, log: () => {}, analytics: { enabled: false }, exam: { url: null }, x402: { payTo: '0x' + 'd6'.repeat(20) }, x402Module: stand(true), baseCall: quiet })
-  const appV1 = createStocksWeb({ roots: { base: baseRoot, robinhood: rhRoot }, fetchImpl, log: () => {}, analytics: { enabled: false }, exam: { url: null }, x402: { payTo: '0x' + 'd6'.repeat(20) }, x402Module: stand(false), baseCall: quiet })
+  const appP = createStocksWeb({ listLocks: false, roots: { base: baseRoot, robinhood: rhRoot }, fetchImpl, log: () => {}, analytics: { enabled: false }, exam: { url: null }, x402: { payTo: '0x' + 'd6'.repeat(20) }, x402Module: stand(true), baseCall: quiet })
+  const appV1 = createStocksWeb({ listLocks: false, roots: { base: baseRoot, robinhood: rhRoot }, fetchImpl, log: () => {}, analytics: { enabled: false }, exam: { url: null }, x402: { payTo: '0x' + 'd6'.repeat(20) }, x402Module: stand(false), baseCall: quiet })
   const { port: pp2 } = await appP.start(0, '127.0.0.1')
   const { port: pv1 } = await appV1.start(0, '127.0.0.1')
   const at = (port) => (p, headers = {}) => fetch(`http://127.0.0.1:${port}/stocks${p}`, { headers })
@@ -654,7 +654,7 @@ console.log('the landing says which apps called it')
   const today = new Date().toISOString().slice(0, 10)
   const row = (o) => JSON.stringify({ kind: 'mcp', at: new Date().toISOString(), visitor: 'v-apps-1', ua_class: 'tool', country: null, tool: null, client: null, ...o })
   fs.writeFileSync(path.join(adir, `hits-${today}.jsonl`), [row({ method: 'initialize', client: 'cursor' }), row({ method: 'tools/call', tool: 'find_stock_token' })].join('\n') + '\n')
-  const appA = createStocksWeb({ roots: { base: baseRoot, robinhood: rhRoot }, fetchImpl, log: () => {}, analytics: { enabled: false, dir: adir }, exam: { url: null } })
+  const appA = createStocksWeb({ listLocks: false, roots: { base: baseRoot, robinhood: rhRoot }, fetchImpl, log: () => {}, analytics: { enabled: false, dir: adir }, exam: { url: null } })
   const { port: pa } = await appA.start(0, '127.0.0.1')
   let land = ''
   try { land = await (await fetch(`http://127.0.0.1:${pa}/stocks/`)).text() } finally { await appA.stop(); fs.rmSync(adir, { recursive: true, force: true }) }
@@ -669,7 +669,7 @@ console.log('an address that starts like the issuer\'s, end to end')
   const b2 = (t) => '0xb2' + '0'.repeat(20) + t
   const tokens = [['397293cb8cda9a10c5', 'SNDKc'], ['16e38fd364d271ba28', 'ANTc'], ['78ee7ce2fe4908108c', 'NVDAc']].map(([t, symbol]) => ({ contract_address: b2(t), symbol, name: symbol, isin: 'US67066G1040', multiplier: '1', nav_price: '180', nav_price_updated_at: '2026-11-06T21:00:00Z', total_supply: '5' }))
   const fetchB2 = async (u) => (String(u).startsWith(COINBASE_URL) ? { ok: true, status: 200, json: async () => ({ tokens }) } : fetchImpl(u))
-  const appB = createStocksWeb({ roots: { base: baseRoot, robinhood: rhRoot }, fetchImpl: fetchB2, now: () => NOW, log: () => {}, analytics: { enabled: false }, exam: { url: null } })
+  const appB = createStocksWeb({ listLocks: false, roots: { base: baseRoot, robinhood: rhRoot }, fetchImpl: fetchB2, now: () => NOW, log: () => {}, analytics: { enabled: false }, exam: { url: null } })
   const { port: pb2 } = await appB.start(0, '127.0.0.1')
   const BINT = b2('231734d0c898f56201')
   try {
@@ -725,7 +725,7 @@ console.log('the public MCP endpoint')
     const none = await get('/stocks' + GLAMA_CLAIM_PATH)
     check('with no claim set the path is a plain 404, never a wrong claim', none.status === 404, String(none.status))
     const CLAIM = 'glama_claim_' + 'Aa0_-'.repeat(6) + 'zz'
-    const withClaim = createStocksWeb({ roots: { base: baseRoot, robinhood: rhRoot }, fetchImpl, now: () => NOW, log: () => {}, glamaClaim: ' ' + CLAIM + '\n', analytics: { enabled: false } })
+    const withClaim = createStocksWeb({ listLocks: false, roots: { base: baseRoot, robinhood: rhRoot }, fetchImpl, now: () => NOW, log: () => {}, glamaClaim: ' ' + CLAIM + '\n', analytics: { enabled: false } })
     const { port: pc } = await withClaim.start(0, '127.0.0.1')
     const at = (p, o) => fetch(`http://127.0.0.1:${pc}${p}`, o)
     const r = await at('/stocks' + GLAMA_CLAIM_PATH)
@@ -734,7 +734,7 @@ console.log('the public MCP endpoint')
     check('...with no redirect and nothing asked of the caller', !r.redirected && !r.headers.get('www-authenticate') && !r.headers.get('location'))
     const posted = await at('/stocks' + GLAMA_CLAIM_PATH, { method: 'POST', body: '{}' })
     check('...and it is a read path: POST is refused there, and never reaches the MCP handler', posted.status === 405, String(posted.status))
-    const bad = createStocksWeb({ roots: { base: baseRoot, robinhood: rhRoot }, fetchImpl, now: () => NOW, log: () => {}, glamaClaim: 'glama_claim_short', analytics: { enabled: false } })
+    const bad = createStocksWeb({ listLocks: false, roots: { base: baseRoot, robinhood: rhRoot }, fetchImpl, now: () => NOW, log: () => {}, glamaClaim: 'glama_claim_short', analytics: { enabled: false } })
     const { port: pb } = await bad.start(0, '127.0.0.1')
     const r2 = await fetch(`http://127.0.0.1:${pb}/stocks${GLAMA_CLAIM_PATH}`)
     check('a malformed claim is refused at the door: 404, not a half-claim', r2.status === 404, String(r2.status))
@@ -742,14 +742,14 @@ console.log('the public MCP endpoint')
     // 402index.io's domain claim (22.11): the hash of its token, plain text, at a fixed path; a 404 without one.
     check('402index: with no hash set the path is a plain 404', (await get('/stocks' + INDEX402_PATH)).status === 404)
     const H = 'ab'.repeat(32)
-    const withHash = createStocksWeb({ roots: { base: baseRoot, robinhood: rhRoot }, fetchImpl, now: () => NOW, log: () => {}, index402Hash: ' ' + H.toUpperCase() + '\n', analytics: { enabled: false } })
+    const withHash = createStocksWeb({ listLocks: false, roots: { base: baseRoot, robinhood: rhRoot }, fetchImpl, now: () => NOW, log: () => {}, index402Hash: ' ' + H.toUpperCase() + '\n', analytics: { enabled: false } })
     const { port: ph } = await withHash.start(0, '127.0.0.1')
     const rh = await fetch(`http://127.0.0.1:${ph}/stocks${INDEX402_PATH}`)
     const th = await rh.text()
     check('...a hash from the host is served as the bare hash, plain text, trimmed and lower case, under 1 KB', rh.status === 200 && th === H && /^text\/plain/.test(rh.headers.get('content-type')) && !rh.redirected, th.slice(0, 80))
     check('...a read path: POST is refused', (await fetch(`http://127.0.0.1:${ph}/stocks${INDEX402_PATH}`, { method: 'POST' })).status === 405)
     await withHash.stop()
-    const badHash = createStocksWeb({ roots: { base: baseRoot, robinhood: rhRoot }, fetchImpl, now: () => NOW, log: () => {}, index402Hash: 'not-a-hash', analytics: { enabled: false } })
+    const badHash = createStocksWeb({ listLocks: false, roots: { base: baseRoot, robinhood: rhRoot }, fetchImpl, now: () => NOW, log: () => {}, index402Hash: 'not-a-hash', analytics: { enabled: false } })
     const { port: pbh } = await badHash.start(0, '127.0.0.1')
     check('...a malformed hash is a 404, never served; only 64 hex characters pass', (await fetch(`http://127.0.0.1:${pbh}/stocks${INDEX402_PATH}`)).status === 404 && INDEX402_HASH_RE.test(H) && !INDEX402_HASH_RE.test(H + 'a') && !INDEX402_HASH_RE.test(H.slice(1) + 'g'))
     await badHash.stop()
@@ -938,7 +938,7 @@ console.log('verify and badge')
 {
   // A registry that stops refreshing: verify must stop answering "not listed" and say it cannot tell.
   let t = NOW
-  const app6 = createStocksWeb({ roots: { base: baseRoot, robinhood: rhRoot }, fetchImpl, now: () => t, log: () => {} })
+  const app6 = createStocksWeb({ listLocks: false, roots: { base: baseRoot, robinhood: rhRoot }, fetchImpl, now: () => t, log: () => {} })
   const { port: p6 } = await app6.start(0, '127.0.0.1')
   t += 901e3
   const stale = await fetch(`http://127.0.0.1:${p6}/stocks/verify?chain=base&address=${X}`)
@@ -956,7 +956,7 @@ console.log('verify and badge')
   const lastOk = (target = MB) => ({ at: '2026-11-08T11:55:00Z', started_at: '2026-11-08T11:54:00Z', target_block: target, target_block_time: '2026-11-08T11:30:00Z' })
   const writeMirror = (o) => fs.writeFileSync(path.join(mroot, 'stock-peg', 'mirror.json'), JSON.stringify({ schema: 2, chain: 'base', issuer: 'coinbase', factory: '0x4ba3e29e254f25e94e61c4c9d67b37027331534d', topic0: '0x5c43a3074411409ce140dea2139563c088f43588c8ab6a2b8e2119a670576ce1', from_block: 48459816, scanned_to: MB, last_ok: lastOk(), last_error: null, updated_at: '2026-11-08T11:55:00Z', tokens: [{ address: A, block: 48459900, block_hash: '0x' + 'cd'.repeat(32), tx: '0x' + 'ab'.repeat(32), log_index: 3 }], ...o }))
   writeMirror({})
-  const appM = createStocksWeb({ roots: { base: mroot, robinhood: rhRoot }, fetchImpl, now: () => NOW, log: () => {} })
+  const appM = createStocksWeb({ listLocks: false, roots: { base: mroot, robinhood: rhRoot }, fetchImpl, now: () => NOW, log: () => {} })
   const { port: pM } = await appM.start(0, '127.0.0.1')
   const vM = async (a) => (await (await fetch(`http://127.0.0.1:${pM}/stocks/verify?chain=base&address=${a}`)).json())
   const listedV = await vM(A), strangerV = await vM('0x' + '9'.repeat(40))
@@ -966,14 +966,14 @@ console.log('verify and badge')
   check('...and the passport carries the same fact', pM2.issuer_factory?.created === true && pM2.issuer_factory.block === 48459900)
   await appM.stop()
   writeMirror({ last_ok: lastOk(MB + 100) })
-  const appB = createStocksWeb({ roots: { base: mroot, robinhood: rhRoot }, fetchImpl, now: () => NOW, log: () => {} })
+  const appB = createStocksWeb({ listLocks: false, roots: { base: mroot, robinhood: rhRoot }, fetchImpl, now: () => NOW, log: () => {} })
   const { port: pB } = await appB.start(0, '127.0.0.1')
   const behind = await (await fetch(`http://127.0.0.1:${pB}/stocks/verify?chain=base&address=${A}`)).json()
   check('...a mirror still catching up with the chain claims nothing (null), it does not say "not created"', behind.issuer_factory === null)
   {
     const GONE = '0x' + '7'.repeat(40)
     writeMirror({ revoked: [{ address: GONE, block: 48459901, block_hash: '0x' + 'ce'.repeat(32), tx: '0x' + 'ac'.repeat(32), log_index: 1, revoked_at: '2026-11-08T12:00:00Z', why: 'the transaction is in another block now' }] })
-    const appR = createStocksWeb({ roots: { base: mroot, robinhood: rhRoot }, fetchImpl, now: () => NOW, log: () => {} })
+    const appR = createStocksWeb({ listLocks: false, roots: { base: mroot, robinhood: rhRoot }, fetchImpl, now: () => NOW, log: () => {} })
     const { port: pR } = await appR.start(0, '127.0.0.1')
     const g = await (await fetch(`http://127.0.0.1:${pR}/stocks/verify?chain=base&address=${GONE}`)).json()
     check('...a creation taken back says not created, with when and why it was taken back', g.issuer_factory?.created === false && g.issuer_factory.revoked?.at === '2026-11-08T12:00:00Z' && /another block/.test(g.issuer_factory.revoked.why), JSON.stringify(g.issuer_factory))
@@ -981,7 +981,7 @@ console.log('verify and badge')
   }
   for (const [label, o] of [['schema 1', { schema: undefined }], ['another factory', { factory: '0x' + '11'.repeat(20) }], ['a last_ok in the future', { last_ok: { ...lastOk(), at: '2026-12-31T00:00:00Z' } }], ['a token without its block hash', { tokens: [{ address: A, block: 48459900, tx: '0x' + 'ab'.repeat(32), log_index: 3 }] }]]) {
     writeMirror(o)
-    const appX = createStocksWeb({ roots: { base: mroot, robinhood: rhRoot }, fetchImpl, now: () => NOW, log: () => {} })
+    const appX = createStocksWeb({ listLocks: false, roots: { base: mroot, robinhood: rhRoot }, fetchImpl, now: () => NOW, log: () => {} })
     const { port: pX } = await appX.start(0, '127.0.0.1')
     const x = await (await fetch(`http://127.0.0.1:${pX}/stocks/verify?chain=base&address=${A}`)).json()
     check(`...a mirror file with ${label} is not believed: no factory fact (the scanner's own validator, outside review 25.11)`, x.issuer_factory === null, JSON.stringify(x.issuer_factory))
@@ -990,7 +990,7 @@ console.log('verify and badge')
   await appB.stop()
   writeMirror({})
   let t = NOW
-  const appD = createStocksWeb({ roots: { base: mroot, robinhood: rhRoot }, fetchImpl, now: () => t, log: () => {} })
+  const appD = createStocksWeb({ listLocks: false, roots: { base: mroot, robinhood: rhRoot }, fetchImpl, now: () => t, log: () => {} })
   const { port: pD } = await appD.start(0, '127.0.0.1')
   t += 901e3
   const down = await fetch(`http://127.0.0.1:${pD}/stocks/verify?chain=base&address=${A}`)
@@ -1096,7 +1096,7 @@ console.log('verify and badge')
     hit({ kind: 'mcp', visitor: 'c1', method: 'tools/list', tool: null, client: null }),
     hit({ kind: 'mcp', visitor: 'c2', method: 'initialize', tool: null, client: 'mcpbeat' }),
   ].join('\n') + '\n')
-  const appS = createStocksWeb({ roots: { base: baseRoot, robinhood: rhRoot }, fetchImpl, now: () => NOW, log: () => {}, analytics: { dir: statsDir, ignore: '198.51.100.7, 203.0.113.0/24, nonsense', interfaces: () => ({ eth0: [{ address: '192.0.2.10' }] }) } })
+  const appS = createStocksWeb({ listLocks: false, roots: { base: baseRoot, robinhood: rhRoot }, fetchImpl, now: () => NOW, log: () => {}, analytics: { dir: statsDir, ignore: '198.51.100.7, 203.0.113.0/24, nonsense', interfaces: () => ({ eth0: [{ address: '192.0.2.10' }] }) } })
   const { port: pS } = await appS.start(0, '127.0.0.1')
   const open = await fetch(`http://127.0.0.1:${pS}/stocks/stats`)
   const spoof = await fetch(`http://127.0.0.1:${pS}/stocks/stats`, { headers: { 'x-pos-stats': 'yes' } })
@@ -1123,7 +1123,7 @@ console.log('verify and badge')
   check('...it says who is not counted, in counts and a date, and never an address', /Not counted/.test(html) && /2 addresses or ranges/.test(html) && /1 of its own/.test(html) && /1 entry not an address/.test(html) && /since 2026-11-13 · earlier days still hold ours/.test(html) && !/198\.51\.100|203\.0\.113|192\.0\.2|nonsense/.test(html))
   await appS.stop()
   // A host that cannot read its own addresses, and nothing configured: the block says both, instead of looking fine.
-  const blindS = createStocksWeb({ roots: { base: baseRoot, robinhood: rhRoot }, fetchImpl, now: () => NOW, log: () => {}, analytics: { dir: statsDir, ignore: '', interfaces: () => { throw new Error('no netlink') } } })
+  const blindS = createStocksWeb({ listLocks: false, roots: { base: baseRoot, robinhood: rhRoot }, fetchImpl, now: () => NOW, log: () => {}, analytics: { dir: statsDir, ignore: '', interfaces: () => { throw new Error('no netlink') } } })
   const { port: pB } = await blindS.start(0, '127.0.0.1')
   const blindHtml = await (await fetch(`http://127.0.0.1:${pB}/stocks/stats`, { headers: { 'x-pos-stats': 'gate' } })).text()
   await blindS.stop()
@@ -1155,7 +1155,7 @@ console.log('verify and badge')
 {
   // /status and /history: one build serves every request for PAGE_CACHE_MS, then the page is built again.
   let t = NOW
-  const app9 = createStocksWeb({ roots: { base: baseRoot, robinhood: rhRoot }, fetchImpl, now: () => t, log: () => {} })
+  const app9 = createStocksWeb({ listLocks: false, roots: { base: baseRoot, robinhood: rhRoot }, fetchImpl, now: () => t, log: () => {} })
   const { port: p9 } = await app9.start(0, '127.0.0.1')
   const page = (p) => fetch(`http://127.0.0.1:${p9}/stocks${p}`).then((r) => r.text())
   const s1 = await page('/status'), h1 = await page('/history')
@@ -1180,7 +1180,7 @@ console.log('the Base and Robinhood matrix')
       { tokenSymbol: 'TSLA', tokenName: 'Tesla  Robinhood Token', isin: 'US88160R1014', currentMultiplier: '1', status: 'ASSET_STATUS_ACTIVE', deployments: [{ chainId: 4663, contractAddress: R }] }] }) }
     return fetchImpl(url)
   }
-  const app7 = createStocksWeb({ roots: { base: b2, robinhood: r2 }, fetchImpl: fetch2, now: () => NOW, log: () => {} })
+  const app7 = createStocksWeb({ listLocks: false, roots: { base: b2, robinhood: r2 }, fetchImpl: fetch2, now: () => NOW, log: () => {} })
   const { port: p7 } = await app7.start(0, '127.0.0.1')
   const res = await fetch(`http://127.0.0.1:${p7}/stocks/api/matrix`)
   const mx = await res.json()
@@ -1207,7 +1207,7 @@ console.log('the Base and Robinhood matrix')
   check('MCP compare_venues: an unknown ticker says no issuer lists it', /^No issuer-listed token on Base or Robinhood Chain has the ticker ZZZZ/.test(none.result.content[0].text))
   check('MCP compare_venues: arguments are validated', (await call(7, { isin: 'nope' })).error?.code === -32602 && (await call(8, { symbol: 5 })).error?.code === -32602 && /unknown argument chain/.test((await call(9, { chain: 'base' })).error?.message || ''))
   await app7.stop()
-  const down = createStocksWeb({ roots: { base: b2, robinhood: r2 }, fetchImpl: async (url) => (String(url).startsWith(ROBINHOOD_ASSETS_URL) ? { ok: false, status: 503, json: async () => ({}) } : fetchImpl(url)), now: () => NOW, log: () => {} })
+  const down = createStocksWeb({ listLocks: false, roots: { base: b2, robinhood: r2 }, fetchImpl: async (url) => (String(url).startsWith(ROBINHOOD_ASSETS_URL) ? { ok: false, status: 503, json: async () => ({}) } : fetchImpl(url)), now: () => NOW, log: () => {} })
   const { port: p8 } = await down.start(0, '127.0.0.1')
   const d = await fetch(`http://127.0.0.1:${p8}/stocks/api/matrix`)
   check('api/matrix: a chain whose registry is not loaded is 503 naming it, not an empty matrix', d.status === 503 && (await d.json()).missing[0] === 'robinhood')
@@ -1222,7 +1222,7 @@ await app.stop()
 
 console.log('before a registry is loaded')
 {
-  const down = createStocksWeb({ roots: { base: baseRoot, robinhood: rhRoot }, fetchImpl: async () => ({ ok: false, status: 503, json: async () => ({}) }), now: () => NOW, log: () => {} })
+  const down = createStocksWeb({ listLocks: false, roots: { base: baseRoot, robinhood: rhRoot }, fetchImpl: async () => ({ ok: false, status: 503, json: async () => ({}) }), now: () => NOW, log: () => {} })
   const a = await down.start(0, '127.0.0.1')
   const r = await fetch(`http://127.0.0.1:${a.port}/stocks/api/find?chain=base&q=nvda`)
   check('a chain whose registry never loaded answers 503, not an empty list', r.status === 503)
@@ -1241,7 +1241,7 @@ console.log('errors in public answers')
     fs.mkdirSync(path.join(root, 'stock-peg', 'impostors.json'), { recursive: true })
   }
   const logged = []
-  const broken = createStocksWeb({ roots: { base: b3, robinhood: h3 }, fetchImpl: async () => { throw new Error('ENOENT: open /' + SECRET + '/registry.json') }, now: () => NOW, log: (m) => logged.push(m) })
+  const broken = createStocksWeb({ listLocks: false, roots: { base: b3, robinhood: h3 }, fetchImpl: async () => { throw new Error('ENOENT: open /' + SECRET + '/registry.json') }, now: () => NOW, log: (m) => logged.push(m) })
   const a = await broken.start(0, '127.0.0.1')
   const at = (p, o) => fetch(`http://127.0.0.1:${a.port}${p}`, o).then((r) => r.text())
   const rpc = (name, args) => at('/stocks/mcp', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args } }) })
@@ -1256,12 +1256,12 @@ console.log('errors in public answers')
 
 console.log('the public address')
 {
-  const app4 = createStocksWeb({ roots: { base: baseRoot, robinhood: rhRoot }, fetchImpl, now: () => NOW, log: () => {} })
+  const app4 = createStocksWeb({ listLocks: false, roots: { base: baseRoot, robinhood: rhRoot }, fetchImpl, now: () => NOW, log: () => {} })
   const { port: p4 } = await app4.start(0, '127.0.0.1')
   const page = await (await fetch(`http://127.0.0.1:${p4}/stocks/`)).text()
   await app4.stop()
   check('the page shows the MCP URL of the public origin, four times (URL, command, ChatGPT steps, JSON), and no placeholder is left', (page.replace(/<script type="application\/ld\+json">[^<]*<\/script>/g, '').match(/https:\/\/proofofstock.xyz\/mcp/g) || []).length === 4 && !page.includes('__MCP_URL__'))
-  const app3 = createStocksWeb({ roots: { base: baseRoot, robinhood: rhRoot }, fetchImpl, now: () => NOW, log: () => {}, publicOrigin: 'https://example.test', publicPath: '/x' })
+  const app3 = createStocksWeb({ listLocks: false, roots: { base: baseRoot, robinhood: rhRoot }, fetchImpl, now: () => NOW, log: () => {}, publicOrigin: 'https://example.test', publicPath: '/x' })
   const { port: p3 } = await app3.start(0, '127.0.0.1')
   const other = await (await fetch(`http://127.0.0.1:${p3}/stocks/?chain=base&address=${A}`)).text()
   check('another origin and path are used for the MCP URL and the canonical link', other.includes('https://example.test/x/mcp') && other.includes('content="https://example.test/x/?base=NVDAc"'))
@@ -1275,7 +1275,7 @@ console.log('docs and llms.txt')
   check('only public docs are served: no TZ, no internal agent note', ![...docs.keys()].some((k) => /truth-layer-tz|stocks-passport-agent/.test(k)))
   const llms = llmsTxt(new Map([['README.md', '# Docs'], ['tutorials/a.md', '# Connect\n\nv0.3.0 · x\n\nConnect an agent in five minutes.'], ['legal.md', '# Legal\n\nNot investment advice.']]), 'https://x.test', '9.9.9')
   check('llms.txt is a markdown index with sections, links and one line each', /^# Proof of Stock/.test(llms) && /## Tutorials\n\n- \[Connect\]\(https:\/\/x\.test\/docs\/tutorials\/a\.md\): Connect an agent in five minutes\./.test(llms) && /Version 9\.9\.9/.test(llms), llms)
-  const app7 = createStocksWeb({ roots: { base: baseRoot, robinhood: rhRoot }, fetchImpl, now: () => NOW, log: () => {} })
+  const app7 = createStocksWeb({ listLocks: false, roots: { base: baseRoot, robinhood: rhRoot }, fetchImpl, now: () => NOW, log: () => {} })
   const { port: p7 } = await app7.start(0, '127.0.0.1')
   const g7 = (u, o) => fetch(`http://127.0.0.1:${p7}${u}`, o)
   const lt = await g7('/stocks/llms.txt')
@@ -1321,7 +1321,7 @@ console.log('status page')
   const s = statusOf({ base: { registry_records: 10, registry_age_s: 30, readings_tokens: 5, newest_reading_age_s: 400, impostors_listed: 3, impostors_age_s: 3600 } })
   check('all parts on time is the green state', s.overall === 'ok' && s.rows.length === 3)
   check('one stale part makes the page say so', statusOf({ base: { registry_records: 10, registry_age_s: 30, readings_tokens: 5, newest_reading_age_s: 5000, impostors_listed: 3, impostors_age_s: 3600 } }).overall === 'down')
-  const app8 = createStocksWeb({ roots: { base: baseRoot, robinhood: rhRoot }, fetchImpl, now: () => NOW, log: () => {} })
+  const app8 = createStocksWeb({ listLocks: false, roots: { base: baseRoot, robinhood: rhRoot }, fetchImpl, now: () => NOW, log: () => {} })
   const { port: p8 } = await app8.start(0, '127.0.0.1')
   const page = await fetch(`http://127.0.0.1:${p8}/stocks/status`)
   const html = await page.text()
@@ -1345,7 +1345,7 @@ console.log('status page')
 
 console.log('search engines, AI crawlers and link previews')
 {
-  const app = createStocksWeb({ roots: { base: baseRoot, robinhood: rhRoot }, fetchImpl, now: () => NOW, log: () => {} })
+  const app = createStocksWeb({ listLocks: false, roots: { base: baseRoot, robinhood: rhRoot }, fetchImpl, now: () => NOW, log: () => {} })
   const { port } = await app.start(0, '127.0.0.1')
   const g = (u, h = {}) => fetch(`http://127.0.0.1:${port}${u}`, { headers: h })
   const html = { accept: 'text/html' }
@@ -1452,7 +1452,7 @@ console.log('search engines, AI crawlers and link previews')
   check('llms.txt starts an agent at the MCP server, the HTTP API, the guard and the full text', /## Start here\n\n- \[MCP server\]\(https:\/\/proofofstock\.xyz\/mcp\)/.test(llms) && /\[HTTP API\]\(https:\/\/proofofstock\.xyz\/docs\/reference\/http-api\.md\)/.test(llms) && /@proofofstock\/guard/.test(llms) && /\[Every page in one file\]\(https:\/\/proofofstock\.xyz\/llms-full\.txt\)/.test(llms) && /hello@proofofstock\.xyz/.test(llms))
   await app.stop()
 
-  const other = createStocksWeb({ roots: { base: baseRoot, robinhood: rhRoot }, fetchImpl, now: () => NOW, log: () => {}, publicOrigin: 'https://example.test', publicPath: '/x' })
+  const other = createStocksWeb({ listLocks: false, roots: { base: baseRoot, robinhood: rhRoot }, fetchImpl, now: () => NOW, log: () => {}, publicOrigin: 'https://example.test', publicPath: '/x' })
   const { port: po } = await other.start(0, '127.0.0.1')
   const r2 = await (await fetch(`http://127.0.0.1:${po}/stocks/robots.txt`)).text()
   const s2 = await (await fetch(`http://127.0.0.1:${po}/stocks/sitemap.xml`)).text()
@@ -1464,7 +1464,7 @@ console.log('source link')
 {
   const GH = 'https://github.com/proofofstock/proof-of-stock'
   const pages = async (opts) => {
-    const app = createStocksWeb({ roots: { base: baseRoot, robinhood: rhRoot }, fetchImpl, now: () => NOW, log: () => {}, ...opts })
+    const app = createStocksWeb({ listLocks: false, roots: { base: baseRoot, robinhood: rhRoot }, fetchImpl, now: () => NOW, log: () => {}, ...opts })
     const { port } = await app.start(0, '127.0.0.1')
     const home = await (await fetch(`http://127.0.0.1:${port}/stocks/`)).text()
     const doc = await (await fetch(`http://127.0.0.1:${port}/stocks/docs/`, { headers: { accept: 'text/html' } })).text()
@@ -1601,7 +1601,7 @@ console.log('the public exam: /api/exam')
     }
     return fetchImpl(url, init)
   }
-  const appE = createStocksWeb({ roots: { base: baseRoot, robinhood: rhRoot }, fetchImpl: examFetch, now: () => t, log: () => {} })
+  const appE = createStocksWeb({ listLocks: false, roots: { base: baseRoot, robinhood: rhRoot }, fetchImpl: examFetch, now: () => t, log: () => {} })
   const { port: pe } = await appE.start(0, '127.0.0.1')
   await appE.examRefresh()
   check('the report is read with a timeout and no redirect', initSeen && initSeen.signal && initSeen.redirect === 'error')
@@ -1672,7 +1672,7 @@ console.log('a port held by systemd across restarts (deploy 502s, 20.11)')
   const { systemdListenFd } = await import('./stocks-web.mjs')
   check('one descriptor meant for this process is fd 3', systemdListenFd({ LISTEN_FDS: '1', LISTEN_PID: '4242' }, 4242) === 3)
   check('...none, several, or one meant for another process is null, and the server binds the port itself', systemdListenFd({}, 4242) === null && systemdListenFd({ LISTEN_FDS: '2', LISTEN_PID: '4242' }, 4242) === null && systemdListenFd({ LISTEN_FDS: '1', LISTEN_PID: '4243' }, 4242) === null && systemdListenFd({ LISTEN_FDS: '1' }, 4242) === null)
-  const sw = createStocksWeb({ roots: { base: baseRoot, robinhood: rhRoot }, fetchImpl, now: () => NOW, log: () => {}, analytics: { enabled: false }, exam: { url: null }, x402Module: null })
+  const sw = createStocksWeb({ listLocks: false, roots: { base: baseRoot, robinhood: rhRoot }, fetchImpl, now: () => NOW, log: () => {}, analytics: { enabled: false }, exam: { url: null }, x402Module: null })
   const seen = []
   sw.server.listen = (...a) => { seen.push(a); a.at(-1)(); return sw.server }
   sw.server.address = () => ({ address: '127.0.0.1', port: 3005 })

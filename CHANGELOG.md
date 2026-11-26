@@ -16,6 +16,21 @@ The version is in `package.json`, and the site footer, the MCP `serverInfo.versi
 - **`@proofofstock/guard` 0.3.1: `failOpen` never buys a record the server holds because the chain contradicts it.** A `503` whose `reason` is `factory_conflict` or `issuer_prefix_mismatch` is an answer, not an outage, so it is refused whatever `failOpen` says. Any other `503`, an outage or a listing only awaiting confirmation, is decided by `failOpen` as before, and the reason is named in the decision (outside review, 25.11).
 
 ### Changed
+- **A record on the issuer's list is called listed only when the chain backs it** (`docs/list-locks-tz.md` v3; the owner accepted the delay for new listings). If an issuer's API list were tampered with, a foreign contract on it would otherwise be called the issuer's own on every route.
+  - **What it checks.** On Base, the address must have the pinned prefix `0xb200000000000000000000`. On both chains, the issuer's factory must have created it, as recorded by the finalized-block mirror and, where there is one, confirmed by a second RPC.
+  - **What an untrusted record gets.** No verdict: `503` with a `reason` (`issuer_prefix_mismatch`, `factory_check_unavailable`, `factory_conflict`, `awaiting_factory_confirmation`). It is never `listed: true` and never `listed: false`. Its passport is a `503` too.
+  - **Where it holds.** One source of listed records feeds every route that says "listed". A batch with a held record fails closed. A held original is never named as the token to buy instead of a look-alike. `list_proof` and the `/api/list` archive still record the issuer's list as served.
+  - **Cost.** A genuine new listing turns "listed" some 35 to 50 minutes after its creation.
+  - **Status and alerts.** `/api/status` shows the factory check and the held records. `stp-health` alerts `list-conflict` and `factory-check`, and `list-awaiting` when a record has waited over two hours.
+  - **After outside review.**
+    - One freshness rule serves the list and the verdict: at the 15-minute edge a held record was answered as listed.
+    - A stale list is never replaced by the raw one.
+    - A copy of a held new listing still resembles it in its passport, without naming the original.
+    - `find` names held matches with their reason and no verdict.
+    - The archive never quotes a record the chain contradicts now as LISTED.
+    - The search box shows a hold instead of another chain's "not on the list".
+    - The MCP batch names the held address and why.
+    - An address held on another chain says so.
 - **The issuer factory mirror is now a source a verdict could rest on** (the first part of `docs/list-locks-tz.md`, after two outside reviews). Verdicts do not change yet: only the passport's and `/verify`'s `issuer_factory` fact is affected, and it is `null` while the mirror rebuilds.
   - **Finalized blocks only.** It scans to the chain's own `finalized` block, never the head, so a creation that a reorganisation drops is never recorded. An RPC that cannot say which block is finalized is an error.
   - **Logs checked before they count.** A log must be emitted by the pinned factory under the pinned topic, not be `removed`, lie inside the range asked, and carry 32-byte block and transaction hashes. The block hash is kept with the token, and `issuer_factory` now shows it, with `finalized: true`.

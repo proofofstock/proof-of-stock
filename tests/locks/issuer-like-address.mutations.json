@@ -8,8 +8,8 @@
   "mutations": [
     {
       "name": "a listed address also gets the note",
-      "find": "const prefix = rec ? null : issuerPrefixOf(records)",
-      "replace": "const prefix = issuerPrefixOf(records)",
+      "find": "const prefix = rec ? null : issuerPrefixOf(records, chain)",
+      "replace": "const prefix = issuerPrefixOf(records, chain)",
       "expect": "FAIL a listed address carries no such note"
     },
     {

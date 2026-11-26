@@ -91,7 +91,7 @@ console.log('the script: the examples themselves, text only, no wallet')
 
 console.log('served')
 const root = fs.mkdtempSync(path.join(os.tmpdir(), 'demo-page-'))
-const app = createStocksWeb({ roots: { base: path.join(root, 'b'), robinhood: path.join(root, 'r') }, fetchImpl: async () => ({ ok: false, status: 503, json: async () => ({}) }),
+const app = createStocksWeb({ listLocks: false, roots: { base: path.join(root, 'b'), robinhood: path.join(root, 'r') }, fetchImpl: async () => ({ ok: false, status: 503, json: async () => ({}) }),
   log: () => {}, analytics: { enabled: false }, exam: { url: null }, x402Module: null })
 const { port } = await app.start(0, '127.0.0.1')
 const origin = `http://127.0.0.1:${port}`

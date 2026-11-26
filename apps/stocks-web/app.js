@@ -109,7 +109,7 @@
     try { r = await fetch(path, { headers: { accept: 'application/json' } }) } catch (_) { throw new Error('Could not reach the server. Check your connection and try again.') }
     const body = await r.json().catch(() => ({}))
     if (r.status === 429) throw new Error('Too many checks in a minute. Wait a minute and try again.')
-    if (!r.ok) throw new Error(body.error || `The server could not answer (${r.status}). Try again in a minute.`)
+    if (!r.ok) { const e = new Error(body.error || `The server could not answer (${r.status}). Try again in a minute.`); e.body = body; throw e }
     return body
   }
 
@@ -354,7 +354,14 @@
     // Always ask every chain, the selected one first: an address pasted on the wrong tab still finds its passport.
     const chains = chain === 'all' ? CHAINS : [chain, ...CHAINS.filter((c) => c !== chain)]
     out.replaceChildren(line('checking ' + address + '', 'faint typing'))
-    const got = await Promise.all(chains.map((c) => api(`api/passport?chain=${c}&address=${address}&series=1`).catch(() => null)))
+    // A chain that holds the address (on the issuer's list, the chain not backing it) answers 503 with a reason: that is
+    // said, ahead of another chain's "not on the list" (outside review, 25.11).
+    const got = await Promise.all(chains.map((c) => api(`api/passport?chain=${c}&address=${address}&series=1`).catch((e) => (e && e.body && e.body.reason ? { held: true, chain: c, reason: e.body.reason } : null))))
+    const hold = !got.some((p) => p && p.in_registry) && got.find((p) => p && p.held)
+    if (hold) {
+      act('search', 'address:held')
+      return out.replaceChildren(line(`No verdict on ${CHAIN_LABEL[hold.chain]}: this address is on the issuer's list, but the chain does not back it ${hold.reason === 'awaiting_factory_confirmation' ? 'yet (a new listing, waiting for its creation to be confirmed on chain)' : '(' + hold.reason.replace(/_/g, ' ') + ')'}. Do not buy it until it has a verdict.`, 'err'))
+    }
     const pick = got.find((p) => p && p.in_registry) || got.find((p) => p && p.resembles) || got.find(Boolean)
     act('search', 'address:' + (!pick ? 'error' : pick.in_registry ? 'listed' : pick.impostor_listing || pick.resembles ? 'impostor' : 'unlisted'))
     if (!pick) return out.replaceChildren(line('Could not check this address right now.', 'err'))

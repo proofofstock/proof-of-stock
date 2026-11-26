@@ -1,0 +1,52 @@
+{
+  "_finding": "Owner, 25.11 (docs/list-locks-tz.md v3, the 35 to 50 minute delay for new listings accepted): a record on the issuer list is called listed only when the chain backs it, the pinned Base prefix and the issuer factory having created it, confirmed by a second RPC where there is one. Anything else gets no verdict on every route; a held original is never offered instead of a look-alike.",
+  "target": "evm/core/stocks/verify.mjs",
+  "runner": [
+    "node",
+    "apps/list-gate.test.mjs"
+  ],
+  "mutations": [
+    {
+      "name": "the prefix is not checked",
+      "find": "  if (prefix && !addr.startsWith(prefix)) return { trusted: false, reason: 'issuer_prefix_mismatch', evidence: { prefix } }",
+      "replace": "",
+      "expect": "FAIL no issuer prefix on Base: held"
+    },
+    {
+      "name": "no mirror trusts every record",
+      "find": "  if (!mirror || !mirror.last_ok) return { trusted: false, reason: 'factory_check_unavailable', evidence: null }",
+      "replace": "  if (!mirror || !mirror.last_ok) return { trusted: true, reason: null, evidence: null }",
+      "expect": "FAIL no mirror, or one that never reached a finalized block"
+    },
+    {
+      "name": "the second RPC is not required",
+      "find": "    if (mirror.sources === 2 && !t.second_at) return",
+      "replace": "    if (false) return",
+      "expect": "FAIL two RPC sources: created but not confirmed by the second is awaiting"
+    },
+    {
+      "name": "a conflict is called before CONFIRM_MS",
+      "find": "  if (covered && at - firstListedAt >= CONFIRM_MS) return",
+      "replace": "  if (covered) return",
+      "expect": "FAIL ...within CONFIRM_MS of the covering scan: still awaiting"
+    },
+    {
+      "name": "a held record is answered as listed",
+      "find": "  if (held) {\n",
+      "replace": "  if (false) {\n",
+      "expect": "FAIL a held record ("
+    },
+    {
+      "name": "a held original is offered instead",
+      "find": "listed_address: impostor.registry_address && records.some((r) => r.address === impostor.registry_address) ? impostor.registry_address : null",
+      "replace": "listed_address: impostor.registry_address ?? null",
+      "expect": "FAIL a look-alike of a held original"
+    },
+    {
+      "name": "the prefix is derived from the list",
+      "find": "  if (chain && ISSUER_ADDRESS_PREFIX[chain]) return ISSUER_ADDRESS_PREFIX[chain]\n",
+      "replace": "",
+      "expect": "FAIL the Base prefix is pinned, never derived"
+    }
+  ]
+}

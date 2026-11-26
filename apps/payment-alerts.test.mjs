@@ -29,7 +29,7 @@ console.log('the site keeps the payment state for stp-health')
       pausedUntil: () => pausedUntil, passActive: () => false, passRateOf: () => null, accepts: () => null, purchase: async () => ({ ok: false, status: 402, error: 'no' }) }
   }
   const said = []
-  const app = createStocksWeb({ roots: { base: path.join(root, 'b'), robinhood: path.join(root, 'r') }, fetchImpl: async () => ({ ok: false, status: 503, json: async () => ({}) }),
+  const app = createStocksWeb({ listLocks: false, roots: { base: path.join(root, 'b'), robinhood: path.join(root, 'r') }, fetchImpl: async () => ({ ok: false, status: 503, json: async () => ({}) }),
     now: () => t, log: (m) => said.push(String(m)), analytics: { enabled: false }, exam: { url: null }, x402Module: fake })
   const { port } = await app.start(0, '127.0.0.1')
   const status = async () => await (await fetch(`http://127.0.0.1:${port}/stocks/api/status/payments`)).json()
@@ -49,7 +49,7 @@ console.log('the site keeps the payment state for stp-health')
     const s2 = await status()
     check('a day later the late settlement has left the status, and the pause is over', s2.late_settlements.length === 0 && s2.paused_until === null)
   } finally { await app.stop?.(); fs.rmSync(root, { recursive: true, force: true }) }
-  const app2 = createStocksWeb({ roots: { base: path.join(os.tmpdir(), 'none-b'), robinhood: path.join(os.tmpdir(), 'none-r') }, fetchImpl: async () => ({ ok: false, status: 503, json: async () => ({}) }),
+  const app2 = createStocksWeb({ listLocks: false, roots: { base: path.join(os.tmpdir(), 'none-b'), robinhood: path.join(os.tmpdir(), 'none-r') }, fetchImpl: async () => ({ ok: false, status: 503, json: async () => ({}) }),
     now: () => NOW, log: () => {}, analytics: { enabled: false }, exam: { url: null }, x402Module: null })
   const { port: p2 } = await app2.start(0, '127.0.0.1')
   try {

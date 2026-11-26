@@ -20,7 +20,7 @@
     },
     {
       "name": "the sitemap forgets the listed tokens",
-      "find": "(registries.get(c)?.records || []).map((r) => r.symbol)",
+      "find": "(freshRecords(c) || []).map((r) => r.symbol)",
       "replace": "[].map((r) => r.symbol)",
       "expect": "FAIL ...and one passport per listed token by its short link"
     },

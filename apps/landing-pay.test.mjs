@@ -44,7 +44,7 @@ const root = fs.mkdtempSync(path.join(os.tmpdir(), 'landing-pay-'))
 const fake = () => ({ enabled: true, wallet: '0x' + '02'.repeat(20), priceUsd: 0.01, passMinutes: 10, passRate: 600, description: 'a pass',
   pausedUntil: () => 0, passActive: () => false, passRateOf: () => null, accepts: () => null, purchase: async () => ({ ok: false }) })
 const page = async (x402Module) => {
-  const app = createStocksWeb({ roots: { base: path.join(root, 'b'), robinhood: path.join(root, 'r') }, fetchImpl: async () => ({ ok: false, status: 503, json: async () => ({}) }),
+  const app = createStocksWeb({ listLocks: false, roots: { base: path.join(root, 'b'), robinhood: path.join(root, 'r') }, fetchImpl: async () => ({ ok: false, status: 503, json: async () => ({}) }),
     log: () => {}, analytics: { enabled: false }, exam: { url: null }, x402Module })
   const { port } = await app.start(0, '127.0.0.1')
   try { return await (await fetch(`http://127.0.0.1:${port}/stocks/`)).text() } finally { await app.stop() }

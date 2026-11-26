@@ -52,6 +52,15 @@ export function evaluate ({ status, siteError = null, runs = {}, prevRuns = {}, 
         : `${n}: the issuer list is read again.`)
       const rdOld = s.newest_reading_age_s == null || s.newest_reading_age_s > THRESHOLDS.reading_age_s
       put(`readings:${c}`, rdOld, rdOld ? `${n}: the newest price reading is ${s.newest_reading_age_s == null ? 'missing' : Math.round(s.newest_reading_age_s / 60) + ' min old'}. Passports show it as stale.` : `${n}: price readings are fresh again.`)
+      // The list locks (docs/list-locks-tz.md): a record the chain contradicts, or no factory check to lean on.
+      if (s.factory_check) {
+        const fc = s.factory_check
+        put(`factory-check:${c}`, fc.state === 'unavailable', fc.state === 'unavailable' ? `${n}: the factory check is unavailable (no mirror this code trusts, or none that reached a finalized block), so every ${n} record is held: no verdict.${fc.last_error ? ' Last error: ' + String(fc.last_error).slice(0, 120) + '.' : ''}` : `${n}: the factory check is available again.`)
+        const first = (s.held || []).find((h) => h.reason !== 'awaiting_factory_confirmation')
+        const aw = s.held_awaiting_since ? Math.round((now - Date.parse(s.held_awaiting_since)) / 60e3) : null
+        put(`list-awaiting:${c}`, aw != null && aw > 120, aw != null && aw > 120 ? `${n}: a record has been on the issuer list for ${aw} min without the factory check confirming it (normally under an hour). The mirror, or its second RPC, may be stuck; it stays without a verdict until then.` : `${n}: no record has waited long for the factory check.`)
+        put(`list-conflict:${c}`, (s.held_conflicts || 0) > 0, s.held_conflicts > 0 ? `${n}: ${s.held_conflicts} record(s) on the issuer list are held because the chain contradicts them (first ${first ? first.address + ': ' + first.reason : 'unknown'}). Verdicts for them are withheld; look at the issuer's list.` : `${n}: no record on the issuer list is contradicted by the chain.`)
+      }
       const impOld = s.impostors_age_s == null || s.impostors_age_s > THRESHOLDS.impostors_age_s
       put(`impostors:${c}`, impOld, impOld ? `${n}: the look-alike list is ${s.impostors_age_s == null ? 'missing' : Math.round(s.impostors_age_s / 3600) + ' h old'} (it is rebuilt every 6 h).` : `${n}: the look-alike list is fresh again.`)
     }
@@ -152,7 +161,7 @@ export function mirrorChecks (put, name, chain, mirror, now) {
   const c = mirror?.comparison
   if (!c) return
   const odd = c.on_list_not_created || []
-  put('mirror-list:' + chain, odd.length > 0, odd.length ? name + ': ' + odd.length + ' token(s) on the issuer list were never created by its factory on chain (first ' + odd[0] + '). The list or the mirror is wrong; verdicts still follow the list.' : name + ': every token on the issuer list was created by its factory on chain again.')
+  put('mirror-list:' + chain, odd.length > 0, odd.length ? name + ': ' + odd.length + ' token(s) on the issuer list were never created by its factory on chain (first ' + odd[0] + '). The list or the mirror is wrong; verdicts for those tokens are withheld.' : name + ': every token on the issuer list was created by its factory on chain again.')
 }
 
 /**

@@ -335,7 +335,7 @@ export function createMcpHttp (data) {
         const reg = data.snapshot ? data.snapshot(args.chain) : undefined
         for (const a of args.addresses) {
           const r = data.verify(args.chain, a, reg)
-          if (r.status === 'unavailable') return fail(`The ${chain} registry is unavailable right now (registry_age_s: ${r.body.registry_age_s}). No answer is given rather than a wrong one; try again in a minute.`)
+          if (r.status === 'unavailable') return fail(r.body.reason ? `No verdict for ${r.body.address} on ${chain}: the issuer's list names it, but the chain does not back it (${r.body.reason}). No answer is given for the batch rather than a wrong one.` : `The ${chain} registry is unavailable right now (registry_age_s: ${r.body.registry_age_s}). No answer is given rather than a wrong one; try again in a minute.`)
           results.push(r.body)
         }
         const listed = results.filter((r) => r.listed), imp = results.filter((r) => r.impostor), rest = results.length - listed.length - imp.length

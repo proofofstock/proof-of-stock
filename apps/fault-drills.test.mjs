@@ -62,7 +62,7 @@ for (const [name, brk] of Object.entries(BREAKS)) {
     if (u.startsWith(ROBINHOOD_ASSETS_URL)) return down ? brk(RHA) : ok(RHA)
     return { ok: false, status: 404, json: async () => ({}) }
   }
-  const app = createStocksWeb({ roots: { base: path.join(tmp, 'b'), robinhood: path.join(tmp, 'r') }, fetchImpl, now: () => t, log: () => {}, analytics: { enabled: false } })
+  const app = createStocksWeb({ listLocks: false, roots: { base: path.join(tmp, 'b'), robinhood: path.join(tmp, 'r') }, fetchImpl, now: () => t, log: () => {}, analytics: { enabled: false } })
   const { port } = await app.start(0, '127.0.0.1')
   let ip = 0
   const verify = async (chain, a) => { const r = await fetch(`http://127.0.0.1:${port}/stocks/verify?chain=${chain}&address=${a}`, { headers: { 'x-real-ip': '198.51.100.' + (++ip % 250) } }); return { status: r.status, body: await r.json() } }

@@ -78,7 +78,7 @@ console.log('the server')
 {
   // 45 s into a minute, so the checks below cross a calendar minute the way the 12.11 audit's series did.
   let t = Date.parse('2026-11-10T12:00:45Z')
-  const app = createStocksWeb({ roots: { base: path.join(tmp, 'b'), robinhood: path.join(tmp, 'r') }, fetchImpl: async () => ({ ok: false, status: 503, json: async () => ({}) }), now: () => t, log: () => {}, analytics: { enabled: false } })
+  const app = createStocksWeb({ listLocks: false, roots: { base: path.join(tmp, 'b'), robinhood: path.join(tmp, 'r') }, fetchImpl: async () => ({ ok: false, status: 503, json: async () => ({}) }), now: () => t, log: () => {}, analytics: { enabled: false } })
   const { port } = await app.start(0, '127.0.0.1')
   const raw = (line) => new Promise((resolve) => { const s = net.connect(port, '127.0.0.1', () => s.write(line)); let b = ''; s.on('data', (d) => { b += d }); s.on('end', () => resolve(b)); s.on('error', () => resolve(b)); setTimeout(() => { s.destroy(); resolve(b) }, 2000) })
   const r = await raw('GET // HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n')
@@ -107,7 +107,7 @@ console.log('the rate limit is a sliding window')
   // External audit, 12.11: 80 sequential requests 0.65 s apart all passed when the series crossed a minute boundary
   // (a fixed calendar minute counts it as two). The limit is 60 units in any 60 seconds, wherever the series starts.
   let t = 0
-  const app = createStocksWeb({ roots: { base: path.join(tmp, 'b'), robinhood: path.join(tmp, 'r') }, fetchImpl: async () => ({ ok: false, status: 503, json: async () => ({}) }), now: () => t, log: () => {}, analytics: { enabled: false } })
+  const app = createStocksWeb({ listLocks: false, roots: { base: path.join(tmp, 'b'), robinhood: path.join(tmp, 'r') }, fetchImpl: async () => ({ ok: false, status: 503, json: async () => ({}) }), now: () => t, log: () => {}, analytics: { enabled: false } })
   const { port } = await app.start(0, '127.0.0.1')
   const ping = (ip) => fetch(`http://127.0.0.1:${port}/stocks/mcp`, { method: 'POST', headers: { 'content-type': 'application/json', accept: 'application/json', 'x-real-ip': ip }, body: '{"jsonrpc":"2.0","id":1,"method":"ping"}' }).then(async (r) => { await r.arrayBuffer(); return r.status })
   const status = (ip) => fetch(`http://127.0.0.1:${port}/stocks/api/status`, { headers: { 'x-real-ip': ip } }).then(async (r) => { await r.arrayBuffer(); return r.status })
@@ -156,7 +156,7 @@ console.log('lists are a window; the archive is not a download')
   const item = (i, days) => ({ address: '0x' + i.toString(16).padStart(40, '0'), symbol: 'NVDAc', name: 'n', kind: 'registry_symbol', registry_symbol: 'NVDAc', registry_address: '0x' + 'a'.repeat(40), first_seen_at: new Date(NOW - days * 86400e3).toISOString(), deployer: i <= 3 ? '0x' + 'd'.repeat(40) : null })
   const items = [...Array.from({ length: 60 }, (_, i) => item(i + 1, 1)), ...Array.from({ length: 40 }, (_, i) => item(i + 100, 30))]
   fs.writeFileSync(path.join(peg, 'impostors.json'), JSON.stringify({ generated_at: new Date(NOW).toISOString(), counts: { registry_symbol: 100 }, listed: 100, items }))
-  const app = createStocksWeb({ roots: { base: root, robinhood: path.join(tmp, 'imp-rh') }, fetchImpl: async () => ({ ok: false, status: 503, json: async () => ({}) }), now: () => NOW, log: () => {}, analytics: { enabled: false } })
+  const app = createStocksWeb({ listLocks: false, roots: { base: root, robinhood: path.join(tmp, 'imp-rh') }, fetchImpl: async () => ({ ok: false, status: 503, json: async () => ({}) }), now: () => NOW, log: () => {}, analytics: { enabled: false } })
   const { port } = await app.start(0, '127.0.0.1')
   const j = await (await fetch(`http://127.0.0.1:${port}/stocks/api/impostors?chain=base&limit=1000`)).json()
   const b = j.chains.base

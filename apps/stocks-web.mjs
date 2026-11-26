@@ -63,11 +63,11 @@ import { buildTokenList, tokenListProblems, TOKEN_LIST_PATH } from './stocks-tok
 import { apiPage } from './stocks-api-page.mjs'
 import { demoPage, demoCsp } from './stocks-demo-page.mjs'
 import { labPage } from './stocks-lab-page.mjs'
-import { verifyToken, badgeSvg, badgeState, issuerPrefixOf, ISSUER_LABEL as VERIFY_ISSUER_LABEL, REGISTRY_FRESH_S } from '../evm/core/stocks/verify.mjs'
+import { verifyToken, badgeSvg, badgeState, issuerPrefixOf, ISSUER_LABEL as VERIFY_ISSUER_LABEL, REGISTRY_FRESH_S, trustOf } from '../evm/core/stocks/verify.mjs'
 import { mintedOf } from '../evm/core/stocks/registries.mjs'
 import { createDocsRenderer } from './stocks-docs.mjs'
 import { stampList, listProof, listBytes } from '../evm/core/stocks/list-proof.mjs'
-import { canonicalRegistry } from '../evm/core/stocks/history.mjs'
+import { canonicalRegistry, firstListedTimes } from '../evm/core/stocks/history.mjs'
 import { isIsoTime } from '../scripts/lib/mcp-args.mjs'
 import { statusPage, usageOf, appsSentenceHtml, withApps } from './stocks-status.mjs'
 import { archiveAt } from './stocks-archive.mjs'
@@ -291,6 +291,10 @@ export function createStocksWeb ({
   // 402index.io's domain claim (22.11): the SHA-256 hash of the token it issues, which it reads at
   // /.well-known/402index-verify.txt. The hash only, never the token; on the host, like the Glama claim, never in git.
   index402Hash = process.env.STP_402INDEX_HASH || null,
+  // The list locks (docs/list-locks-tz.md): on by default, and deliberately not settable from the environment, so no
+  // host setting can switch them off. Only a test that is about something else passes false, to keep its fixtures
+  // free of a factory mirror; tests/locks/list-gate*.mutations.json and stocks-web.test.mjs hold the entry point to it.
+  listLocks = true,
   // /lab (owner, 25.11): the fake exchange and the crash test, behind Cloudflare Access and linked from nowhere. Off unless
   // the host says POS_LAB=on in /etc/pos/web.env, set once the Access rule exists: a deploy alone never opens it.
   lab = process.env.POS_LAB === 'on',
@@ -440,6 +444,10 @@ export function createStocksWeb ({
         for (const a of kept) gone.delete(a)
       }
       const stamp = stampList({ issuer: C.issuer, chainId: C.chainId, records })
+      // firstListedAt (docs/list-locks-tz.md): from the archive, else the first good read that held the address. A read
+      // refused above never reaches here, so it never touches the clock.
+      const fl = firstListedOf(chain)
+      for (const r of records) if (!fl.has(r.address)) fl.set(r.address, now())
       registries.set(chain, { records, at: now(), error: null, stamp })
       rememberList(chain, stamp.registry_hash.slice(7), canonicalRegistry(records))
     } catch (e) {
@@ -481,7 +489,8 @@ export function createStocksWeb ({
   function tokenList () {
     const missing = Object.keys(CHAINS).filter((c) => !freshRecords(c))
     if (missing.length) return { missing }
-    const key = Object.keys(CHAINS).map((c) => registries.get(c).at + ':' + (decimalsBook.get(c)?.size ?? 0)).join('|')
+    // The list locks decide which records are in it, so their decision is part of the key (docs/list-locks-tz.md).
+    const key = Object.keys(CHAINS).map((c) => registries.get(c).at + ':' + (decimalsBook.get(c)?.size ?? 0) + ':' + freshRecords(c).map((r) => r.address).join(',')).join('|')
     if (tokenListCache.key === key) return { body: tokenListCache.body }
     const chains = Object.keys(CHAINS).map((c) => ({ chainId: CHAINS[c].chainId, issuer: CHAINS[c].issuer, records: freshRecords(c), decimals: decimalsBook.get(c) || new Map() }))
     const list = buildTokenList({ chains, at: Math.min(...Object.keys(CHAINS).map((c) => registries.get(c).at)), logoURI: `${publicOrigin}${publicPath}/logo.png` })
@@ -643,10 +652,46 @@ export function createStocksWeb ({
   // board) says it cannot verify, never "listed" or "not listed" from an old copy. Before 24.11 only /verify held this,
   // and a stale copy kept saying ISSUER-LISTED on the other routes for as long as the issuer was unreachable (outside
   // review, 24.11). The copy itself is kept, for /status and for the next read's delisting diff.
-  function freshRecords (c) {
+  // ONE FRESHNESS RULE for everything: the list's age in whole seconds, at most REGISTRY_FRESH_S, exactly as
+  // verifyToken counts it. Two rules disagreed for half a second at the edge, and /verify then fell back to the raw list
+  // and answered "listed" for held records (outside review, 25.11).
+  const registryFresh = (r) => Boolean(r?.records && r.at != null && Math.max(0, Math.round((now() - r.at) / 1000)) <= REGISTRY_FRESH_S)
+  function rawFreshRecords (c) {
     const r = registries.get(c)
-    return r?.records && r.at != null && now() - r.at <= REGISTRY_FRESH_S * 1000 ? r.records : null
+    return registryFresh(r) ? r.records : null
   }
+
+  // THE ONE SOURCE OF LISTED RECORDS (docs/list-locks-tz.md v3). A record on the issuer's fresh list counts as listed only
+  // when trustOf backs it with the chain: the pinned prefix, and the issuer's factory having created it (confirmed by a
+  // second RPC where there is one). Everything that says "listed" (verify, the badge, the passport, find, list, overview,
+  // matrix, gaps, the page, MCP, listed_on_other_chain, the sitemap) reads freshRecords, which is this; the raw list stays
+  // for list_proof, the /api/list archive, the delisting diff and the counts in /status.
+  const firstListed = new Map() // chain -> Map(address -> ms)
+  function firstListedOf (c) {
+    if (!firstListed.has(c)) { let m = new Map(); try { m = firstListedTimes(roots[c]) } catch (_) {} firstListed.set(c, m) }
+    return firstListed.get(c)
+  }
+  const trustCache = new Map() // chain -> { key, v }
+  function listedRecords (c) {
+    const raw = rawFreshRecords(c)
+    if (!raw) return null
+    if (!listLocks) return { trusted: raw, held: new Map(), raw }
+    const m = mirrorOf(c)
+    const key = `${registries.get(c).at}|${m ? m.updated_at + '|' + (m.last_ok && m.last_ok.at) + '|' + m.tokens.length + '|' + (m.revoked || []).length : 'none'}`
+    const hit = trustCache.get(c)
+    if (hit && hit.key === key) return hit.v
+    const fl = firstListedOf(c)
+    const trusted = [], held = new Map()
+    for (const r of raw) {
+      const t = trustOf({ chain: c, address: r.address, mirror: m, firstListedAt: fl.get(r.address) ?? null, now: now() })
+      if (t.trusted) trusted.push(r)
+      else held.set(r.address, { reason: t.reason, since: fl.has(r.address) ? new Date(fl.get(r.address)).toISOString() : null, symbol: r.symbol ?? null, evidence: t.evidence })
+    }
+    const v = { trusted, held, raw }
+    trustCache.set(c, { key, v })
+    return v
+  }
+  function freshRecords (c) { const l = listedRecords(c); return l ? l.trusted : null }
 
   // Every chain whose registry has loaded and is fresh, with its readings window. Any other chain is left out and named.
   function loaded () {
@@ -667,10 +712,17 @@ export function createStocksWeb ({
     if (!ADDRESS.test(String(address || ''))) return { status: 400, body: { error: 'address must be 0x followed by 40 hex characters' } }
     const addr = String(address).toLowerCase()
     const hours = Math.min(PUBLIC_HOURS, windowH, Math.max(1, Number(hoursArg) || PUBLIC_HOURS))
-    const inRegistry = reg.records.some((r) => r.address === addr)
+    // A record the chain does not back gets no passport: never in_registry true, never a false "not in registry".
+    const lr = listedRecords(chain)
+    const held = lr.held.get(addr)
+    if (held) return { status: 503, body: { error: 'no verdict: the issuer list names this address, but the chain does not back it', reason: held.reason, held_since: held.since, chain, address: addr, issuer_factory: factoryFact(chain, addr), registry_age_s: Math.round((now() - reg.at) / 1000) } }
+    const inRegistry = lr.trusted.some((r) => r.address === addr)
     const w = windows[chain].get()
     const identity = inRegistry ? {} : nameOf(chain, addr)
-    const p = buildPassport({ address: addr, chainId: CHAINS[chain].chainId, registry: reg.records, readings: inRegistry && w.window ? readingsOf(w.window.byToken.get(addr), addr) : [], identity, now: now(), windowH: Math.min(hours, windowH) })
+    // Built against the raw fresh list: a held record never gets here (503 above), so in_registry is the trusted answer,
+    // and a copy of a brand-new listing still resembles it (outside review, 25.11). The held original is not named.
+    const p = buildPassport({ address: addr, chainId: CHAINS[chain].chainId, registry: lr.raw, readings: inRegistry && w.window ? readingsOf(w.window.byToken.get(addr), addr) : [], identity, now: now(), windowH: Math.min(hours, windowH) })
+    if (p.resembles && p.resembles.registry_address && lr.held.has(p.resembles.registry_address)) p.resembles = { ...p.resembles, registry_address: null }
     const elsewhere = inRegistry ? sameStockElsewhere(loaded().byChain, chain, addr, now(), hours * 3600) : []
     const listed = inRegistry ? null : impostors.get(chain)?.byAddress?.get(addr) || null
     const points = inRegistry && w.window ? seriesPoints(w.window.byToken.get(addr)).filter(([t]) => t >= now() - hours * 3600e3) : []
@@ -684,7 +736,7 @@ export function createStocksWeb ({
     }
     const sources = { ...SOURCES[chain], dex: DEX_SOURCE, recorded_every_s: RECORDER_CADENCE_S,
       pools_counted: { min_liquidity_usd: MIN_POOL_LIQUIDITY_USD, paired_with_addresses: [...(C.referenceAssets || [])], rule: 'a pool prices the token only against the chain\'s dollar stablecoins or wrapped ETH, matched by address; the deepest one is used' } }
-    return { status: 200, body: { ...p, chain, links, sources, issuer_factory: factoryFact(chain, addr), issuer_like_address: inRegistry ? null : issuerLike(chain, addr, reg.records), list_proof: proofOf(chain, reg), same_stock_elsewhere: elsewhere, series_points: points, impostor_listing: listed ? { first_seen_at: listed.first_seen_at, same_deployer_impostors: listed.same_deployer_impostors ?? null } : null, case: caseSummary(chain, addr), readings_loaded: Boolean(w.window), registry_age_s: Math.round((now() - reg.at) / 1000) } }
+    return { status: 200, body: { ...p, chain, links, sources, issuer_factory: factoryFact(chain, addr), issuer_like_address: inRegistry ? null : issuerLike(chain, addr, lr.trusted), list_proof: proofOf(chain, reg), same_stock_elsewhere: elsewhere, series_points: points, impostor_listing: listed ? { first_seen_at: listed.first_seen_at, same_deployer_impostors: listed.same_deployer_impostors ?? null } : null, case: caseSummary(chain, addr), readings_loaded: Boolean(w.window), registry_age_s: Math.round((now() - reg.at) / 1000) } }
   }
 
   /** What the server holds, per chain, with ages: the numbers behind /api/status and /status. */
@@ -704,6 +756,21 @@ export function createStocksWeb ({
       settles_v2: x402.settlesV2 === 'cdp' ? 'cdp' : 'self' }
   }
 
+  // The list locks on /api/status (docs/list-locks-tz.md): the factory check's state, and the records held back.
+  function listLockStatus (c) {
+    const m = mirrorOf(c)
+    const lr = listedRecords(c)
+    const held = lr ? [...lr.held.entries()].map(([address, h]) => ({ address, reason: h.reason, since: h.since })) : []
+    return {
+      factory_check: { state: !m || !m.last_ok ? 'unavailable' : mirrorCaughtUp(m) ? 'ok' : 'behind', last_ok_at: m?.last_ok?.at ?? null, last_error: m?.last_error ?? null, rpc_sources: m?.sources === 2 ? 2 : 1 },
+      held_count: held.length,
+      held_conflicts: held.filter((h) => h.reason !== 'awaiting_factory_confirmation').length,
+      // The oldest record still awaiting its creation: a stuck mirror or a second RPC that never confirms shows here.
+      held_awaiting_since: held.filter((h) => h.reason === 'awaiting_factory_confirmation' && h.since).map((h) => h.since).sort()[0] || null,
+      held: held.sort((a, b) => (a.reason === 'awaiting_factory_confirmation') - (b.reason === 'awaiting_factory_confirmation')).slice(0, 10),
+    }
+  }
+
   function statusNumbers () {
     return Object.fromEntries(Object.keys(CHAINS).map((c) => {
       const r = registries.get(c); const w = windows[c].get(); const imp = impostors.get(c)
@@ -719,7 +786,8 @@ export function createStocksWeb ({
       return [c, { registry_records: r?.records?.length ?? null, registry_minted: registryMinted, registry_age_s: r?.at ? Math.round((now() - r.at) / 1000) : null, registry_error: r?.error ?? null,
         readings_tokens: w.window ? w.window.byToken.size : null, readings_age_s: w.window ? Math.round((now() - w.window.loaded_at) / 1000) : null, readings_error: w.error ? internal(`readings ${c}`, w.error, 'the readings could not be read') : null,
         newest_reading_at: newest == null ? null : new Date(newest).toISOString(), newest_reading_age_s: newest == null ? null : Math.round((now() - newest) / 1000),
-        impostors_listed: imp && imp.items ? imp.items.length : null, impostors_age_s: Number.isFinite(impAt) ? Math.round((now() - impAt) / 1000) : null }]
+        impostors_listed: imp && imp.items ? imp.items.length : null, impostors_age_s: Number.isFinite(impAt) ? Math.round((now() - impAt) / 1000) : null,
+        ...listLockStatus(c) }]
     }))
   }
 
@@ -762,9 +830,32 @@ export function createStocksWeb ({
   /** The one-bit answer for an address (evm/core/stocks/verify.mjs), from memory only. */
   // `reg`: the registry snapshot to decide against; the caller passes the same one to proofOf, so a verdict and its
   // list_proof can never come from two different reads.
+  // Records on the issuer's list that match a search but are held (docs/list-locks-tz.md): named, with no verdict, so a
+  // search for a brand-new listing does not read as "no such token" (outside review, 25.11). Empty when none.
+  function heldMatches (chains, q) {
+    const held = []
+    for (const c of chains) {
+      const lr = listedRecords(c)
+      if (!lr || !lr.held.size) continue
+      const recs = lr.raw.filter((r) => lr.held.has(r.address))
+      for (const m of findAcross({ [c]: { records: recs } }, q).matches) held.push({ chain: c, symbol: m.symbol, address: m.address, reason: lr.held.get(m.address).reason })
+    }
+    return held.length ? { held, held_note: 'On the issuer\'s list, but the chain does not back them yet or contradicts them: no verdict is given for these addresses.' } : {}
+  }
+
+  // The original a look-alike copies, named only while it is a listed record now (docs/list-locks-tz.md, v3 item 7):
+  // a held original is never handed out as the thing to buy instead.
+  function originalOf (chain, address) {
+    const a = String(address || '').toLowerCase()
+    if (!a) return { listed_address: null }
+    const lr = listedRecords(chain)
+    if (lr && lr.trusted.some((r) => r.address === a)) return { listed_address: a }
+    return { listed_address: null, listed_address_held: lr?.held.get(a)?.reason || 'not_listed_now' }
+  }
+
   /** An address outside the list that starts like the listed ones (evm/core/stocks/verify.mjs issuerPrefixOf), as the passport says it. */
   function issuerLike (chain, addr, records) {
-    const prefix = issuerPrefixOf(records)
+    const prefix = issuerPrefixOf(records, chain)
     if (!prefix || !addr.startsWith(prefix)) return null
     const who = VERIFY_ISSUER_LABEL[CHAINS[chain]?.issuer] || 'the issuer'
     return { prefix, note: `This address starts like the addresses on ${who}'s list, but this contract is not on it: it is not ${who}'s stock token. The start of an address proves nothing.` }
@@ -774,9 +865,13 @@ export function createStocksWeb ({
     const addr = String(address || '').toLowerCase()
     const imp = impostors.get(chain)
     const r = verifyToken({
-      chain, issuer: CHAINS[chain].issuer, address: addr, records: reg?.records || null, registryAt: reg?.at ?? null, now: now(),
+      // `reg` is the snapshot the caller decides against (a batch passes one for all its addresses); its records are
+      // narrowed to the trusted ones, and a held address gets no verdict.
+      // With the locks on, a list that is not fresh (listedRecords null) is no list: never the raw records.
+      chain, issuer: CHAINS[chain].issuer, address: addr, records: !reg?.records ? null : reg === registries.get(chain) ? (listedRecords(chain)?.trusted ?? null) : (listLocks ? null : reg.records), registryAt: reg?.at ?? null, now: now(),
+      held: reg === registries.get(chain) ? listedRecords(chain)?.held.get(addr) || null : null,
       impostor: imp?.byAddress?.get(addr) || null, delisted: delisted.get(chain).get(addr) || null,
-      otherChains: Object.keys(CHAINS).filter((c) => c !== chain).map((c) => ({ chain: c, records: registries.get(c)?.records || [] })),
+      otherChains: Object.keys(CHAINS).filter((c) => c !== chain).map((c) => ({ chain: c, records: freshRecords(c) || [], held: listedRecords(c)?.held || null })),
     })
     // The factory fact rides along both when the list answered and when it could not: then it is the only fact, labelled.
     if (r.status === 'ok' || r.status === 'unavailable') r.body.issuer_factory = factoryFact(chain, addr)
@@ -796,7 +891,7 @@ export function createStocksWeb ({
     const t = Math.max(from, since ? Date.parse(since) : from)
     const items = j.items.filter((i) => i.first_seen_at && Date.parse(i.first_seen_at) >= t)
       .sort((a, b) => String(b.first_seen_at).localeCompare(String(a.first_seen_at)))
-    return { chain, generated_at: j.generated_at, since: since || null, window_days: BULK_WINDOW_DAYS, count: items.length, listed_total: j.items.length, older: FULL_ARCHIVE, note: j.note, untrusted_text: UNTRUSTED_TEXT_NOTE, items: items.slice(0, BULK_MAX).map((i) => ({ address: i.address, symbol: i.symbol, name: i.name, kind: i.kind, imitates_symbol: i.registry_symbol ?? null, listed_address: i.registry_address ?? null, first_seen_at: i.first_seen_at })) }
+    return { chain, generated_at: j.generated_at, since: since || null, window_days: BULK_WINDOW_DAYS, count: items.length, listed_total: j.items.length, older: FULL_ARCHIVE, note: j.note, untrusted_text: UNTRUSTED_TEXT_NOTE, items: items.slice(0, BULK_MAX).map((i) => ({ address: i.address, symbol: i.symbol, name: i.name, kind: i.kind, imitates_symbol: i.registry_symbol ?? null, ...originalOf(chain, i.registry_address), first_seen_at: i.first_seen_at })) }
   }
 
   /** The Base ↔ Robinhood matrix from memory, or null with the chains whose registry has not loaded. */
@@ -834,7 +929,15 @@ export function createStocksWeb ({
       const a = dir ? anchorFor(dir, d) : null
       return a ? { day: a.day, sha256: a.sha256, manifest_url: `${publicOrigin}${publicPath}/anchors/${a.manifest}`, mirrors: a.mirrors } : null
     }
-    return archiveAt({ history, anchorOf, origin: publicOrigin + publicPath, chains: Object.keys(CHAINS), chain, address, date, now: now() })
+    const r = archiveAt({ history, anchorOf, origin: publicOrigin + publicPath, chains: Object.keys(CHAINS), chain, address, date, now: now() })
+    // The archive says what the issuer's list held that day. For an address the chain does not back now, that is no
+    // verdict, and the sentence agents are told to quote says so (outside review, 25.11).
+    const held = r && r.status === 200 && CHAINS[chain] ? listedRecords(chain)?.held.get(String(address || '').toLowerCase()) : null
+    if (held && /^LISTED:/.test(r.body.summary)) {
+      r.body.summary = r.body.summary.replace(/^LISTED: /, 'ON THE ISSUER\'S LIST AS SERVED, NO VERDICT: ') + ` The chain does not back it now (${held.reason}): do not rely on it.`
+      r.body.held_now = { reason: held.reason, since: held.since }
+    }
+    return r
   }
   /**
    * The landing's board of largest gaps (/api/overview) for largest_gaps: the same overview() call, with each row's
@@ -861,12 +964,12 @@ export function createStocksWeb ({
     chains: Object.keys(CHAINS),
     log,
     maxHours: Math.min(PUBLIC_HOURS, windowH),
-    find: (c, q) => { const { byChain } = loaded(); if (!byChain[c]) throw unavailable(`the ${c} registry is not loaded yet`); return { ...findAcross({ [c]: byChain[c] }, q), ...sourceOf(c) } },
+    find: (c, q) => { const { byChain } = loaded(); if (!byChain[c]) throw unavailable(`the ${c} registry is not loaded yet`); return { ...findAcross({ [c]: byChain[c] }, q), ...heldMatches([c], q), ...sourceOf(c) } },
     list: (c) => {
       const recs = freshRecords(c)
       if (!recs) throw unavailable(`the ${c} registry has not been read in the last ${REGISTRY_FRESH_S / 60} minutes; no list is given`)
       const tokens = recs.map((r) => ({ symbol: r.symbol, name: r.name ?? null, address: r.address, isin: r.isin, multiplier: r.multiplier, has_reference_price: r.reference?.price_usd > 0, minted: mintedOf(r) }))
-      return { chain: c, issuer: CHAINS[c].issuer, ...sourceOf(c), count: tokens.length, minted: tokens.some((t) => t.minted == null) ? null : tokens.filter((t) => t.minted).length, with_reference_price: tokens.filter((t) => t.has_reference_price).length, tokens }
+      return { chain: c, issuer: CHAINS[c].issuer, ...sourceOf(c), held_back: listedRecords(c)?.held.size ?? 0, count: tokens.length, minted: tokens.some((t) => t.minted == null) ? null : tokens.filter((t) => t.minted).length, with_reference_price: tokens.filter((t) => t.has_reference_price).length, tokens }
     },
     passport: passportOf,
     verify: verifyOf,
@@ -1123,7 +1226,7 @@ export function createStocksWeb ({
     if (sub === '/.well-known/security.txt') return send(res, 200, securityTxt(site, sourceUrl, now()), 'text/plain; charset=utf-8', { 'cache-control': 'public, max-age=3600' })
     // The listed tokens come from the registries in memory, so the sitemap follows a listing within PAGE_CACHE_MS.
     if (sub === '/sitemap.xml') {
-      const build = () => sitemapXml(sitemapUrls({ site, docs: docs.keys(), released: releasedIso, symbols: Object.fromEntries(Object.keys(CHAINS).map((c) => [c, (registries.get(c)?.records || []).map((r) => r.symbol).filter(Boolean)])) }))
+      const build = () => sitemapXml(sitemapUrls({ site, docs: docs.keys(), released: releasedIso, symbols: Object.fromEntries(Object.keys(CHAINS).map((c) => [c, (freshRecords(c) || []).map((r) => r.symbol).filter(Boolean)])) }))
       return send(res, 200, cachedPage('/sitemap.xml', build), 'application/xml; charset=utf-8', { 'cache-control': 'public, max-age=3600' })
     }
     if (sub === '/llms.txt') return send(res, 200, llms, 'text/plain; charset=utf-8', { 'cache-control': 'public, max-age=3600', 'access-control-allow-origin': '*' })
@@ -1363,7 +1466,7 @@ export function createStocksWeb ({
         if (chain && c !== chain) continue
         const j = impostors.get(c)
         const recent = j?.items ? j.items.filter((i) => i.first_seen_at && Date.parse(i.first_seen_at) >= from) : null
-        out[c] = j?.items ? { generated_at: j.generated_at, counts: j.counts, listed: j.listed, note: j.note, untrusted_text: UNTRUSTED_TEXT_NOTE, window_days: BULK_WINDOW_DAYS, in_window: recent.length, items: recent.slice(0, limit), older: FULL_ARCHIVE } : { error: j?.error || 'not loaded' }
+        out[c] = j?.items ? { generated_at: j.generated_at, counts: j.counts, listed: j.listed, note: j.note, untrusted_text: UNTRUSTED_TEXT_NOTE, window_days: BULK_WINDOW_DAYS, in_window: recent.length, items: recent.slice(0, limit).map((i) => { const o = originalOf(c, i.registry_address); return { ...i, registry_address: o.listed_address, ...(o.listed_address_held ? { listed_address_held: o.listed_address_held } : {}) } }), older: FULL_ARCHIVE } : { error: j?.error || 'not loaded' }
       }
       return send(res, 200, { chains: out }, undefined, { 'cache-control': 'public, max-age=300' })
     }
@@ -1376,7 +1479,7 @@ export function createStocksWeb ({
       if (sub === '/api/overview') return send(res, 200, { market_now: usEquitySession(now()), chains: overview(scope, { now: now(), staleS: OVERVIEW_STALE_S }), missing }, undefined, { 'cache-control': 'public, max-age=60' })
       const q = String(url.searchParams.get('q') || '').trim().slice(0, 64)
       if (!q) return send(res, 400, { error: 'q is required' })
-      return send(res, 200, { ...findAcross(scope, q), missing }, undefined, { 'cache-control': 'public, max-age=60' })
+      return send(res, 200, { ...findAcross(scope, q), ...heldMatches(chain ? [chain] : Object.keys(CHAINS), q), missing }, undefined, { 'cache-control': 'public, max-age=60' })
     }
     if (sub === '/api/passport') {
       const r = await passportOf(chain, url.searchParams.get('address'), url.searchParams.get('hours'))

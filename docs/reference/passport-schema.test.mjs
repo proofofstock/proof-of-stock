@@ -106,7 +106,7 @@ const fetchImpl = async (url) => {
   return { ok: false, status: 404, json: async () => ({}) }
 }
 
-const app = createStocksWeb({ roots: { base: baseRoot, robinhood: rhRoot }, fetchImpl, now: () => NOW, log: () => {} })
+const app = createStocksWeb({ listLocks: false, roots: { base: baseRoot, robinhood: rhRoot }, fetchImpl, now: () => NOW, log: () => {} })
 const { port } = await app.start(0, '127.0.0.1')
 const passport = async (chain, address, extra = '') => {
   const r = await fetch(`http://127.0.0.1:${port}/stocks/api/passport?chain=${chain}&address=${address}${extra}`)

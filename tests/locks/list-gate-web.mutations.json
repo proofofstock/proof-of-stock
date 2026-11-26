@@ -1,0 +1,112 @@
+{
+  "_finding": "Owner, 25.11 (docs/list-locks-tz.md v3, the 35 to 50 minute delay for new listings accepted): a record on the issuer list is called listed only when the chain backs it, the pinned Base prefix and the issuer factory having created it, confirmed by a second RPC where there is one. Anything else gets no verdict on every route; a held original is never offered instead of a look-alike. One source of listed records feeds every route, the archive fixes when an address was first listed, and the production entry point runs with the locks on.",
+  "target": "apps/stocks-web.mjs",
+  "runner": [
+    "node",
+    "apps/list-gate.test.mjs"
+  ],
+  "mutations": [
+    {
+      "name": "the locks are off by default",
+      "find": "  listLocks = true,\n",
+      "replace": "  listLocks = false,\n",
+      "expect": "FAIL a held record ("
+    },
+    {
+      "name": "find and list read the raw list",
+      "find": "  function freshRecords (c) { const l = listedRecords(c); return l ? l.trusted : null }",
+      "replace": "  function freshRecords (c) { return rawFreshRecords(c) }",
+      "expect": "FAIL find: a held record is no match"
+    },
+    {
+      "name": "a held record gets a passport",
+      "find": "    if (held) return { status: 503,",
+      "replace": "    if (false) return { status: 503,",
+      "expect": "FAIL the passport: a trusted record is in the registry; a held one gets no passport"
+    },
+    {
+      "name": "/api/impostors names a held original",
+      "find": "items: recent.slice(0, limit).map((i) => { const o = originalOf(c, i.registry_address); return { ...i, registry_address: o.listed_address, ...(o.listed_address_held ? { listed_address_held: o.listed_address_held } : {}) } })",
+      "replace": "items: recent.slice(0, limit)",
+      "expect": "FAIL /api/impostors: a held original is not named"
+    },
+    {
+      "name": "first-listed times not read from the archive",
+      "find": "    if (!firstListed.has(c)) { let m = new Map(); try { m = firstListedTimes(roots[c]) } catch (_) {} firstListed.set(c, m) }",
+      "replace": "    if (!firstListed.has(c)) { firstListed.set(c, new Map()) }",
+      "expect": "FAIL after a restart a conflict is still a conflict"
+    },
+    {
+      "name": "a held record answered by verify with the trusted list only",
+      "find": "      held: reg === registries.get(chain) ? listedRecords(chain)?.held.get(addr) || null : null,",
+      "replace": "      held: null,",
+      "expect": "FAIL a held record ("
+    },
+    {
+      "name": "find hides a held record",
+      "find": "...heldMatches(chain ? [chain] : Object.keys(CHAINS), q), ",
+      "replace": "",
+      "expect": "FAIL find: a held record is no match, but it is named as held"
+    },
+    {
+      "name": "the passport resembles nothing new",
+      "find": "    const p = buildPassport({ address: addr, chainId: CHAINS[chain].chainId, registry: lr.raw,",
+      "replace": "    const p = buildPassport({ address: addr, chainId: CHAINS[chain].chainId, registry: lr.trusted,",
+      "expect": "FAIL the passport of a copy of a held listing still resembles it"
+    },
+    {
+      "name": "the passport names a held original",
+      "find": "    if (p.resembles && p.resembles.registry_address && lr.held.has(p.resembles.registry_address)) p.resembles = { ...p.resembles, registry_address: null }\n",
+      "replace": "",
+      "expect": "FAIL the passport of a copy of a held listing still resembles it"
+    },
+    {
+      "name": "the archive quotes a contradicted record as LISTED",
+      "find": "    if (held && /^LISTED:/.test(r.body.summary)) {",
+      "replace": "    if (false) {",
+      "expect": "FAIL the archive never quotes a record the chain contradicts now as LISTED"
+    },
+    {
+      "name": "no first-listed time from the first read",
+      "find": "      for (const r of records) if (!fl.has(r.address)) fl.set(r.address, now())\n",
+      "replace": "",
+      "expect": "FAIL a record not in the archive is first listed at the server"
+    },
+    {
+      "name": "the sitemap reads the raw list",
+      "find": "(freshRecords(c) || []).map((r) => r.symbol)",
+      "replace": "(rawFreshRecords(c) || []).map((r) => r.symbol)",
+      "expect": "FAIL the sitemap lists trusted records only"
+    },
+    {
+      "name": "the ?base= page reads the raw list",
+      "find": "        const rec = sym ? freshRecords(k)?.find(",
+      "replace": "        const rec = sym ? rawFreshRecords(k)?.find(",
+      "expect": "FAIL the ?base=SYM page resolves a trusted record and never a held one"
+    },
+    {
+      "name": "MCP find hides a held record",
+      "find": "...heldMatches([c], q), ",
+      "replace": "",
+      "expect": "FAIL MCP find_stock_token names the held record too"
+    },
+    {
+      "name": "a stale list falls back to the raw records",
+      "find": "(listedRecords(chain)?.trusted ?? null) : (listLocks ? null : reg.records)",
+      "replace": "(listedRecords(chain)?.trusted ?? reg.records) : reg.records",
+      "expect": "FAIL no route reads the raw list to say listed"
+    },
+    {
+      "name": "freshness counted two ways",
+      "find": "    return registryFresh(r) ? r.records : null",
+      "replace": "    return r?.records && r.at != null && now() - r.at <= REGISTRY_FRESH_S * 1000 ? r.records : null",
+      "expect": "FAIL no route reads the raw list to say listed"
+    },
+    {
+      "name": "the token list reads the raw list",
+      "find": "    const chains = Object.keys(CHAINS).map((c) => ({ chainId: CHAINS[c].chainId, issuer: CHAINS[c].issuer, records: freshRecords(c),",
+      "replace": "    const chains = Object.keys(CHAINS).map((c) => ({ chainId: CHAINS[c].chainId, issuer: CHAINS[c].issuer, records: rawFreshRecords(c),",
+      "expect": "FAIL /tokenlist.json carries trusted records only"
+    }
+  ]
+}

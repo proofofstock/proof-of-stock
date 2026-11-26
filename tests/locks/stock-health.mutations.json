@@ -23,6 +23,24 @@
       "find": "    for (const [src, changes] of Object.entries(sc)) put(",
       "replace": "    for (const [src, changes] of Object.entries({})) put(",
       "expect": "FAIL a change in a source's format is an alert"
+    },
+    {
+      "name": "a contradicted record does not alert",
+      "find": "        put(`list-conflict:${c}`, (s.held_conflicts || 0) > 0,",
+      "replace": "        put(`list-conflict:${c}`, false,",
+      "expect": "FAIL a record the chain contradicts: list-conflict, naming it"
+    },
+    {
+      "name": "no factory check does not alert",
+      "find": "        put(`factory-check:${c}`, fc.state === 'unavailable',",
+      "replace": "        put(`factory-check:${c}`, false,",
+      "expect": "FAIL no factory check to lean on"
+    },
+    {
+      "name": "a long wait for the factory check does not alert",
+      "find": "        put(`list-awaiting:${c}`, aw != null && aw > 120,",
+      "replace": "        put(`list-awaiting:${c}`, false,",
+      "expect": "FAIL a record awaiting its creation for over two hours"
     }
   ]
 }

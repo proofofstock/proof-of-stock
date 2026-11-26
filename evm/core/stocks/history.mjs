@@ -162,6 +162,22 @@ export function registryDiff (prev, next) {
   }
 }
 
+/**
+ * When each address first appeared on the issuer's list, from the registry archive (append-only, so stable across a
+ * restart and not reset by a removal and re-add): address -> ms. docs/list-locks-tz.md: firstListedAt.
+ */
+export function firstListedTimes (root) {
+  const out = new Map()
+  let rows = []
+  try { rows = readRows(histDir(root), 'registry-') } catch (_) { return out }
+  for (const r of rows) {
+    const at = Date.parse(r && r.fetched_at)
+    if (!Number.isFinite(at) || !Array.isArray(r.body)) continue
+    for (const x of r.body) { const a = String(x && x.address || '').toLowerCase(); if (/^0x[0-9a-f]{40}$/.test(a) && !out.has(a)) out.set(a, at) }
+  }
+  return out
+}
+
 /** H2 for one chain: append a snapshot when the registry differs from the last one written. */
 export function recordRegistry ({ root, records, chainId, issuer, at, validate = null, log = () => {} }) {
   const dir = histDir(root)

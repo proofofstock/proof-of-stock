@@ -1,7 +1,10 @@
 {
   "_finding": "The verify answer and the badge are what other pages and agents trust. It must decide by the exact address only, refuse to answer from a registry it could not refresh (a false 'not listed' would accuse a token we failed to look up), ignore address case, and never let a value reach the SVG unescaped.",
   "target": "evm/core/stocks/verify.mjs",
-  "runner": ["node", "evm/core/stocks/verify.test.mjs"],
+  "runner": [
+    "node",
+    "evm/core/stocks/verify.test.mjs"
+  ],
   "mutations": [
     {
       "name": "a copied symbol makes a token listed",
@@ -17,8 +20,8 @@
     },
     {
       "name": "the address is matched case-sensitively",
-      "find": "  const addr = String(address || '').toLowerCase()\n",
-      "replace": "  const addr = String(address || '')\n",
+      "find": "  const addr = String(address || '').toLowerCase()\n  if (!ADDRESS.test(addr)) return { status: 'bad_address'",
+      "replace": "  const addr = String(address || '')\n  if (!ADDRESS.test(addr)) return { status: 'bad_address'",
       "expect": "FAIL a mixed-case address is the same answer"
     },
     {

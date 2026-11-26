@@ -59,7 +59,7 @@ console.log('the landing: tabs on top, the ticker under the terminal')
 
 console.log('served: every page kind has the tabs, and every tab opens a page')
 const root = fs.mkdtempSync(path.join(os.tmpdir(), 'site-tabs-'))
-const app = createStocksWeb({ roots: { base: path.join(root, 'b'), robinhood: path.join(root, 'r') }, fetchImpl: async () => ({ ok: false, status: 503, json: async () => ({}) }),
+const app = createStocksWeb({ listLocks: false, roots: { base: path.join(root, 'b'), robinhood: path.join(root, 'r') }, fetchImpl: async () => ({ ok: false, status: 503, json: async () => ({}) }),
   log: () => {}, analytics: { enabled: false }, exam: { url: null }, x402Module: null })
 const { port } = await app.start(0, '127.0.0.1')
 const base = `http://127.0.0.1:${port}`

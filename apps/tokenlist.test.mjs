@@ -62,7 +62,7 @@ const fetchImpl = async (url) => {
   if (u.startsWith(ROBINHOOD_PRICES_URL)) return ok({ quotes: [] })
   return { ok: false, status: 404, json: async () => ({}) }
 }
-const app = createStocksWeb({ roots, fetchImpl, now: () => t, log: () => {}, analytics: { enabled: false }, exam: { url: null }, glama: { url: null }, x402Module: null })
+const app = createStocksWeb({ listLocks: false, roots, fetchImpl, now: () => t, log: () => {}, analytics: { enabled: false }, exam: { url: null }, glama: { url: null }, x402Module: null })
 const { port } = await app.start(0, '127.0.0.1')
 // The site lives under /stocks behind nginx, as in apps/stocks-web.test.mjs.
 const get = (p) => fetch(`http://127.0.0.1:${port}/stocks${p}`)
