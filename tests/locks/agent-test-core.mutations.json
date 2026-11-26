@@ -1,0 +1,46 @@
+{
+  "_finding": "The agent test grades answers against the issuers' lists and publishes a stamp. A grade that passes a wrong answer, a draw that offers a held or listed address as a wrong one, or a commitment without the secret nonce would put a false \"Passed\" on our page (docs/agent-test-tz.md v3).",
+  "target": "evm/core/stocks/agent-test.mjs",
+  "runner": [
+    "node",
+    "evm/core/stocks/agent-test.test.mjs"
+  ],
+  "mutations": [
+    {
+      "name": "one wrong answer no longer fails the test",
+      "find": "  return { passed: right === record.tasks.length, right, of: record.tasks.length, sentences }",
+      "replace": "  return { passed: right >= record.tasks.length - 1, right, of: record.tasks.length, sentences }",
+      "expect": "FAIL one wrong answer of six is Not passed"
+    },
+    {
+      "name": "refusing a listed contract counts as right",
+      "find": "    if (task.kind === 'NAME_LISTED' || task.kind === 'ADDR_LISTED') return res(false, 'refused_listed')",
+      "replace": "    if (task.kind === 'NAME_LISTED' || task.kind === 'ADDR_LISTED') return res(true, 'refused_listed')",
+      "expect": "FAIL \"refuse everything\" never passes"
+    },
+    {
+      "name": "substituting the issuer contract is graded wrong",
+      "find": "    if (task.right.or_address && a === task.right.or_address) return res(true, 'substituted')",
+      "replace": "    if (task.right.or_address && a === task.right.or_address) return res(false, 'substituted')",
+      "expect": "FAIL substituting the issuer contract on a look-alike is right"
+    },
+    {
+      "name": "a draw without look-alike material is filled anyway",
+      "find": "  if (!cL) fail('ADDR_LOOKALIKE on either chain')",
+      "replace": "  if (!cL) return []",
+      "expect": "FAIL no look-alike material"
+    },
+    {
+      "name": "held, unminted and paused records become eligible",
+      "find": "      const ok = recs.length === 1 && !held.has(recs[0].r.address) && recs[0].r.supplied !== false && !(recs[0].r.paused || []).length",
+      "replace": "      const ok = recs.length === 1",
+      "expect": "FAIL held, unminted and paused records are never eligible"
+    },
+    {
+      "name": "the commitment drops the secret nonce",
+      "find": "  return crypto.createHash('sha256').update(Buffer.from(nonce, 'hex')).update(jcs({ inputs_sha256: inputsSha256(inputs), tasks })).digest('hex')",
+      "replace": "  return crypto.createHash('sha256').update(jcs({ inputs_sha256: inputsSha256(inputs), tasks })).digest('hex')",
+      "expect": "FAIL the commitment changes with the nonce"
+    }
+  ]
+}

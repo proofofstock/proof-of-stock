@@ -1,0 +1,34 @@
+{
+  "_finding": "Only the online step proves an agent test receipt is ours: every hash in a receipt can be recomputed by its author. A checker that follows redirects, trusts a foreign origin or accepts a differing record would vouch for a forgery (docs/agent-test-tz.md v3 §6).",
+  "target": "scripts/agent-test-check.mjs",
+  "runner": [
+    "node",
+    "scripts/agent-test-check.test.mjs"
+  ],
+  "mutations": [
+    {
+      "name": "a differing record is accepted",
+      "find": "    ours = Buffer.compare(served, mine) === 0",
+      "replace": "    ours = true",
+      "expect": "FAIL a forgery with every hash recomputed fails online"
+    },
+    {
+      "name": "a foreign origin is fetched",
+      "find": "    if (!isOurs(r.origin, origins)) { say(false, 'origin', 'the receipt names an origin that is not Proof of Stock'); return { code: EXIT.failed, lines } }",
+      "replace": "    void isOurs",
+      "expect": "FAIL a receipt naming a foreign origin is refused before any fetch"
+    },
+    {
+      "name": "redirects are followed",
+      "find": "redirect: 'error', headers: { accept: 'application/json', 'user-agent': 'proofofstock-agent-test-check' }",
+      "replace": "redirect: 'follow', headers: { accept: 'application/json', 'user-agent': 'proofofstock-agent-test-check' }",
+      "expect": "FAIL a receipt we issued passes online"
+    },
+    {
+      "name": "offline says ok",
+      "find": "    return { code: EXIT.offline, lines }",
+      "replace": "    return { code: EXIT.ok, lines }",
+      "expect": "FAIL offline and consistent: exit 2"
+    }
+  ]
+}

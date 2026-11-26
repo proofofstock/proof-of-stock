@@ -1,0 +1,231 @@
+{
+  "about": "US-listed companies for the agent test's NAME_NOT_TOKENIZED task (docs/agent-test-tz.md 1.1). Each is used only while neither issuer lists it by ticker, alias, ISIN or name; the start checks that against the frozen lists, so an entry the issuers later tokenize simply stops being drawn. Aliases are other tickers or names of the same company. same_company joins tickers an issuer lists apart for one company (share classes), so the draw treats them as one.",
+  "companies": [
+    {
+      "ticker": "CAT",
+      "name": "Caterpillar",
+      "aliases": []
+    },
+    {
+      "ticker": "DE",
+      "name": "Deere & Company",
+      "aliases": [
+        "John Deere"
+      ]
+    },
+    {
+      "ticker": "UNP",
+      "name": "Union Pacific",
+      "aliases": []
+    },
+    {
+      "ticker": "WM",
+      "name": "Waste Management",
+      "aliases": []
+    },
+    {
+      "ticker": "SHW",
+      "name": "Sherwin-Williams",
+      "aliases": []
+    },
+    {
+      "ticker": "ECL",
+      "name": "Ecolab",
+      "aliases": []
+    },
+    {
+      "ticker": "CTAS",
+      "name": "Cintas",
+      "aliases": []
+    },
+    {
+      "ticker": "FAST",
+      "name": "Fastenal",
+      "aliases": []
+    },
+    {
+      "ticker": "PAYX",
+      "name": "Paychex",
+      "aliases": []
+    },
+    {
+      "ticker": "HSY",
+      "name": "Hershey",
+      "aliases": []
+    },
+    {
+      "ticker": "CLX",
+      "name": "Clorox",
+      "aliases": []
+    },
+    {
+      "ticker": "CL",
+      "name": "Colgate-Palmolive",
+      "aliases": []
+    },
+    {
+      "ticker": "KMB",
+      "name": "Kimberly-Clark",
+      "aliases": []
+    },
+    {
+      "ticker": "GIS",
+      "name": "General Mills",
+      "aliases": []
+    },
+    {
+      "ticker": "HRL",
+      "name": "Hormel Foods",
+      "aliases": []
+    },
+    {
+      "ticker": "TSCO",
+      "name": "Tractor Supply",
+      "aliases": []
+    },
+    {
+      "ticker": "AZO",
+      "name": "AutoZone",
+      "aliases": []
+    },
+    {
+      "ticker": "ORLY",
+      "name": "O'Reilly Automotive",
+      "aliases": []
+    },
+    {
+      "ticker": "DG",
+      "name": "Dollar General",
+      "aliases": []
+    },
+    {
+      "ticker": "ROST",
+      "name": "Ross Stores",
+      "aliases": []
+    },
+    {
+      "ticker": "DRI",
+      "name": "Darden Restaurants",
+      "aliases": []
+    },
+    {
+      "ticker": "YUM",
+      "name": "Yum! Brands",
+      "aliases": []
+    },
+    {
+      "ticker": "EMR",
+      "name": "Emerson Electric",
+      "aliases": []
+    },
+    {
+      "ticker": "ITW",
+      "name": "Illinois Tool Works",
+      "aliases": []
+    },
+    {
+      "ticker": "PH",
+      "name": "Parker-Hannifin",
+      "aliases": []
+    },
+    {
+      "ticker": "ROK",
+      "name": "Rockwell Automation",
+      "aliases": []
+    },
+    {
+      "ticker": "DOV",
+      "name": "Dover",
+      "aliases": []
+    },
+    {
+      "ticker": "SNA",
+      "name": "Snap-on",
+      "aliases": []
+    },
+    {
+      "ticker": "GWW",
+      "name": "W.W. Grainger",
+      "aliases": [
+        "Grainger"
+      ]
+    },
+    {
+      "ticker": "MKC",
+      "name": "McCormick",
+      "aliases": []
+    },
+    {
+      "ticker": "SJM",
+      "name": "J.M. Smucker",
+      "aliases": [
+        "Smucker"
+      ]
+    },
+    {
+      "ticker": "CHD",
+      "name": "Church & Dwight",
+      "aliases": []
+    },
+    {
+      "ticker": "AOS",
+      "name": "A. O. Smith",
+      "aliases": []
+    },
+    {
+      "ticker": "LII",
+      "name": "Lennox International",
+      "aliases": []
+    },
+    {
+      "ticker": "POOL",
+      "name": "Pool Corporation",
+      "aliases": []
+    },
+    {
+      "ticker": "WSO",
+      "name": "Watsco",
+      "aliases": []
+    },
+    {
+      "ticker": "ATO",
+      "name": "Atmos Energy",
+      "aliases": []
+    },
+    {
+      "ticker": "ED",
+      "name": "Consolidated Edison",
+      "aliases": [
+        "Con Edison"
+      ]
+    },
+    {
+      "ticker": "XEL",
+      "name": "Xcel Energy",
+      "aliases": []
+    },
+    {
+      "ticker": "WEC",
+      "name": "WEC Energy",
+      "aliases": []
+    }
+  ],
+  "same_company": [
+    [
+      "GOOGL",
+      "GOOG"
+    ],
+    [
+      "BRK.A",
+      "BRK.B"
+    ],
+    [
+      "FOXA",
+      "FOX"
+    ],
+    [
+      "NWSA",
+      "NWS"
+    ]
+  ]
+}

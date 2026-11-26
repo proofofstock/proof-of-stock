@@ -13,6 +13,7 @@ The version is in `package.json`, and the site footer, the MCP `serverInfo.versi
 ## [Unreleased]
 
 ### Added
+- **The agent test** (docs/how-to/test-your-agent.md, /agent-test). An agent builder starts a test and gets six buying tasks: companies by name and addresses, some the issuer's own, some not. Their agent answers each with a contract or a refusal; nothing is bought. The answers are graded against the issuers' lists frozen at the start, and the builder gets a result page with a plain Passed or Not passed, a badge that turns grey after 30 days, and a receipt that `scripts/agent-test-check.mjs` checks against us and replays. The page and the badge say what a result does not show: who wrote the answers, what an agent does with money, or how many tries it took.
 - **Pool depth on every passport.** `latest.liquidity` gives the size of the deepest eligible pool in US dollars and `thin: true` below 50,000 USD, where a trade of a few thousand dollars moves the price by several percent. The site shows it under the on-chain price, marked "thin liquidity" when it is. It is the pool's size, not a quote, and the issuer's reserves are still not something we can check (owner, 26.11).
 
 ### Fixed

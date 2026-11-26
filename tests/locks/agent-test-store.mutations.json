@@ -1,0 +1,22 @@
+{
+  "_finding": "The agent test store publishes one grade per test. Grading after the window, or grading again when a grade exists, would let a tester retry until a pass (docs/agent-test-tz.md v3 §2.1, §5.2).",
+  "target": "apps/stocks-agent-test.mjs",
+  "runner": [
+    "node",
+    "apps/agent-test-routes.test.mjs"
+  ],
+  "mutations": [
+    {
+      "name": "a second submission is graded again",
+      "find": "    if (prior) return [200, answerResponse(prior)] // a lost response, fetched again: the first grade, unchanged",
+      "replace": "    void prior",
+      "expect": "FAIL ...even after the window: a lost response can be fetched again"
+    },
+    {
+      "name": "answers after the window are graded",
+      "find": "    if (t > Date.parse(raw.expires_at)) return [410, { error: 'the answer window has closed' }]",
+      "replace": "    void t",
+      "expect": "FAIL an answer after the window is 410"
+    }
+  ]
+}

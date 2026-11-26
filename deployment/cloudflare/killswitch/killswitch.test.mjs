@@ -182,6 +182,7 @@ console.log('the worker')
     check(`...an odd spelling of a blocked path is blocked too: ${p}`, x.status === 503, String(x.status))
   }
   check('...normalizePath resolves them as nginx does', normalizePath('//verify') === '/verify' && normalizePath('/%76erify') === '/verify' && normalizePath('/a/../api/x') === '/api/x' && isBlocked('/mcp') && !isBlocked('/demo') && !isBlocked('/verifyx'))
+  check('the agent test result pages and badges are blocked while tripped, its explainer is not', isBlocked('/agent-test/at_' + 'a'.repeat(32)) && isBlocked('/agent-test/at_' + 'a'.repeat(32) + '/badge.svg') && isBlocked('/api/agent-test') && !isBlocked('/agent-test'))
   const bypass = await handle(new Request(`${SITE}/api/verify?x=1`, { headers: { 'x-killswitch-bypass': '1', cookie: 'admin=1' } }), env, { fetchImpl: origin })
   check('no header, cookie or query gets past it', bypass.status === 503)
   store.delete('trip')

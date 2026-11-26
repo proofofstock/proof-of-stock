@@ -84,6 +84,8 @@ import { createGlamaBadge, glamaFooterHtml, GLAMA_BADGE_CSP, GLAMA_BADGE_PATH, G
 import { boardOf, withBoard, BOARD_LIMIT } from './stocks-board.mjs'
 import { createPassSales, rpcCaller } from './pass-sales.mjs'
 import { passBazaar, openApiOf } from './x402-discovery.mjs'
+import { createAgentTest, readJsonBody } from './stocks-agent-test.mjs'
+import { resultPage, resultBadge, explainerPage } from './stocks-agent-test-page.mjs'
 
 // The paid-pass module is a host file, never a tracked one (owner, 15.11): this repository is exported to a public
 // one, and the money path is not for export. A checkout without the file is the free service exactly; the import is
@@ -135,6 +137,7 @@ const STATIC = Object.freeze({
   '/api.js': ['api.js', 'text/javascript; charset=utf-8'],
   '/demo.js': ['demo.js', 'text/javascript; charset=utf-8'],
   '/demo.css': ['demo.css', 'text/css; charset=utf-8'],
+  '/agent-test.css': ['agent-test.css', 'text/css; charset=utf-8'],
   // /demo runs the guard package's own examples in the browser (apps/stocks-demo-page.mjs): the files, as published.
   '/guard/index.mjs': ['../../packages/proofofstock-guard/index.mjs', 'text/javascript; charset=utf-8'],
   '/guard/examples/agent-buy.mjs': ['../../packages/proofofstock-guard/examples/agent-buy.mjs', 'text/javascript; charset=utf-8'],
@@ -299,6 +302,11 @@ export function createStocksWeb ({
   // the host says POS_LAB=on in /etc/pos/web.env, set once the Access rule exists: a deploy alone never opens it.
   lab = process.env.POS_LAB === 'on',
   labDir = process.env.POS_LAB_DIR || '/var/lib/pos/lab',
+  // The agent test (docs/agent-test-tz.md): its store, and a host file of ids hidden for abuse. A test passes its own dir.
+  agentTestDir = process.env.STP_AGENT_TEST_DIR || '/var/lib/pos/agent-test',
+  agentTestHidden = process.env.STP_AGENT_TEST_HIDDEN || null,
+  // Test ids we ran ourselves as examples: their page and badge say "Example" (TZ §2.3). Comma-separated, on the host.
+  agentTestExamples = (process.env.STP_AGENT_TEST_EXAMPLES || '').split(',').map((s) => s.trim()).filter(Boolean),
 } = {}) {
   const registries = new Map() // chain → { records, at, error }
   // Addresses that were listed and have left the registry, since this process started: chain → Map(address → { at, symbol }).
@@ -1010,6 +1018,25 @@ export function createStocksWeb ({
 
   const TOO_MANY = { error: 'too many requests, try again in a minute' }
 
+  // The agent test (docs/agent-test-tz.md v3). It freezes what /verify trusts right now: the raw issuer list (the one
+  // list_proof names), the records the list locks hold, and the published look-alikes. Null while a list is not fresh.
+  const agentTestCompaniesRaw = fs.readFileSync(new URL('../evm/core/stocks/agent-test-companies.json', import.meta.url), 'utf8')
+  const agentTest = createAgentTest({
+    dir: agentTestDir, now, origin: publicOrigin + publicPath, hiddenFile: agentTestHidden, log,
+    companies: JSON.parse(agentTestCompaniesRaw), companiesRaw: agentTestCompaniesRaw,
+    inputsFor: () => {
+      const lists = {}, held = {}, lookalikes = {}
+      for (const c of Object.keys(CHAINS)) {
+        const r = registries.get(c), lr = listedRecords(c)
+        if (!registryFresh(r) || !lr || !r.stamp?.registry_hash) return null
+        lists[c] = { canonical: canonicalRegistry(r.records), registry_hash: r.stamp.registry_hash }
+        held[c] = [...lr.held.keys()]
+        lookalikes[c] = (impostors.get(c)?.items || []).map((i) => ({ address: i.address, ticker: i.ticker }))
+      }
+      return { lists, held, lookalikes, pairTokens: { base: [], robinhood: [] } }
+    },
+  })
+
   /**
    * The public URL a 402 names as its resource. The proxy maps the domain's `/` onto the app's BASE_PATH, so the app sees
    * /stocks/verify for the public /verify; naming that path sent buyers to a 404 (20.11). Query strings are left out: the
@@ -1179,6 +1206,10 @@ export function createStocksWeb ({
       return INDEX402_HASH_RE.test(String(index402Hash || '').trim()) ? send(res, 200, String(index402Hash).trim().toLowerCase(), 'text/plain; charset=utf-8', { 'cache-control': 'public, max-age=60' }) : send(res, 404, { error: 'not found' })
     }
     if (url.pathname === BASE_PATH + '/mcp') return routeMcp(req, res)
+    if (url.pathname.startsWith(BASE_PATH + '/api/agent-test')) {
+      const out = await agentTest.handle(req.method, url.pathname.slice(BASE_PATH.length), () => readJsonBody(req), clientKey(clientIp(req)))
+      if (out) { const [s, b, extra = {}, raw] = out; return raw ? send(res, s, b, 'application/json; charset=utf-8', extra) : send(res, s, b, undefined, extra) }
+    }
     if (req.method !== 'GET' && req.method !== 'HEAD') return send(res, 405, { error: 'method not allowed' }, undefined, { allow: 'GET, HEAD' })
     // A release that cannot read any issuer registry answers every lookup with 503: it must fail the deploy gate, not pass.
     if (url.pathname === '/healthz') {
@@ -1361,6 +1392,19 @@ export function createStocksWeb ({
     }
     // The Demo Agent, live (owner, 25.11): a market search, Proof of Stock's verdicts, a quote. The one page whose CSP lets
     // the browser reach GeckoTerminal, KyberSwap and Base's RPC: the search and the quote must not pass through us.
+    // The agent test's result page and badge (docs/agent-test-tz.md §4): never indexed, the badge cached under an hour.
+    if (sub === '/agent-test') {
+      return send(res, 200, withPageHead('/agent-test', explainerPage({ origin: publicOrigin + publicPath, exampleId: agentTestExamples[0] || null, assets: { css: `style.css?v=${version('/style.css')}`, docsCss: `docs.css?v=${version('/docs.css')}`, agentTestCss: `agent-test.css?v=${version('/agent-test.css')}` } })), 'text/html; charset=utf-8', { 'cache-control': 'public, max-age=300' })
+    }
+    const atm = /^\/agent-test\/([^/]+)(\/badge\.svg)?$/.exec(sub)
+    if (atm) {
+      const r = agentTest.result(atm[1])
+      const hidden = { 'x-robots-tag': 'noindex', 'cache-control': 'no-store' }
+      if (r.status !== 200) return send(res, r.status, r.status === 410 ? 'gone' : 'not found', 'text/plain; charset=utf-8', hidden)
+      const example = agentTestExamples.includes(r.receipt.test_id)
+      if (atm[2]) return send(res, 200, resultBadge(r.receipt, now(), { example }), 'image/svg+xml; charset=utf-8', { 'x-robots-tag': 'noindex', 'cache-control': 'no-store', 'content-security-policy': "default-src 'none'; style-src 'unsafe-inline'" })
+      return send(res, 200, resultPage({ receipt: r.receipt, now: now(), origin: publicOrigin + publicPath, example, assets: { css: `style.css?v=${version('/style.css')}`, docsCss: `docs.css?v=${version('/docs.css')}`, agentTestCss: `agent-test.css?v=${version('/agent-test.css')}` } }), 'text/html; charset=utf-8', { 'x-robots-tag': 'noindex', 'cache-control': 'no-store' })
+    }
     if (sub === '/demo') {
       analytics.load(clientIp(req), req.headers, '/demo')
       demoHtml ??= withPageHead('/demo', demoPage({ version: appVersion,
@@ -1495,7 +1539,7 @@ export function createStocksWeb ({
   })
   server.requestTimeout = 20_000
   server.headersTimeout = 10_000
-  let timer = null
+  let timer = null, sweepTimer = null
   return {
     server, refreshAll, x402,
     examRefresh: (force) => exam.refresh(force),
@@ -1503,10 +1547,12 @@ export function createStocksWeb ({
     async start (port, host, { fd = null } = {}) {
       await refreshAll()
       timer = setInterval(() => { refreshAll().catch(() => {}) }, REGISTRY_TTL_MS); timer.unref()
+      sweepTimer = setInterval(() => { try { agentTest.sweep() } catch (e) { log(`[agent-test] sweep: ${e.message}`) } }, 3600e3); sweepTimer.unref()
       await new Promise((resolve) => (fd != null ? server.listen({ fd }, resolve) : server.listen(port, host, resolve)))
       return server.address()
     },
-    async stop () { clearInterval(timer); await new Promise((resolve) => server.close(resolve)) },
+    agentTest,
+    async stop () { clearInterval(timer); clearInterval(sweepTimer); await new Promise((resolve) => server.close(resolve)) },
   }
 }
 

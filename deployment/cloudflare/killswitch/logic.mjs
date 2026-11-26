@@ -230,7 +230,7 @@ export function summarize (problems) {
 }
 
 /** The routes that carry a verdict: blocked while tripped. Pages stay up and say nothing they did not say before. */
-export const BLOCKED = /^\/(?:verify|badge\.svg|tokenlist\.json)(?:\/|$)|^\/api\/|^\/mcp(?:\/|$)/
+export const BLOCKED = /^\/(?:verify|badge\.svg|tokenlist\.json)(?:\/|$)|^\/api\/|^\/mcp(?:\/|$)|^\/agent-test\//
 
 /**
  * The path as the origin will see it: percent-decoded segment by segment, runs of slashes collapsed, dot segments

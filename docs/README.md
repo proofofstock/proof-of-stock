@@ -44,6 +44,8 @@ Recipes for one task each.
   `/anchors/`.
 - [Embed a badge](how-to/embed-a-badge.md): the verdict for one token as an image on your page or README,
   from the token's passport or by hand.
+- [Test your agent](how-to/test-your-agent.md): six buying tasks graded against the issuers' own lists, a result page and a
+  badge for your users, and `scripts/agent-test-check.mjs` to check a result without trusting us.
 
 ## Reference
 
