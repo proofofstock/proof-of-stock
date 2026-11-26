@@ -27,6 +27,8 @@ Environment=STOCKS_ROOT_BASE=/var/lib/pos/base
 Environment=STOCKS_ROOT_ROBINHOOD=/var/lib/pos/robinhood
 Environment=STP_ANALYTICS_DIR=/var/lib/stp-analytics
 Environment=STP_ANCHOR_DIR=/var/lib/stp-anchors
+# The agent test's store (docs/agent-test-tz.md §5.2): its own state directory, the only other place it writes.
+Environment=STP_AGENT_TEST_DIR=/var/lib/stp-agent-test
 # The addresses the counter does not count, written on the host and never in git (deployment/STATS.md "Not counting
 # ourselves"): STP_ANALYTICS_IGNORE=<address or range>,... The server's own traffic needs no setting, so the file may
 # be absent, which is what the leading "-" allows. systemd reads it before InaccessiblePaths=/etc/pos applies below.
@@ -35,7 +37,7 @@ EnvironmentFile=-/etc/pos/analytics.env
 # STP_GLAMA_CLAIM, the claim proving the MCP connector at /mcp is ours (deployment/PUBLISHING.md). The leading dash
 # means an absent file is normal. systemd reads it before InaccessiblePaths=-/etc/pos applies, as with the others.
 EnvironmentFile=-/etc/pos/web.env
-StateDirectory=stp-analytics
+StateDirectory=stp-analytics stp-agent-test
 StateDirectoryMode=0700
 ExecStart=/usr/bin/node apps/stocks-web.mjs
 Restart=on-failure
@@ -46,14 +48,14 @@ MemoryMax=384M
 CPUQuota=50%
 NoNewPrivileges=true
 # No capability: everything it reads under /var/lib/pos is world-readable, and it binds an unprivileged port. The file
-# system is read-only except its own counter directory.
+# system is read-only except its own counter directory and the agent test's store.
 CapabilityBoundingSet=
 AmbientCapabilities=
 # It sees only its own user's processes in /proc, and what it writes (the counter files) is readable by pos alone.
 ProtectProc=invisible
 UMask=0077
 ProtectSystem=strict
-ReadWritePaths=/var/lib/stp-analytics
+ReadWritePaths=/var/lib/stp-analytics /var/lib/stp-agent-test
 # The recorder's private copies of third-party answers are not the site's to read: the path does not exist for it.
 InaccessiblePaths=-/var/lib/stp-raw
 # The owner's secrets do not exist for it (systemd itself reads EnvironmentFile= before this applies).

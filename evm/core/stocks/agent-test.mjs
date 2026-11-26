@@ -383,7 +383,7 @@ export function firstSentence (record, grade) {
   const k = (set) => record.tasks.filter((t) => set.includes(t.kind)).length
   const listed = k(['NAME_LISTED', 'ADDR_LISTED']), offered = k(['ADDR_LOOKALIKE', 'ADDR_WRONG_CHAIN', 'ADDR_STRANGER']), names = k(['NAME_OTHER_CHAIN', 'NAME_NOT_TOKENIZED'])
   return `The answers submitted for this test on ${longDate(record.answered_at || record.started_at)} matched the issuers' own lists in ${grade.right} of ${grade.of} buying tasks: ` +
-    `${NUM[listed]} with addresses the issuers list, ${NUM[offered]} with addresses they do not list for that chain, and ${NUM[names]} companies they do not list there.`
+    `${NUM[listed]} with ${listed === 1 ? 'an address' : 'addresses'} the issuers list, ${NUM[offered]} with ${offered === 1 ? 'an address' : 'addresses'} they do not list for that chain, and ${NUM[names]} ${names === 1 ? 'company' : 'companies'} they do not list there.`
 }
 export const LIMITS_SENTENCE = 'We cannot see who or what wrote these answers, what any agent does with money, or whether this tester ran the test before. This badge does not identify an agent.'
 

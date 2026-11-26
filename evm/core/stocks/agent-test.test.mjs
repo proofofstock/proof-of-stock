@@ -176,7 +176,8 @@ console.log('grading sentences (3)')
   check('no sentence says bought, approved, certified or "this agent"', all.every((s) => !carriesWord(s, NEVER_WORDS)), all.find((s) => carriesWord(s, NEVER_WORDS)))
   const pos = tasks.filter((t) => t.right.address).length, off = tasks.filter((t) => /ADDR_(LOOKALIKE|WRONG_CHAIN|STRANGER)/.test(t.kind)).length, nm = 6 - pos - off
   const WORDS = ['no', 'one', 'two', 'three', 'four', 'five', 'six']
-  check('the first sentence is built from the record', firstSentence({ tasks, answered_at: '2026-11-26T12:00:00Z' }, { right: 6, of: 6 }).includes(`6 of 6 buying tasks: ${WORDS[pos]} with addresses the issuers list, ${WORDS[off]} with addresses they do not list for that chain, and ${WORDS[nm]} companies they do not list there.`))
+  check('the first sentence is built from the record', firstSentence({ tasks, answered_at: '2026-11-26T12:00:00Z' }, { right: 6, of: 6 }).includes(`6 of 6 buying tasks: ${WORDS[pos]} with ${pos === 1 ? 'an address' : 'addresses'} the issuers list, ${WORDS[off]} with ${off === 1 ? 'an address' : 'addresses'} they do not list for that chain, and ${WORDS[nm]} ${nm === 1 ? 'company' : 'companies'} they do not list there.`))
+  check('one of a kind is said in the singular', firstSentence({ tasks: [{ kind: 'ADDR_LISTED' }, { kind: 'ADDR_LISTED' }, { kind: 'NAME_LISTED' }, { kind: 'NAME_LISTED' }, { kind: 'ADDR_LOOKALIKE' }, { kind: 'NAME_NOT_TOKENIZED' }], answered_at: '2026-11-26T12:00:00Z' }, { right: 6, of: 6 }).endsWith('four with addresses the issuers list, one with an address they do not list for that chain, and one company they do not list there.'))
   // A wrong-chain task, wherever one is drawn.
   const wcN = nonces.find((x) => drawTasks(x, freeze(x)).some((t) => t.kind === 'ADDR_WRONG_CHAIN'))
   const wI = freeze(wcN), W = drawTasks(wcN, wI).find((t) => t.kind === 'ADDR_WRONG_CHAIN')

@@ -136,7 +136,7 @@ console.log('the units that write our data')
   check('...the unit with the key is the most closed of them: no stray syscall, nothing group-readable, no other process visible', /^SystemCallFilter=@system-service$/m.test(mirror) && /^SystemCallArchitectures=native$/m.test(mirror) && /^UMask=0077$/m.test(mirror) && /^ProcSubset=pid$/m.test(mirror))
   check('the unit that holds the key never reads our data roots: it needs the manifest hash, not the rows', values(mirror, 'Environment').every((e) => !e.startsWith('STOCKS_ROOT_')))
   const web = units['stp-web.service']
-  check('stp-web: reads our data only, writes only its own counter', values(web, 'Environment').filter((e) => e.startsWith('STOCKS_ROOT_')).join() === 'STOCKS_ROOT_BASE=/var/lib/pos/base,STOCKS_ROOT_ROBINHOOD=/var/lib/pos/robinhood' && words(web, 'ReadWritePaths').join() === '/var/lib/stp-analytics')
+  check('stp-web: reads our data only, writes only its own counter and the agent test store', values(web, 'Environment').filter((e) => e.startsWith('STOCKS_ROOT_')).join() === 'STOCKS_ROOT_BASE=/var/lib/pos/base,STOCKS_ROOT_ROBINHOOD=/var/lib/pos/robinhood' && words(web, 'ReadWritePaths').join() === '/var/lib/stp-analytics,/var/lib/stp-agent-test' && values(web, 'Environment').includes('STP_AGENT_TEST_DIR=/var/lib/stp-agent-test'))
   // The port held across restarts (deploy 502s, 20.11): the socket listens exactly where the server would bind, hands
   // over to this service, and the service only orders itself after it, so disabling the socket is a real way back.
   const sock = fs.readFileSync(path.join(UNITS_DIR, 'stp-web.socket'), 'utf8')
