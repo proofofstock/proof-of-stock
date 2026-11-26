@@ -6,7 +6,7 @@
 // Run: node evm/core/stocks/impostor.test.mjs
 
 import {
-  resemblance, resemblances, prefixSelfCheck, addressLookalike, vanityZeros, chainOfRegistry,
+  symbolBacksName, symbolBacksTicker, isMultiWord, resemblance, resemblances, prefixSelfCheck, addressLookalike, vanityZeros, chainOfRegistry,
   ADDRESS_SIGNAL_KINDS, NEVER_IMPOSTOR_KINDS, RESEMBLANCE_KINDS, FULL_PREFIX_ZEROS, VANITY_MIN_ZEROS, LOOKALIKE_RULES,
 } from './impostor.mjs'
 import { IMPOSTOR_KINDS } from './verify.mjs'
@@ -56,13 +56,29 @@ console.log('the company name as the whole name (registry_name, owner 2026-11-12
   const X = addr('e2'.repeat(20))
   const RHC = [{ issuer: 'robinhood', address: RH1, symbol: 'MCD', name: "McDonald's " + String.fromCharCode(0x2022) + ' Robinhood Token' }]
   const CBC = [cb(CB1, 'MRVLc', 'Marvell Technology, Inc.')]
-  check('the bare company name of a Robinhood token is a strong claim', resemblance({ address: X, symbol: 'Mc', name: "McDonald's" }, RHC)?.kind === 'registry_name')
+  check('the bare company name of a Robinhood token is a strong claim when the symbol backs it', resemblance({ address: X, symbol: 'MCD', name: "McDonald's" }, RHC)?.kind === 'registry_name')
+  check('...the company name as the symbol backs it too', resemblance({ address: X, symbol: 'MCDONALDS', name: "McDonald's" }, RHC)?.kind === 'registry_name')
+  check('...and so does a symbol that contains the ticker', resemblance({ address: X, symbol: '$MCD2', name: "McDonald's" }, RHC)?.kind === 'registry_name')
+  check('a one-word company name with an unrelated symbol is not a claim (outside review 26.11)', resemblance({ address: X, symbol: 'Mc', name: "McDonald's" }, RHC) === null)
+  const U = [cb(CB1, 'Uc', 'Unity Software Inc.'), { issuer: 'coinbase', address: CB2, symbol: 'TRONc', name: 'Tron Inc.' }, { issuer: 'coinbase', address: addr('b2' + '0'.repeat(20) + 'cc'.repeat(9)), symbol: 'SNAPc', name: 'Snap Inc.' }]
+  check('"Tron" with the symbol TRX is the crypto, not Tron Inc.', resemblance({ address: X, symbol: 'TRX', name: 'Tron' }, U) === null)
+  check('"Snap" with the symbol THANOS is a meme, not Snap Inc.', resemblance({ address: X, symbol: 'THANOS', name: 'Snap' }, U) === null)
+  check('a one-letter ticker inside a symbol backs nothing', symbolBacksName('PEPEU', 'unity software', U[0]) === false && symbolBacksName('U', 'unity software', U[0]) === true)
+  check('"Snap" with the symbol SNAP still is', resemblance({ address: X, symbol: 'SNAP', name: 'Snap' }, U)?.kind === 'registry_name')
+  check('a two-word company name needs no backing', resemblance({ address: X, symbol: 'PEPE', name: 'Marvell Technology' }, CBC)?.kind === 'registry_name')
+  check('a Cyrillic letter in the symbol does not let a copy through (fails closed)', resemblance({ address: X, symbol: 'NVD' + String.fromCharCode(0x410), name: 'NVIDIA' }, [{ issuer: 'robinhood', address: RH1, symbol: 'NVDA', name: 'NVIDIA ' + String.fromCharCode(0x2022) + ' Robinhood Token' }])?.kind === 'registry_name')
+  check('...nor a symbol in another script entirely', symbolBacksTicker(String.fromCharCode(0x82f9, 0x679c), 'apple', 'AAPL') === true)
+  check('...while an emoji-only symbol backs nothing', symbolBacksTicker(String.fromCodePoint(0x1f34e), 'apple', 'AAPL') === false)
+  const AB = [cb(CB1, 'GOOGLc', 'Alphabet Inc. Class A'), cb(CB2, 'GOOGc', 'Alphabet Inc. Class C')]
+  check('a share class the symbol backs is found even when it is not the first record', resemblance({ address: X, symbol: 'GOOG', name: 'Alphabet' }, AB)?.kind === 'registry_name' && resemblance({ address: X, symbol: 'GOOG', name: 'Alphabet' }, AB)?.registry_symbol === 'GOOGc')
+  check('a hyphen makes two words: "Coca-Cola" needs no backing', isMultiWord('coca-cola') && resemblance({ address: X, symbol: 'PEPE', name: 'Coca-Cola' }, [cb(CB1, 'KOc', 'Coca-Cola Co')])?.kind === 'registry_name')
+  check('a backing symbol is compared after normalization', resemblance({ address: X, symbol: 'M​C​D', name: "McDonald's" }, RHC)?.kind === 'registry_name')
   check('the corporate ending and the case do not hide it', resemblance({ address: X, symbol: 'MRVLB', name: 'marvell technology' }, CBC)?.kind === 'registry_name')
-  check('the copy names the listed token it imitates', resemblance({ address: X, symbol: 'Mc', name: "McDonald's" }, RHC)?.registry_symbol === 'MCD')
+  check('the copy names the listed token it imitates', resemblance({ address: X, symbol: 'MCD', name: "McDonald's" }, RHC)?.registry_symbol === 'MCD')
   check('a name that only contains the company is not the company', resemblance({ address: X, symbol: 'MCF', name: "McDonald's fan club" }, RHC) === null)
   check('the issuer naming stays its own kind, not doubled as a company name', kinds(resemblances({ address: X, symbol: 'ZZZ', name: "McDonald's Robinhood Token" }, RHC)).join() === 'issuer_name_suffix')
   check('the listed token itself is never its own copy', resemblance({ address: RH1, symbol: 'MCD', name: "McDonald's" }, RHC) === null)
-  check('a name shorter than three letters is a word, not a company', resemblance({ address: X, symbol: 'NU2', name: 'Nu' }, [{ issuer: 'robinhood', address: RH1, symbol: 'NU', name: 'Nu ' + String.fromCharCode(0x2022) + ' Robinhood Token' }]) === null)
+  check('a name shorter than three letters is a word, not a company', resemblance({ address: X, symbol: 'NU', name: 'Nu' }, [{ issuer: 'robinhood', address: RH1, symbol: 'NU', name: 'Nu ' + String.fromCharCode(0x2022) + ' Robinhood Token' }])?.kind === 'ticker')
   check('registry_name is a published impostor kind and ranks above the bare ticker', IMPOSTOR_KINDS.includes('registry_name') && RESEMBLANCE_KINDS.indexOf('registry_name') < RESEMBLANCE_KINDS.indexOf('ticker'))
 }
 

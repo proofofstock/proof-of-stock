@@ -8,7 +8,8 @@
 //   registry_symbol      the symbol is, character for character, a registry token's symbol on this chain, AND that
 //                        symbol is distinctive: it is not just the bare ticker (Coinbase's `NVDAc`, not Robinhood's `GME`)
 //   issuer_name_suffix   the name ends the way the issuer names its tokens ("… Robinhood Token")
-//   registry_name        the whole name is a listed company's name ("NVIDIA", "Marvell Technology"), corporate ending aside
+//   registry_name        the whole name is a listed company's name ("NVIDIA", "Marvell Technology"), corporate ending aside;
+//                        a ONE-word name counts only when the symbol backs it (symbolBacksName, 26.11)
 //   ticker               the symbol equals a registry ticker ignoring case (`NVDA`, `nvda`). WEAK: plenty of memecoins
 //                        borrow a ticker without pretending to be the share, so this is a resemblance, not a claim.
 //
@@ -44,6 +45,37 @@ export function registryCompany (rec) {
 export function tickerOf (rec) {
   const s = typeof rec?.symbol === 'string' ? rec.symbol : ''
   return rec?.issuer === 'coinbase' && /^[A-Z0-9.]+c$/.test(s) ? s.slice(0, -1) : s
+}
+
+const alnum = (s) => normalizeUntrusted(s).toLowerCase().replace(/[^a-z0-9]/g, '')
+/** Two words or more, a hyphen counting as a break ("Coca-Cola", "Rolls-Royce"): distinctive enough without backing. */
+export const isMultiWord = (own) => /[\s-]/.test(own)
+/** Shorter than this, a ticker or name inside a longer symbol is too likely by chance to count as backing. */
+export const BACKING_MIN = Object.freeze({ ticker: 3, name: 4 })
+
+/**
+ * Does the token's symbol back its one-word company name? Yes when the symbol, letters and digits only, is the listed
+ * token's ticker or the company name itself, or contains either (ticker ≥ 3, name ≥ 4 characters).
+ * Yes: "NVIDIA"/NVDA, "NVIDIA"/NVIDIA, "McDonald's"/MCDONALDS, "McDonald's"/MCD.
+ * No: "McDonald's"/Mc, "Tron"/TRX, "Snap"/THANOS, "Unity"/PEPE on Unity Software's U (a one-letter ticker inside a symbol
+ * proves nothing). See the tests.
+ */
+export function symbolBacksName (symbol, ownName, rec) {
+  return symbolBacksTicker(symbol, ownName, tickerOf(rec))
+}
+
+/**
+ * The same test with the ticker given directly: a case row carries its ticker, not the registry record
+ * (history.mjs goneReason). ⚠ Fails CLOSED on a symbol with letters outside ASCII (Cyrillic, Greek, CJK, full width
+ * after NFKC is already ASCII): "NVDA" spelled with a Cyrillic A (U+0410) is a deliberate copy, and stripping the letter must not let it
+ * through. Such a symbol counts as backing.
+ */
+export function symbolBacksTicker (symbol, ownName, ticker) {
+  const raw = normalizeUntrusted(symbol)
+  if (/[^\u0000-\u007f]/.test(raw) && /\p{L}/u.test(raw.replace(/[\u0000-\u007f]/g, ''))) return true
+  const s = alnum(symbol), t = alnum(ticker), n = alnum(ownName)
+  if (!s) return false
+  return s === t || s === n || (t.length >= BACKING_MIN.ticker && s.includes(t)) || (n.length >= BACKING_MIN.name && s.includes(n))
 }
 
 /**
@@ -88,9 +120,15 @@ function nameHits (identity, recs) {
   // name without the issuer's naming. Added 2026-11-12 (owner: published, a strong claim): an eye check of tokens that
   // resembled a listed stock by meaning found that real copies were mostly exactly this, and the symbol and suffix
   // rules let them through. The token's own name keeps any issuer suffix, so the suffix rule above is not doubled.
+  // ⚠ A ONE-WORD company name needs the symbol to back it (26.11, outside review): "Unity", "Tron", "Snap", "Axon",
+  // "McDonald's" are also ordinary words and memes, and a token named so with an unrelated symbol is not posing as the
+  // share. A name of two words or more ("Marvell Technology") is distinctive enough alone. See symbolBacksName().
+  // Every record of that company counts (share classes collapse to one name: Alphabet Class A and C); the one the
+  // symbol backs is named, else the first.
   const own = companyName(identity.name)
   if (own.length >= COMPANY_NAME_MIN) {
-    const r = recs.find((x) => registryCompany(x) === own)
+    const same = recs.filter((x) => registryCompany(x) === own)
+    const r = isMultiWord(own) ? same[0] : same.find((x) => symbolBacksName(sym, own, x))
     if (r) hits.push(hit('registry_name', r))
   }
   if (sym) {

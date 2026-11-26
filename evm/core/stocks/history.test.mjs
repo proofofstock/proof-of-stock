@@ -4,7 +4,7 @@
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { replayCases, caseEvents, recordCases, canonicalRegistry, registryHash, recordRegistry, HISTORY_DIR, goneReason } from './history.mjs'
+import { replayCases, caseEvents, recordCases, canonicalRegistry, registryHash, recordRegistry, HISTORY_DIR, goneReason, CASE_RULE_VERSION } from './history.mjs'
 import { createHistoryStore } from '../../../apps/stocks-history.mjs'
 import { eachJsonl } from '../../../scripts/lib/jsonl.mjs'
 import { validateV2 } from '../../../schemas/v2/validate.mjs'
@@ -19,6 +19,26 @@ const newRoot = () => fs.mkdtempSync(path.join(os.tmpdir(), 'stp-history-'))
 const rowsOf = (root, prefix) => (fs.existsSync(path.join(root, 'stock-peg', HISTORY_DIR)) ? fs.readdirSync(path.join(root, 'stock-peg', HISTORY_DIR)) : []).filter((f) => f.startsWith(prefix)).sort()
   .flatMap((f) => fs.readFileSync(path.join(root, 'stock-peg', HISTORY_DIR, f), 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l)))
 const run = (root, items, at, registry = new Set([R]), extra = {}) => recordCases({ root, list: list(items, extra), registry, chainId: 8453, at, validate: validateV2 })
+
+console.log('H0: a case the narrowed name rule no longer holds (v3, 26.11)')
+{
+  const root = newRoot()
+  const snap = item(A, 'registry_name', { symbol: 'THANOS', name: 'Snap', ticker: 'SNAP', registry_symbol: 'SNAPc' })
+  const nvda = item(B, 'registry_name', { symbol: 'NVDA', name: 'NVIDIA' })
+  run(root, [snap, nvda], T0)
+  // Make the archive look as v2 wrote it.
+  const dir = path.join(root, 'stock-peg', HISTORY_DIR)
+  for (const f of fs.readdirSync(dir)) fs.writeFileSync(path.join(dir, f), fs.readFileSync(path.join(dir, f), 'utf8').split('impostor-strong-v3').join('impostor-strong-v2'))
+  const logs = []
+  const h = recordCases({ root, list: list([nvda]), registry: new Set([R]), chainId: 8453, at: T1, validate: validateV2, log: (m) => logs.push(m) })
+  const gone = rowsOf(root, 'cases-').find((r) => r.event === 'gone' && r.address === A)
+  check('the close is written: the schema knows rule_narrowed', gone && gone.gone_reason === 'rule_narrowed' && validateV2('stock-case', gone).valid && logs.length === 0, JSON.stringify({ gone, logs, h }))
+  check('...under the current rule version', gone && gone.rule_version === CASE_RULE_VERSION)
+  const h2 = recordCases({ root, list: list([]), registry: new Set([R]), chainId: 8453, at: T2, validate: validateV2 })
+  const later = rowsOf(root, 'cases-').find((r) => r.event === 'gone' && r.address === B)
+  check('an old case v3 still holds ("NVIDIA" with NVDA), closing later, is not blamed on the narrowing', later && later.gone_reason === 'no_longer_matches', JSON.stringify({ later, h2 }))
+  check('a two-word name under an older rule is not blamed either', goneReason({ kind: 'registry_name', rule_version: 'impostor-strong-v2', name: 'Marvell Technology', symbol: 'PEPE', ticker: 'MRVL', registry_address: '0xr' }, new Set(['0xr'])) === 'no_longer_matches')
+}
 
 console.log('H1: the case archive')
 {
@@ -49,6 +69,11 @@ console.log('H1: the case archive')
   const gone = rowsOf(root, 'cases-').find((r) => r.event === 'gone' && r.address === A)
   check('...and says why it closed', gone && ['imitated_left_list', 'no_longer_matches'].includes(gone.gone_reason), JSON.stringify(gone && gone.gone_reason))
   check('the reason is the imitated stock leaving the issuer\'s list, or the token no longer copying one', goneReason({ registry_address: '0xr' }, new Set()) === 'imitated_left_list' && goneReason({ registry_address: '0xr' }, new Set(['0xr'])) === 'no_longer_matches' && goneReason({ registry_address: null }, new Set()) === 'no_longer_matches')
+  const RN = new Set(['0xr'])
+  check('a name-rule case opened under an older rule, stock still listed, closes as rule_narrowed (v3, 26.11)', goneReason({ kind: 'registry_name', rule_version: 'impostor-strong-v2', name: 'Snap', symbol: 'THANOS', ticker: 'SNAP', registry_address: '0xr' }, RN) === 'rule_narrowed')
+  check('...the same case under the current rule closes as no longer matching', goneReason({ kind: 'registry_name', rule_version: CASE_RULE_VERSION, name: 'Snap', symbol: 'THANOS', ticker: 'SNAP', registry_address: '0xr' }, RN) === 'no_longer_matches' && CASE_RULE_VERSION === 'impostor-strong-v3')
+  check('...another kind under an older rule is not blamed on the narrowing', goneReason({ kind: 'registry_symbol', rule_version: 'impostor-strong-v2', registry_address: '0xr' }, RN) === 'no_longer_matches')
+  check('...and a stock that left the list still says so first', goneReason({ kind: 'registry_name', rule_version: 'impostor-strong-v2', registry_address: '0xr' }, new Set()) === 'imitated_left_list')
 }
 {
   // Two runs on the same day land in the same file: the second must add to it, not replace it.

@@ -74,8 +74,8 @@
     },
     {
       "name": "a name that contains the company counts as the company",
-      "find": "    const r = recs.find((x) => registryCompany(x) === own)",
-      "replace": "    const r = recs.find((x) => registryCompany(x) && own.includes(registryCompany(x)))",
+      "find": "    const same = recs.filter((x) => registryCompany(x) === own)",
+      "replace": "    const same = recs.filter((x) => registryCompany(x) && own.includes(registryCompany(x)))",
       "expect": "FAIL a name that only contains the company is not the company"
     },
     {
@@ -83,6 +83,30 @@
       "find": "  if (own.length >= COMPANY_NAME_MIN) {",
       "replace": "  if (own.length >= 1) {",
       "expect": "FAIL a name shorter than three letters is a word, not a company"
+    },
+    {
+      "name": "a one-word name needs no backing (outside review 26.11)",
+      "find": "    const r = isMultiWord(own) ? same[0] : same.find((x) => symbolBacksName(sym, own, x))",
+      "replace": "    const r = same[0]",
+      "expect": "FAIL a one-word company name with an unrelated symbol is not a claim"
+    },
+    {
+      "name": "a symbol in another script no longer fails closed",
+      "find": "  if (/[^\\u0000-\\u007f]/.test(raw) && /\\p{L}/u.test(raw.replace(/[\\u0000-\\u007f]/g, ''))) return true",
+      "replace": "  void raw",
+      "expect": "FAIL a Cyrillic letter in the symbol does not let a copy through"
+    },
+    {
+      "name": "a hyphen no longer makes two words",
+      "find": "export const isMultiWord = (own) => /[\\s-]/.test(own)",
+      "replace": "export const isMultiWord = (own) => /\\s/.test(own)",
+      "expect": "FAIL a hyphen makes two words"
+    },
+    {
+      "name": "only the first share class is tried",
+      "find": "    const same = recs.filter((x) => registryCompany(x) === own)",
+      "replace": "    const same = recs.filter((x) => registryCompany(x) === own).slice(0, 1)",
+      "expect": "FAIL a share class the symbol backs is found even when it is not the first record"
     }
   ]
 }

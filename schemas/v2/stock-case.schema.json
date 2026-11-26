@@ -18,7 +18,7 @@
     "name": { "type": ["string", "null"] },
     "kind": { "type": "string", "minLength": 1 },
     "previous_kind": { "type": "string" },
-    "gone_reason": { "enum": ["imitated_left_list", "no_longer_matches"] },
+    "gone_reason": { "enum": ["imitated_left_list", "no_longer_matches", "rule_narrowed"] },
     "ticker": { "type": ["string", "null"] },
     "registry_symbol": { "type": ["string", "null"] },
     "registry_address": { "type": ["string", "null"], "pattern": "^0x[0-9a-f]{40}$" },

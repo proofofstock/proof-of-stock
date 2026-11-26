@@ -19,7 +19,7 @@
 export const BOARD_LIMIT = 24
 export const CHAIN_LABEL = { all: 'both', base: 'Base', robinhood: 'Robinhood Chain' }
 export const BOARD_STATUS = { opened: 'open', listed: 'later listed by the issuer: we were early or wrong', gone: 'closed', kind_changed: 'kind changed' }
-export const GONE_WHY = { imitated_left_list: 'closed: the stock it copied left the issuer\'s list', no_longer_matches: 'closed: no longer copies a listed stock' }
+export const GONE_WHY = { imitated_left_list: 'closed: the stock it copied left the issuer\'s list', no_longer_matches: 'closed: no longer copies a listed stock', rule_narrowed: 'closed: our name rule was narrowed; the token did not change' }
 export const BOARD_UNREADABLE = 'The case archive could not be read right now.'
 export const BOARD_EMPTY = 'No new look-alikes flagged in the last 7 days.'
 

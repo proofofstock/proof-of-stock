@@ -389,7 +389,7 @@ not a download.
 The dated archive (`/history` is the same for people). **A list shows the last 7 days of observed events, at most 50 rows; cases archived from the collector's earlier history are not listed.** Any one address keeps its whole case in `/verify` and `/api/passport` (`case`), and the counts cover the whole archive. The full archive is available on request: hello@proofofstock.xyz. Every row is appended and never rewritten. A case is one
 address outside the registry that claimed an issuer token; each change of it is an event: `opened`, `kind_changed`,
 `listed` (the issuer later listed that address) or `gone` (the case closed). A `gone` event carries `gone_reason`:
-`imitated_left_list` when the listed stock it imitated left the issuer's list, `no_longer_matches` otherwise. Closes
+`imitated_left_list` when the listed stock it imitated left the issuer's list, `rule_narrowed` when our rule was narrowed and no longer holds the case (26 Nov 2026: a one-word company name now needs the symbol to back it; the token did not change), `no_longer_matches` otherwise. Closes
 recorded before 19 Nov 2026 get it from the registry archive at the time of the close. The archive began on 10 Nov 2026; cases
 the collector had seen before then are archived with `source: "backfilled"`, their collector `first_seen_at` and no
 `flagged_at`, because we did not flag them at the time.

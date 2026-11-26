@@ -15,11 +15,17 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import crypto from 'node:crypto'
+import { companyName, isMultiWord, symbolBacksTicker } from './impostor.mjs'
 
 export const HISTORY_DIR = 'history'
 // v2 (11.11.2026): the symbol and name are compared after untrusted-text.mjs normalizeUntrusted() (NFKC, invisible
 // characters removed), so a look-alike written with those is now a case. v1 compared the text as written.
-export const CASE_RULE_VERSION = 'impostor-strong-v2' // evm/core/stocks/impostor.mjs resemblance(), strong kinds only
+// v3 (26.11.2026): a one-word company name (registry_name) counts only when the token's symbol backs it
+// (impostor.mjs symbolBacksName). Cases it no longer holds close with gone_reason 'rule_narrowed', never as if the token
+// had changed.
+export const CASE_RULE_VERSION = 'impostor-strong-v3' // evm/core/stocks/impostor.mjs resemblance(), strong kinds only
+/** The rule versions under which a one-word registry_name held without a backing symbol. */
+export const RULE_NARROWED_FROM = Object.freeze(['impostor-strong-v1', 'impostor-strong-v2'])
 export const BACKFILL_SOURCE = 'first_seen_at from our collector history (static day files), archived when the case archive began'
 
 const day = (ms) => new Date(ms).toISOString().slice(0, 10)
@@ -77,7 +83,18 @@ const caseFields = (it) => ({ address: it.address, symbol: it.symbol ?? null, na
  * @param {boolean} p.firstArchive  the archive of this chain is empty: what the list holds now is backfilled
  */
 /** imitated_left_list: the listed contract it imitated is not on the issuer's list any more; no_longer_matches: otherwise. */
-export const goneReason = (prev, registry) => prev && prev.registry_address && !registry.has(prev.registry_address) ? 'imitated_left_list' : 'no_longer_matches'
+export const goneReason = (prev, registry) => {
+  if (prev && prev.registry_address && !registry.has(prev.registry_address)) return 'imitated_left_list'
+  // The token did not change: our rule did (v3). A case opened as registry_name under an older rule, whose stock is still
+  // listed, closes because the rule was narrowed.
+  // Decided from the row itself, not only its version: an older registry_name case that v3 still holds ("NVIDIA" with
+  // NVDA) and that closes later for another reason is not blamed on the narrowing.
+  if (prev && prev.kind === 'registry_name' && RULE_NARROWED_FROM.includes(prev.rule_version)) {
+    const own = companyName(prev.name)
+    if (!isMultiWord(own) && !symbolBacksTicker(prev.symbol, own, prev.ticker)) return 'rule_narrowed'
+  }
+  return 'no_longer_matches'
+}
 
 export function caseEvents (open, list, { registry, at, chainId, firstArchive }) {
   const atIso = new Date(at).toISOString()

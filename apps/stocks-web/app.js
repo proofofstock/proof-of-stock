@@ -893,7 +893,7 @@
   // included. A token's own symbol is its creator's text: it goes into a table cell as text (h() never parses HTML),
   // never into a sentence, a title or a label. No links out, no deployer: the board must not advertise a fake.
   const BOARD_STATUS = { opened: 'open', listed: 'later listed by the issuer: we were early or wrong', gone: 'closed', kind_changed: 'kind changed' }
-  const GONE_WHY = { imitated_left_list: 'closed: the stock it copied left the issuer\'s list', no_longer_matches: 'closed: no longer copies a listed stock' }
+  const GONE_WHY = { imitated_left_list: 'closed: the stock it copied left the issuer\'s list', no_longer_matches: 'closed: no longer copies a listed stock', rule_narrowed: 'closed: our name rule was narrowed; the token did not change' }
   async function findingsBoard () {
     const rows = $('#board-rows'), counts = $('#board-counts'), empty = $('#board-empty')
     if (!rows) return

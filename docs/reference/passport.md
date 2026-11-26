@@ -428,7 +428,7 @@ Kinds, strongest first; the strongest that fires is returned:
 |---|---|
 | `registry_symbol` | the symbol equals, case-sensitively, a listed symbol that is not just the bare ticker (Coinbase's `NVDAc`, not Robinhood's `NVDA`) |
 | `issuer_name_suffix` | the name ends in "… Robinhood Token" and the registry is Robinhood's |
-| `registry_name` | the whole name is a listed company's name, case, punctuation and corporate ending aside (`NVIDIA`, `McDonald's`) |
+| `registry_name` | the whole name is a listed company's name, case, punctuation and corporate ending aside (`NVIDIA`, `McDonald's`); a one-word name only when the symbol backs it (`McDonald's` with `MCD`, not with `Mc`) |
 | `ticker` | the symbol equals a listed ticker ignoring case. Weak: many memecoins borrow a ticker |
 
 `null` when: the token is listed; the server knows no symbol or name for the address; or the name matches none of the
