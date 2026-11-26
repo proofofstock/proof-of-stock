@@ -329,9 +329,23 @@ async function go () {
 const chips = [...document.querySelectorAll('.dm-chip')]
 const cleanQuery = (s) => String(s || '').replace(/[^\p{L}\p{N} .&-]/gu, '').replace(/\s+/g, ' ').trim().slice(0, 40)
 const chosenChip = (q) => chips.find((c) => c.dataset.query.toLowerCase() === q.toLowerCase()) || null
-const mark = () => { const c = chosenChip(cleanQuery($('dm-q').value)); for (const x of chips) x.setAttribute('aria-pressed', String(x === c)) }
+const mark = () => { const c = chosenChip(cleanQuery(amountless($('dm-q').value))); for (const x of chips) x.setAttribute('aria-pressed', String(x === c)) }
 for (const c of chips) c.addEventListener('click', () => { $('dm-q').value = c.dataset.query; mark(); go() })
 $('dm-q').addEventListener('input', mark)
+// Quick amounts (owner, 26.11): "<stock> <amount>$" in the field, the way a reader types it; parseIntent reads it back.
+// An amount already there is replaced; with no stock in the field, a random one of the buttons.
+const amountless = (s) => String(s || '').split(/\s+/).filter((w) => w && !/^\$?[\d.,]+k?\$?$/i.test(w) && !/^usdc?$/i.test(w)).join(' ')
+for (const a of document.querySelectorAll('.dm-amt[data-usd]')) {
+  a.addEventListener('click', () => {
+    let q = amountless($('dm-q').value)
+    if (!cleanQuery(q)) q = chips[Math.floor(Math.random() * chips.length)].dataset.query
+    $('dm-q').value = `${q} ${a.dataset.usd}$`
+    $('dm-usd').value = a.dataset.usd
+    mark()
+    run.focus()
+  })
+}
+$('dm-clear').addEventListener('click', () => { $('dm-q').value = ''; $('dm-usd').value = '20'; mark(); $('dm-q').focus() })
 
 $('dm-noscript').hidden = true
 form.addEventListener('submit', (ev) => { ev.preventDefault(); go() })

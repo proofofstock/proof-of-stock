@@ -8,7 +8,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { createStocksWeb, SECURITY_HEADERS } from './stocks-web.mjs'
-import { demoPage, demoCsp, DEMO_HOSTS, DEMO_STOCKS, VIEWS, STEPS } from './stocks-demo-page.mjs'
+import { demoPage, demoCsp, DEMO_HOSTS, DEMO_STOCKS, DEMO_AMOUNTS, VIEWS, STEPS } from './stocks-demo-page.mjs'
 import { TABS } from './stocks-nav.mjs'
 import { KYBER, BASE_RPC } from '../packages/proofofstock-guard/examples/agent-buy.mjs'
 import { GECKO } from '../packages/proofofstock-guard/examples/agent-search.mjs'
@@ -32,7 +32,11 @@ console.log('the page itself')
   const views = [...html.matchAll(/<button type="button" class="dm-view" data-view="([a-z]+)" aria-pressed="(true|false)"[^>]*>([^<]+)<\/button>/g)]
   check('one switch, three views in order: Plain, Trader, Developer, Plain first', views.map((m) => m[3]).join() === 'Plain,Trader,Developer' && views.map((m) => m[2]).join() === 'true,false,false' && VIEWS.map((v) => v.id).join() === 'plain,trader,dev')
   const chips = [...html.matchAll(/<button type="button" class="dm-chip" data-query="([^"]+)" data-ticker="([A-Z]+)" aria-pressed="(true|false)">/g)]
-  check('no command to type: one button per stock, Circle first and chosen (owner, 25.11)', chips.map((m) => m[1]).join() === 'Circle,Tesla,SanDisk,NVIDIA' && chips.map((m) => m[3]).join() === 'true,false,false,false' && DEMO_STOCKS[0].ticker === 'CRCL' && /<input id="dm-q" name="q" value="Circle"/.test(html) && !/buy \$20 of/.test(html))
+  check('no command to type: one button per stock, Circle first and chosen (owner, 25.11)', chips.map((m) => m[1]).join() === 'Circle,Tesla,SanDisk,NVIDIA,Apple,Amazon' && chips.map((m) => m[3]).join() === 'true,false,false,false,false,false' && DEMO_STOCKS[0].ticker === 'CRCL' && /<input id="dm-q" name="q" value="Circle"/.test(html) && !/buy \$20 of/.test(html))
+  // Owner, 26.11: quick amounts in small grey type under the field, and a word to clear it.
+  const amts = [...html.matchAll(/<button type="button" class="dm-amt" data-usd="(\d+)">([^<]+)<\/button>/g)]
+  check('quick amounts $10, $100, $1,000, $10,000 sit beside Amount, then a clear word', amts.map((m) => m[2]).join(' ') === '$10 $100 $1,000 $10,000' && DEMO_AMOUNTS.join() === '10,100,1000,10000' && /<div class="dm-amtrow">\s*<details class="dm-more">[\s\S]*?<div class="dm-amts"[^>]*>.*id="dm-clear">clear<\/button><\/div>\s*<\/div>/.test(html))
+  check('an amount writes "<stock> <amount>$" (a random stock if none), clear empties the field', /\$\('dm-q'\)\.value = `\$\{q\} \$\{a\.dataset\.usd\}\$`/.test(js) && /if \(!cleanQuery\(q\)\) q = chips\[Math\.floor\(Math\.random\(\) \* chips\.length\)\]\.dataset\.query/.test(js) && /\$\('dm-clear'\)\.addEventListener\('click', \(\) => \{ \$\('dm-q'\)\.value = ''/.test(js) && /\.dm-amt \{[^}]*color: var\(--faint\)/.test(css))
   check('nothing is handed to the agent: no contract field', !/dm-handed/.test(html) && !/dm-handed/.test(js))
   // Owner, 25.11: the wallet is for developers only. It sits in its own block, apart from the amount everyone may set.
   check('the wallet field sits in a developer-only block, apart from the amount', /<details class="dm-more dm-dev-only" id="dm-wallet">[\s\S]*?<input id="dm-from"[\s\S]*?<\/details>/.test(html) && /<details class="dm-more">\s*<summary>Amount<\/summary>[\s\S]*?<input id="dm-usd"[^>]*>\s*<\/details>/.test(html) && html.indexOf('id="dm-from"') > html.indexOf('id="dm-wallet"'))

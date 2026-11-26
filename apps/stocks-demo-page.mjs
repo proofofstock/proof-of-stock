@@ -30,7 +30,11 @@ export const DEMO_STOCKS = Object.freeze([
   Object.freeze({ query: 'Tesla', ticker: 'TSLA' }),
   Object.freeze({ query: 'SanDisk', ticker: 'SNDK' }),
   Object.freeze({ query: 'NVIDIA', ticker: 'NVDA' }),
+  Object.freeze({ query: 'Apple', ticker: 'AAPL' }),
+  Object.freeze({ query: 'Amazon', ticker: 'AMZN' }),
 ])
+/** The quick amounts under the field, in USDC (owner, 26.11). */
+export const DEMO_AMOUNTS = Object.freeze([10, 100, 1000, 10000])
 /** The only hosts outside ours the page may reach: the search, the quote and the decimals. Taken from the examples. */
 export const DEMO_HOSTS = Object.freeze([new URL(GECKO).origin, new URL(KYBER).origin, new URL(BASE_RPC).origin])
 /** The site's CSP with connect-src widened to DEMO_HOSTS, and nothing else changed. */
@@ -45,7 +49,7 @@ export const VIEWS = Object.freeze([
 
 /** The steps, as the page tells them without running anything. */
 export const STEPS = Object.freeze([
-  ['You pick a stock', 'Circle, Tesla, SanDisk, NVIDIA, or any company or ticker you type.'],
+  ['You pick a stock', 'Circle, Tesla, SanDisk, NVIDIA, Apple, Amazon, or any company or ticker you type.'],
   ['The agent searches the market', 'Like anyone would: every token on Base whose name or symbol says that stock. Often there are several, and they look alike.'],
   ['Proof of Stock checks them all', 'One call for every token found: is it on the issuer\'s own list, or does it copy a token that is?'],
   ['The fakes and the unknown are dropped', 'A copy of the issuer\'s symbol is a fake. A token simply not on the list may be another issuer\'s: the agent cannot vouch for it, so it skips it too.'],
@@ -62,6 +66,8 @@ export const STEPS = Object.freeze([
  */
 export function demoPage ({ version, assets }) {
   const views = VIEWS.map((v, i) => `<button type="button" class="dm-view" data-view="${esc(v.id)}" aria-pressed="${i === 0}" title="${esc(v.hint)}">${esc(v.label)}</button>`).join('')
+  const amounts = DEMO_AMOUNTS.map((n) => `<button type="button" class="dm-amt" data-usd="${n}">$${n.toLocaleString('en-US')}</button>`).join('') +
+    '<button type="button" class="dm-amt dm-clear" id="dm-clear">clear</button>'
   const chips = DEMO_STOCKS.map((s, i) => `<button type="button" class="dm-chip" data-query="${esc(s.query)}" data-ticker="${esc(s.ticker)}" aria-pressed="${i === 0}">${esc(s.query)}<span>${esc(s.ticker)}</span></button>`).join('')
   const steps = STEPS.map(([t, d], i) => `<li><span class="dm-n">${i + 1}</span><div><b>${esc(t)}</b><p>${esc(d)}</p></div></li>`).join('')
   return `<!doctype html>
@@ -105,11 +111,15 @@ export function demoPage ({ version, assets }) {
         <label class="sr" for="dm-q">Or type a company or a ticker</label>
         <input id="dm-q" name="q" value="${esc(DEMO_STOCKS[0].query)}" placeholder="A company or a ticker" spellcheck="false" maxlength="40">
         <button type="submit" class="dm-run" id="dm-run">Search<span class="i i-arrow" aria-hidden="true"></span></button>
-        <details class="dm-more">
-          <summary>Amount</summary>
-          <label for="dm-usd">Amount to quote, in USDC</label>
-          <input id="dm-usd" name="usd" value="20" inputmode="decimal" spellcheck="false" maxlength="8">
-        </details>
+        <div class="dm-amtrow">
+          <details class="dm-more">
+            <summary>Amount</summary>
+            <label for="dm-usd">Amount to quote, in USDC</label>
+            <input id="dm-usd" name="usd" value="20" inputmode="decimal" spellcheck="false" maxlength="8">
+          </details>
+          <!-- Quick amounts (owner, 26.11): a click writes "<stock> <amount>$" into the field; with no stock there, a random one. -->
+          <div class="dm-amts" role="group" aria-label="Quick amounts">${amounts}</div>
+        </div>
         <!-- The wallet is for developers only (owner, 25.11): shown in the Developer view, ignored in the others. -->
         <details class="dm-more dm-dev-only" id="dm-wallet">
           <summary>For developers: build the unsigned swap for your wallet</summary>

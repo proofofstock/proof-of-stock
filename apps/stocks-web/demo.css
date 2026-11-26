@@ -93,6 +93,12 @@
 .dm-ask input:focus { outline: none; border-color: var(--accent-hi); }
 .dm-run { display: inline-flex; align-items: center; padding: 0 20px; border: 0; border-radius: 11px; background: var(--accent); color: var(--on-accent); font: 650 15px/1 var(--sans); }
 .dm-run:disabled { opacity: .55; cursor: progress; }
+.dm-amtrow { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 6px 16px; }
+.dm-amtrow .dm-more { flex: 1 1 260px; }
+.dm-amts { display: flex; flex-wrap: wrap; gap: 4px 14px; font: 12.5px/1.5 var(--mono); }
+.dm-amt { padding: 0; border: 0; background: none; color: var(--faint); font: inherit; cursor: pointer; }
+.dm-amt:hover, .dm-amt:focus-visible { color: var(--text); }
+.dm-clear { font-family: var(--sans); }
 .dm-more { grid-column: 1 / -1; color: var(--dim); font: 13px/1.5 var(--sans); }
 .dm-more summary { cursor: pointer; width: max-content; max-width: 100%; }
 .dm-more summary:hover { color: var(--text); }
