@@ -4,7 +4,7 @@
 //
 // Run: node evm/core/stocks/passport.test.mjs
 
-import { buildPassport, NOTE_CODES } from './passport.mjs'
+import { buildPassport, NOTE_CODES, liquidityOf, THIN_LIQUIDITY_USD, LIQUIDITY_BASIS } from './passport.mjs'
 import { resemblance, tickerOf } from './impostor.mjs'
 
 let passed = 0, failed = 0
@@ -106,6 +106,20 @@ console.log('resemblance')
   check('the issuer naming convention is recognised', resemblance({ address: X, symbol: 'TSL4', name: 'Tesla Robinhood Token' }, [rh])?.kind === 'issuer_name_suffix')
   check('a bare-ticker issuer symbol (Robinhood GME) is only a weak resemblance', resemblance({ address: X, symbol: 'TSLA', name: 'tsla to the moon' }, [rh])?.kind === 'ticker')
   check('a name merely containing Robinhood is not the convention', resemblance({ address: X, symbol: 'HOOD2', name: 'Robinhood Tokenomics' }, [rh]) === null)
+}
+
+console.log('pool depth (owner, 26.11)')
+{
+  const pools = (...d) => ({ seen: d.length, eligible: d.length, capped: false, top: d.map((x) => ({ liquidity_usd: x })) })
+  const deep = liquidityOf(pools(180000, 40000))
+  check('the deepest pool is the largest of the eligible pools', deep.deepest_pool_usd === 180000 && deep.thin === false && deep.thin_below_usd === THIN_LIQUIDITY_USD && deep.basis === LIQUIDITY_BASIS)
+  check('below the threshold it is thin', liquidityOf(pools(30000)).thin === true)
+  check('exactly at the threshold it is not thin', liquidityOf(pools(THIN_LIQUIDITY_USD)).thin === false)
+  check('no eligible pool at all is the thinnest case, with no number', (() => { const x = liquidityOf(pools()); return x.deepest_pool_usd === null && x.thin === true })())
+  check('a pool with no liquidity figure is not counted as zero', liquidityOf({ seen: 1, eligible: 1, capped: false, top: [{ liquidity_usd: null }, { liquidity_usd: 90000 }] }).deepest_pool_usd === 90000)
+  check('nothing read: null', liquidityOf(null) === null)
+  check('the threshold is 50,000 USD', THIN_LIQUIDITY_USD === 50000)
+  check('the basis says it is the pool\'s size, in dollars', /deepest pool/.test(LIQUIDITY_BASIS) && /US dollars/.test(LIQUIDITY_BASIS))
 }
 
 console.log(`\n${passed} passed, ${failed} failed`)

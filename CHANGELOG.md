@@ -12,6 +12,9 @@ The version is in `package.json`, and the site footer, the MCP `serverInfo.versi
 
 ## [Unreleased]
 
+### Added
+- **Pool depth on every passport.** `latest.liquidity` gives the size of the deepest eligible pool in US dollars and `thin: true` below 50,000 USD, where a trade of a few thousand dollars moves the price by several percent. The site shows it under the on-chain price, marked "thin liquidity" when it is. It is the pool's size, not a quote, and the issuer's reserves are still not something we can check (owner, 26.11).
+
 ### Fixed
 - **A one-word company name is an impostor claim only when the token's symbol backs it.** Names like `Snap`, `Tron`, `Unity` or `McDonald's` are also ordinary words and memes: a token called `Snap` with the symbol `THANOS` is not posing as Snap Inc. The symbol must be the ticker or the company name, or contain the ticker (three characters or more) or the name (four or more). Names of two words or more are unchanged. Cases the narrower rule no longer holds close with the reason "our name rule was narrowed", never as if the token had changed (case rule `impostor-strong-v3`; outside review, 26.11).
 - **`@proofofstock/guard` 0.3.1: `failOpen` never buys a record the server holds because the chain contradicts it.** A `503` whose `reason` is `factory_conflict` or `issuer_prefix_mismatch` is an answer, not an outage, so it is refused whatever `failOpen` says. Any other `503`, an outage or a listing only awaiting confirmation, is decided by `failOpen` as before, and the reason is named in the decision (outside review, 25.11).

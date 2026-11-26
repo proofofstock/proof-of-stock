@@ -18,6 +18,35 @@ import { resemblance } from './impostor.mjs'
 import { mintedOf } from './registries.mjs'
 
 // A reference older than this is "held": the issuer is not updating it right now.
+// ── Pool depth (owner, 26.11) ─────────────────────────────────────────────────────────────────────────────────────────
+// How much money sits in the deepest pool the recorder found, and a plain flag when that is little. It answers "could I
+// get out near this price", which a holder can check on chain today, where the issuer's reserves cannot be checked by us.
+// ⚠ IT IS THE POOL'S SIZE, NOT A QUOTE. liquidity_usd is both sides of the pool as the aggregator or the chain reports
+//   it; what a given trade would cost is simulate_buy's question (docs/simulate-buy-tz.md), not this field's.
+// ⚠ THIN IS A FACT, NOT ADVICE: below THIN_LIQUIDITY_USD a trade of a few thousand dollars moves the price by several
+//   percent in a constant-product pool (a trade of x moves it by about 2x / depth). The words stay factual (TZ §7 of the
+//   agent test applies here too: no "safe", no "avoid").
+
+/** Below this, the deepest pool is called thin. A constant we choose, not a measurement. */
+export const THIN_LIQUIDITY_USD = 50_000
+/** What liquidity_usd is, said in every answer that carries it. */
+export const LIQUIDITY_BASIS = 'the deepest pool we found that pairs this token with a dollar or ETH token: both sides of the pool, in US dollars, as the aggregator or the chain reports it at the last reading'
+
+/** The pool-depth block of a reading's pools, or null when nothing was read. */
+export function liquidityOf (pools) {
+  if (!pools || typeof pools !== 'object') return null
+  const top = Array.isArray(pools.top) ? pools.top : []
+  const depths = top.map((p) => (typeof p?.liquidity_usd === 'number' && Number.isFinite(p.liquidity_usd) ? p.liquidity_usd : null)).filter((x) => x != null)
+  const deepest = depths.length ? Math.max(...depths) : null
+  return {
+    deepest_pool_usd: deepest,
+    // No pool deep enough to price the token at all (MIN_POOL_LIQUIDITY_USD) is the thinnest case of all.
+    thin: deepest == null || deepest < THIN_LIQUIDITY_USD,
+    thin_below_usd: THIN_LIQUIDITY_USD,
+    basis: LIQUIDITY_BASIS,
+  }
+}
+
 export const REFERENCE_HELD_S = 3600
 // While the exchange is open the issuer's reference should move; one older than this, against an on-chain price read
 // minutes ago, compares two different moments and is named.
@@ -162,6 +191,7 @@ export function buildPassport ({ address, chainId, registry, readings = [], iden
       // prices are of one moment. Null when that moment is outside the window or there is no reading since.
       premium_at_reference_time: premiumAt(inWindow, ref && ref.updated_at),
       pools: { seen: latest.pools.seen, eligible: latest.pools.eligible, capped: latest.pools.capped, top: latest.pools.top },
+      liquidity: liquidityOf(latest.pools),
     } : null,
     series,
     notes,

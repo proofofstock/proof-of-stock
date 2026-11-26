@@ -115,7 +115,7 @@
     },
     "latest": {
       "type": "object",
-      "required": ["observed_at", "dex_price_usd", "dex_pool", "premium", "premium_refused", "dex_inside_quote", "price_evidence", "reference_evidence", "age_s", "cadence_s", "premium_at_reference_time", "pools"],
+      "required": ["observed_at", "dex_price_usd", "dex_pool", "premium", "premium_refused", "dex_inside_quote", "price_evidence", "reference_evidence", "age_s", "cadence_s", "premium_at_reference_time", "pools", "liquidity"],
       "additionalProperties": false,
       "properties": {
         "observed_at": { "$ref": "#/definitions/iso_time" },
@@ -138,6 +138,17 @@
             "eligible": { "type": "integer", "minimum": 0 },
             "capped": { "type": "boolean" },
             "top": { "type": "array", "maxItems": 5, "items": { "$ref": "#/definitions/pool" } }
+          }
+        },
+        "liquidity": {
+          "type": ["object", "null"],
+          "required": ["deepest_pool_usd", "thin", "thin_below_usd", "basis"],
+          "additionalProperties": false,
+          "properties": {
+            "deepest_pool_usd": { "type": ["number", "null"], "minimum": 0 },
+            "thin": { "type": "boolean" },
+            "thin_below_usd": { "type": "number", "minimum": 0 },
+            "basis": { "type": "string" }
           }
         }
       }

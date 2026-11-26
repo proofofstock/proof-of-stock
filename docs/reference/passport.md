@@ -256,6 +256,7 @@ The newest recorded reading for this token. The recorder runs every 900 s; this 
 | `cadence_s` | integer | seconds | constant `900` | `900` |
 | [`premium_at_reference_time`](#field-premium_at_reference_time) | object or null | | see below | |
 | [`pools`](#field-pools) | object | | never null | |
+| [`liquidity`](#field-liquidity) | object | | never null | |
 
 `dex_inside_quote` is `true` when `bid <= dex_price_usd <= ask`. It is decided even when the premium is refused.
 
@@ -305,6 +306,23 @@ after `reference.updated_at`. So `0 <= lag_s <= 1800`.
 - no priced reading in the window falls at or after `reference.updated_at`;
 - the first one that does is more than 1800 s later. This covers a reference that last moved before the window began:
   the answer is `null`, never a reading from days later.
+
+<a id="field-liquidity"></a>
+### `liquidity`
+
+How much money sits in the deepest [eligible pool](#field-pools), and a plain flag when that is little. It says whether a
+holder could get out near the on-chain price, which anyone can check on the chain today. It is the pool's size, not a
+quote: what a given trade would cost depends on the pool's shape and the trade's size.
+
+| Field | Type | Null means | Example |
+|---|---|---|---|
+| `deepest_pool_usd` | number or null | no pool reaches the 10,000 USD of an eligible pool | `184000` |
+| `thin` | boolean | never null. `true` when `deepest_pool_usd` is below `thin_below_usd`, or null | `false` |
+| `thin_below_usd` | number | never null. The threshold, 50,000 USD (`THIN_LIQUIDITY_USD`), a constant we chose | `50000` |
+| `basis` | string | never null. What the number is, in words | |
+
+Why 50,000 USD: in a constant-product pool a trade of `x` moves the price by about `2x / depth`, so in a pool of 50,000
+USD a trade of 2,500 USD moves it by about 10%. `thin` is a fact about the pool, not advice.
 
 <a id="field-pools"></a>
 ### `pools`

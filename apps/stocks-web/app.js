@@ -589,6 +589,8 @@
       factoryNote(p),
       field('issuer price', blank(usd(ref && ref.price_usd)), ref && ref.price_usd > 0 ? (REF_KIND[ref.kind] || ref.kind) + ' · ' + (ref.kind === 'token_bid_ask_mid' ? 'last moved ' : 'updated ') + age(ref.age_s) + (ref.spread != null ? ' · bid/ask ' + pct(ref.spread).replace('+', '') + ' apart' : '') : 'the issuer publishes none'),
       field('on-chain price', h('span', { class: sign(l && l.premium) }, blank(usd(l && l.dex_price_usd))), i.minted === false ? 'not minted yet' : l ? (p.notes.includes('reading_stale') ? 'read ' + age(l.age_s) : l.dex_price_usd == null ? 'no pool deep enough' : 'deepest pool') : 'not recorded yet'),
+      // Pool depth (owner, 26.11): the deepest pool's size, and "thin" below the threshold the answer names.
+      ...(l && l.liquidity && i.minted !== false ? [field('pool depth', h('span', { class: l.liquidity.thin ? 'warn' : '' }, l.liquidity.deepest_pool_usd == null ? 'under ' + big(10000) : big(l.liquidity.deepest_pool_usd)), l.liquidity.thin ? 'thin liquidity: a trade of a few thousand dollars can move the price' : 'deepest pool, both sides')] : []),
       field('on-chain vs issuer', h('span', { class: sign(l && l.premium) }, blank(pct(l && l.premium))), l && l.premium != null ? '+ means on-chain costs more' + (l.age_s != null ? ' · read ' + age(l.age_s) : '') : 'nothing to compare'),
       field('market', (SESSION[m.session] || m.session) + (m.holiday ? ' · ' + m.holiday : m.reason === 'weekend' ? ' · weekend' : '')),
       // A multiplier of exactly 1 with nothing pending says nothing; it is shown only when it matters.
