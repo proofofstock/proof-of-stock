@@ -92,12 +92,14 @@ export async function kyberQuote ({ fetchImpl, chain, tokenIn, tokenOut, amountI
   const poolAddresses = [...new Set(swaps.map((s) => low(s.pool)).filter((a) => ADDRESS.test(a)))]
   // The pool that hands the stock token over: the probe of a wrapped revert sends one unit from there (sim-evm.mjs).
   const delivering = swaps.find((s) => low(s.tokenOut) === low(tokenOut) && ADDRESS.test(low(s.pool)))
+  // Every pool that hands the stock token over, on every split of the route: each one sends it (the B20 sender scope).
+  const deliveringPools = [...new Set(swaps.filter((s) => low(s.tokenOut) === low(tokenOut) && ADDRESS.test(low(s.pool))).map((s) => low(s.pool)))]
   const gas = numOrNull(rs.gas), gasUsd = numOrNull(rs.gasUsd)
   return {
     result: 'ok', source: 'kyberswap', amountIn: rs.amountIn, amountOut: rs.amountOut, quotedAt: at,
     gasUnits: gas != null && gas > 0 ? gas : null, gasUsd, gasBasis: 'aggregator_estimate',
     route: { kind: 'aggregator', pools, hops: Math.max(...rs.route.map((x) => x.length)), splits: rs.route.length },
-    poolAddresses, deliveringPool: delivering ? low(delivering.pool) : null, routeSummary: rs,
+    poolAddresses, deliveringPool: delivering ? low(delivering.pool) : null, deliveringPools, routeSummary: rs,
   }
 }
 

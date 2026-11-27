@@ -38,10 +38,10 @@ export const WALLET_IN_URL = 'send the wallet in a POST body; a URL is written t
 
 // ── The enums, held equal to schemas/v2/simulate.schema.json by evm/core/stocks/simulate.test.mjs ──────────────────
 export const OUTCOMES = Object.freeze(['quoted', 'checked', 'refused'])
-export const REFUSALS = Object.freeze(['impostor', 'not_listed', 'not_minted', 'paused', 'paused_unknown', 'ticker_not_exact', 'ticker_ambiguous'])
+export const REFUSALS = Object.freeze(['impostor', 'not_listed', 'not_minted', 'paused', 'paused_unknown', 'ticker_not_exact', 'ticker_ambiguous', 'transfers_paused'])
 export const QUOTE_RESULTS = Object.freeze(['ok', 'no_route', 'unknown'])
 export const QUOTE_SOURCES = Object.freeze(['aerodrome', 'kyberswap'])
-export const QUOTE_REASONS = Object.freeze(['aggregator_unavailable', 'aggregator_busy', 'quote_mismatch', 'quote_empty', 'quoter_mismatch', 'venue_unconfirmed', 'rpc_unavailable', 'decimals_unavailable', 'no_buy_quote', 'timed_out'])
+export const QUOTE_REASONS = Object.freeze(['aggregator_unavailable', 'aggregator_busy', 'quote_mismatch', 'quote_empty', 'quoter_mismatch', 'venue_unconfirmed', 'rpc_unavailable', 'decimals_unavailable', 'no_buy_quote', 'timed_out', 'venue_not_allowed_by_issuer', 'wallet_not_allowed_by_issuer'])
 /** What `quote.gas` covers: the Quoter's estimate of the pool's own swap (not the router, not the L1 data fee), or the
  * aggregator's own estimate of its route. */
 export const GAS_BASES = Object.freeze(['pool_swap_only', 'aggregator_estimate'])
@@ -49,8 +49,8 @@ export const PREMIUM_REFUSALS = Object.freeze(['no_reference', 'reference_spread
 export const WITHIN_REFUSALS = Object.freeze(['reference_age_unknown', 'reference_held', 'no_premium'])
 export const IMPACT_REFUSALS = Object.freeze(['mid_stale', 'no_mid', 'no_quote'])
 export const SIM_RESULTS = Object.freeze(['would_succeed', 'would_revert', 'unknown'])
-export const SIM_REASONS = Object.freeze(['no_quote', 'build_failed', 'router_not_allowed', 'rpc_unavailable', 'block_unavailable', 'rpc_gas_cap', 'override_unverified', 'override_suspect', 'revert_empty', 'return_undecodable', 'below_min_out', 'estimate_disagrees', 'revert_unattributed', 'no_probe_pool', 'build_unverified', 'build_mismatch', 'aggregator_busy', 'timed_out', 'debit_unverified', 'transfer_mismatch', 'deadline_passed'])
-export const REVERT_KINDS = Object.freeze(['token_rule', 'stable_blocklist', 'min_out'])
+export const SIM_REASONS = Object.freeze(['no_quote', 'build_failed', 'router_not_allowed', 'rpc_unavailable', 'block_unavailable', 'rpc_gas_cap', 'override_unverified', 'override_suspect', 'revert_empty', 'return_undecodable', 'below_min_out', 'estimate_disagrees', 'revert_unattributed', 'no_probe_pool', 'build_unverified', 'build_mismatch', 'aggregator_busy', 'timed_out', 'debit_unverified', 'transfer_mismatch', 'deadline_passed', 'wallet_not_allowed_by_issuer'])
+export const REVERT_KINDS = Object.freeze(['token_rule', 'stable_blocklist', 'min_out', 'issuer_policy'])
 export const PROBES = Object.freeze(['stable', 'token'])
 export const OVERRIDES = Object.freeze(['stable_balance', 'stable_allowance', 'native_balance'])
 /** The passport's notes that matter to a buyer, and our own minted_unknown (§5.8). */
@@ -231,8 +231,11 @@ export function premiumCheckOf (premium, { limit, limitSource }, notes, exact = 
   return x == null ? { ...o, within_refused: 'no_premium' } : { ...o, within: x }
 }
 
+/** The token's B20 transfer rules as the context carries them (docs/b20-transfers-tz.md §4): the state, why, and when. */
+export const transfersContext = (t) => (t ? { state: t.state, reason: t.reason ?? null, checked_at: t.checked_at ?? null, age_s: t.age_s ?? null, block: t.block ?? null, source: t.source ?? null } : null)
+
 /** The context block (§5.8). */
-export function contextOf (passport, now, { mintedUnknown = false } = {}) {
+export function contextOf (passport, now, { mintedUnknown = false, transfers = null } = {}) {
   const s = passport?.market_now || usEquitySession(now)
   const ref = passport?.reference || null
   const notes = (passport?.notes || []).filter((n) => CONTEXT_NOTES.includes(n))
@@ -244,6 +247,8 @@ export function contextOf (passport, now, { mintedUnknown = false } = {}) {
     reference: ref ? { kind: ref.kind ?? null, price_usd: ref.price_usd ?? null, updated_at: ref.updated_at ?? null, age_s: ref.age_s ?? null, held, halted: ref.halted === true, bid: ref.bid ?? null, ask: ref.ask ?? null, spread: ref.spread ?? null } : null,
     notes,
     liquidity: passport?.latest?.liquidity ?? null,
+    // Base only: null on Robinhood Chain, and wherever the site has no reading to hand in.
+    transfers: transfersContext(transfers),
   }
 }
 
@@ -290,6 +295,7 @@ export function ageWords (s) {
 const SESSION = Object.freeze({ regular: 'open', pre: 'in pre-market', post: 'in after-hours', closed: 'closed', unknown: 'not known (calendar unknown)' })
 const REVERT_WORDS = Object.freeze({
   token_rule: 'the stock token\'s own transfer rule refused the transfer to this wallet',
+  issuer_policy: 'the issuer\'s B20 transfer policy, read from Base, refuses this transfer',
   stable_blocklist: 'the stable refused this wallet (its blocklist)',
   min_out: 'the route\'s price moved past the slippage between the quote and this run',
 })
@@ -313,6 +319,7 @@ export function leadOf (a) {
     if (r === 'not_listed') return `${v.address} is not in the ${who} registry on ${C.name} (not necessarily fake: another issuer's token would not be in it either). No quote was made.`
     if (r === 'not_minted') return `${v.symbol} on ${C.name} is on ${who}'s list but not minted on this chain yet, so there is no pool. No quote was made.`
     if (r === 'paused') return `${v.symbol} on ${C.name} is on ${who}'s list and paused by the issuer (verdict.paused), so a swap would revert. No quote was made.`
+    if (r === 'transfers_paused') return `${v.symbol} on ${C.name} is on ${who}'s list, and its transfers are paused on chain (isPaused(TRANSFER), read from ${C.name} ${ageWords(a.context?.transfers?.age_s ?? null)}), so a swap would revert. No quote was made.`
     return `${v.symbol} on ${C.name} is on ${who}'s list, but whether the issuer has paused it could not be read. No quote was made.`
   }
   const parts = [`${v.symbol} on ${C.name} is on ${who}'s list.`]
@@ -320,10 +327,15 @@ export function leadOf (a) {
   parts.push(`US market: ${SESSION[ctx.market?.session] || SESSION.unknown}.`)
   if (ctx.reference?.held) parts.push(`${who}'s reference is held from an earlier price (updated ${ageWords(ctx.reference.age_s)}), so the limit is not compared.`)
   if (ctx.notes?.includes('trading_halted')) parts.push('The issuer reports trading in the share as halted.')
+  const tr = ctx.transfers
+  if (tr && tr.state === 'restricted') parts.push(`The issuer's B20 rules on ${C.name} restrict this token's transfers (${tr.reason}, read ${ageWords(tr.age_s)}).`)
+  else if (tr && tr.state === 'unknown') parts.push(`The token's on-chain transfer rules could not be read (${tr.reason}).`)
   if (ctx.liquidity?.thin) parts.push(`The deepest pool we recorded is thin (${ctx.liquidity.deepest_pool_usd == null ? 'no depth read' : 'about ' + usd0(ctx.liquidity.deepest_pool_usd)}, below the ${usd0(ctx.liquidity.thin_below_usd)} we call thin), so the size moves the price.`)
   const q = a.quote
   const venue = q.source === 'aerodrome' ? 'Aerodrome, one pool' : 'KyberSwap'
-  if (a.outcome === 'checked') {
+  if (a.outcome === 'checked' && q.reason === 'venue_not_allowed_by_issuer') {
+    parts.push(`The issuer's B20 rules on chain refuse the ${q.source === 'aerodrome' ? 'Aerodrome router or pool' : 'router'} this quote would use, so there is no ${q.source === 'aerodrome' ? 'Aerodrome' : 'KyberSwap'} price for ${usdWords(a.amount_in.usd)}.`)
+  } else if (a.outcome === 'checked') {
     parts.push(q.result === 'no_route'
       ? `No route was found for ${usdWords(a.amount_in.usd)} of ${C.stable} on ${q.source === 'aerodrome' ? 'Aerodrome\'s pools' : 'the aggregator'}, so there is no price for this size.`
       : `No quote could be read from ${q.source === 'aerodrome' ? 'Aerodrome\'s quoter' : 'the aggregator'} right now (${q.reason}), so there is no price for ${usdWords(a.amount_in.usd)}.`)
@@ -337,17 +349,19 @@ export function leadOf (a) {
     } else s += `; no premium over ${who}'s reference is computed (${p.premium_refused}).`
     parts.push(s)
     const sb = a.sell_back
-    parts.push(sb.result === 'ok' ? `The sell-back of those tokens, quoted now, returns ${usdWords(sb.usd_back)}.` : sb.result === 'no_route' ? 'No route was found for the sell-back of those tokens.' : `No sell-back quote could be read (${sb.reason}).`)
+    parts.push(sb.result === 'ok' ? `The sell-back of those tokens, quoted now, returns ${usdWords(sb.usd_back)}.` : sb.reason === 'wallet_not_allowed_by_issuer' ? 'The issuer\'s B20 sender policy on chain refuses this wallet, so no sell-back is quoted for it.' : sb.reason === 'venue_not_allowed_by_issuer' ? 'The issuer\'s B20 rules on chain refuse the router the sell-back would use, so no sell-back is quoted.' : sb.result === 'no_route' ? 'No route was found for the sell-back of those tokens.' : `No sell-back quote could be read (${sb.reason}).`)
   }
   const k = a.venues?.kyberswap
-  if (k) parts.push(k.result === 'ok' ? `KyberSwap, across venues, quotes ${tokWords(k.tokens_out)} ${v.symbol} for the same amount${k.same_route ? ', through the same pool' : ''}.` : `KyberSwap's line could not be read (${k.result === 'no_route' ? 'no route' : k.reason}).`)
+  if (k && k.reason === 'venue_not_allowed_by_issuer') parts.push('The issuer\'s B20 rules on chain refuse KyberSwap\'s router, so its line was not asked.')
+  else if (k) parts.push(k.result === 'ok' ? `KyberSwap, across venues, quotes ${tokWords(k.tokens_out)} ${v.symbol} for the same amount${k.same_route ? ', through the same pool' : ''}.` : `KyberSwap's line could not be read (${k.result === 'no_route' ? 'no route' : k.reason}).`)
   const sim = a.simulation
   if (sim) {
     const w = short(sim.wallet)
     const words = OVERRIDE_WORDS(C.stable)
     const lacks = (sim.simulated_with || []).map((x) => words[x])
     const at = sim.head_block != null ? ` at block ${sim.head_block}` : ''
-    if (sim.result === 'would_succeed') parts.push(lacks.length ? `As ${w} stands it lacks ${list(lacks)}; with ${lacks.length === 1 ? 'that' : 'those'} supplied, the simulated swap did not revert${at}.` : `The simulated swap from ${w} did not revert${at}.`)
+    if (sim.result === 'would_revert' && sim.reason === 'wallet_not_allowed_by_issuer') parts.push(`The issuer's B20 receiver policy on ${C.name} refuses ${w}${at}, so a swap to it would revert; no dry run was needed.`)
+    else if (sim.result === 'would_succeed') parts.push(lacks.length ? `As ${w} stands it lacks ${list(lacks)}; with ${lacks.length === 1 ? 'that' : 'those'} supplied, the simulated swap did not revert${at}.` : `The simulated swap from ${w} did not revert${at}.`)
     else if (sim.result === 'would_revert') parts.push(`${lacks.length ? `As ${w} stands it lacks ${list(lacks)}; with ${lacks.length === 1 ? 'that' : 'those'} supplied, the` : `The`} simulated swap from ${w} reverted${at}: ${REVERT_WORDS[sim.revert?.kind] || 'for a reason we could not attribute'}.`)
     else parts.push(`The simulated swap from ${w} could not be judged (${sim.reason}).`)
   }
@@ -373,9 +387,10 @@ export function leadOf (a) {
  * @param {object} o.stable         { symbol, address, decimals }
  * @param {number|null} [o.decimals] the token's decimals as read from the chain
  * @param {object} [o.links]        { passport, docs, aerodrome }
+ * @param {object} [o.transfers]    the token's B20 transfer rules (evm/core/stocks/b20.mjs transfersOf), Base only
  * @param {number} o.now
  */
-export function assemble ({ input, verify = null, listProof = null, passport = null, current = null, refusal = null, candidates = null, query = null, quote = null, sellBack = null, second = null, simulation = null, stable, decimals = null, links = {}, now }) {
+export function assemble ({ input, verify = null, listProof = null, passport = null, current = null, refusal = null, candidates = null, query = null, quote = null, sellBack = null, second = null, simulation = null, stable, decimals = null, links = {}, transfers = null, now }) {
   const base = { summary: '', outcome: 'refused', generated_at: new Date(now).toISOString(), chain: input.chain, not_trading_signal: true, disclaimer: DISCLAIMER, query: query ?? input.token }
   const amountIn = { usd: input.usd, asset: stable.symbol, address: stable.address, base_units: BigInt(Math.round(input.usd * 100)) * 10n ** BigInt(stable.decimals) / 100n + '', stable_assumed_usd: 1 }
   const verdict = verify
@@ -387,12 +402,12 @@ export function assemble ({ input, verify = null, listProof = null, passport = n
     // A refusal is assembled without a quote, whatever the caller handed in: a look-alike is never priced (§0.1).
     const a = { ...base, outcome: 'refused', verdict: { ...verdict, reason: why, ...(candidates ? { candidates } : {}), ...(why === 'paused' ? { paused: (current || passport.issuer).paused } : {}) },
       amount_in: amountIn, quote: null, premium: null, premium_check: null, sell_back: null, venues: null,
-      context: contextOf(passport, now), links: { passport: links.passport ?? null, docs: links.docs ?? null } }
+      context: contextOf(passport, now, { transfers }), links: { passport: links.passport ?? null, docs: links.docs ?? null } }
     a.summary = leadOf(a)
     return a
   }
   const mintedUnknown = passport.issuer.minted == null
-  const context = contextOf(passport, now, { mintedUnknown })
+  const context = contextOf(passport, now, { mintedUnknown, transfers })
   const q = quoteBlock(quote, { decimals, usd: input.usd, slippageBps: input.slippageBps, now })
   const ok = q.result === 'ok'
   const premium = premiumOf(ok ? q.effective_price_usd : null, passport, now)

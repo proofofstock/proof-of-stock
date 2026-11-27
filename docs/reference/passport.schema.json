@@ -19,7 +19,40 @@
     "note": {
       "enum": ["not_in_registry", "no_readings", "no_reference", "reference_held_market_closed", "reference_held_market_open",
         "trading_halted", "paused", "no_dex_price", "pools_capped", "multiplier_change_pending", "calendar_unknown",
-        "reference_spread_wide", "reading_stale", "not_minted", "sources_disagree"]
+        "reference_spread_wide", "reading_stale", "not_minted", "sources_disagree", "transfers_restricted", "transfers_paused"]
+    },
+    "transfers": {
+      "description": "Base only (null on Robinhood Chain): what the token's own B20 transfer rules allow, read from Base at one block (docs/b20-transfers-tz.md, evm/core/stocks/b20.mjs). The issuer's own rule, never a verdict: it does not change in_registry. unknown when a read failed, a bound policy id does not exist, an answer did not decode, or the reading is older than 15 minutes.",
+      "type": ["object", "null"],
+      "required": ["state", "reason", "checked_at", "age_s", "block", "policies", "ordinary_wallet", "venues", "pause", "source"],
+      "additionalProperties": false,
+      "properties": {
+        "state": { "enum": ["open", "restricted", "paused", "unknown"] },
+        "reason": { "enum": ["not_read", "read_failed", "stale", "undecodable", "policy_missing", "ordinary_wallet_refused", "venue_refused", null] },
+        "checked_at": { "$ref": "#/definitions/iso_time_or_null" },
+        "age_s": { "type": ["integer", "null"], "minimum": 0 },
+        "block": { "type": ["integer", "null"] },
+        "policies": {
+          "type": "object", "required": ["sender", "receiver", "executor"], "additionalProperties": false,
+          "description": "the policy id bound to each transfer scope, a uint64 in decimal; 0 is the built-in always-allow",
+          "properties": { "sender": { "type": ["string", "null"], "pattern": "^[0-9]{1,20}$" }, "receiver": { "type": ["string", "null"], "pattern": "^[0-9]{1,20}$" }, "executor": { "type": ["string", "null"], "pattern": "^[0-9]{1,20}$" } }
+        },
+        "ordinary_wallet": {
+          "type": "object", "required": ["send", "receive"], "additionalProperties": false,
+          "description": "what the policies answer for a fixed address nobody controls: send is the sender and executor scopes, receive the receiver scope",
+          "properties": { "send": { "type": ["boolean", "null"] }, "receive": { "type": ["boolean", "null"] } }
+        },
+        "venues": {
+          "type": "array",
+          "items": { "type": "object", "required": ["name", "address", "allowed", "scopes"], "additionalProperties": false, "properties": { "name": { "enum": ["kyberswap_router", "aerodrome_router", "pool", "uniswap_v4"] }, "address": { "$ref": "#/definitions/address" }, "allowed": { "type": ["boolean", "null"], "description": "every scope checked for this venue" }, "scopes": { "type": "object", "description": "each scope checked for this venue, by its role: sender, receiver, executor", "additionalProperties": false, "properties": { "sender": { "type": ["boolean", "null"] }, "receiver": { "type": ["boolean", "null"] }, "executor": { "type": ["boolean", "null"] } } } } }
+        },
+        "pause": {
+          "type": "object", "required": ["chain", "chain_source", "issuer_list", "issuer_list_features", "issuer_list_source", "agree"], "additionalProperties": false,
+          "description": "the pause as the chain says it and as the issuer's list says it, labelled by source; the chain is what a swap meets",
+          "properties": { "chain": { "type": ["boolean", "null"] }, "chain_source": { "type": "string" }, "issuer_list": { "type": ["boolean", "null"] }, "issuer_list_features": { "type": ["array", "null"], "items": { "type": "string" } }, "issuer_list_source": { "type": "string" }, "agree": { "type": ["boolean", "null"] } }
+        },
+        "source": { "type": "string" }
+      }
     },
     "premium_refused": { "enum": ["no_reference", "pairs_unavailable", "no_pairs", "no_eligible_pool", "sources_disagree", "reference_spread_wide", null] },
     "reference_kind": { "enum": ["nav_total_return", "token_bid_ask_mid"] },
@@ -115,7 +148,7 @@
     },
     "latest": {
       "type": "object",
-      "required": ["observed_at", "dex_price_usd", "dex_pool", "premium", "premium_refused", "dex_inside_quote", "price_evidence", "reference_evidence", "age_s", "cadence_s", "premium_at_reference_time", "pools", "liquidity"],
+      "required": ["observed_at", "dex_price_usd", "dex_pool", "premium", "premium_refused", "dex_inside_quote", "price_evidence", "reference_evidence", "age_s", "cadence_s", "premium_at_reference_time", "pools", "liquidity", "transfers"],
       "additionalProperties": false,
       "properties": {
         "observed_at": { "$ref": "#/definitions/iso_time" },
@@ -150,7 +183,8 @@
             "thin_below_usd": { "type": "number", "minimum": 0 },
             "basis": { "type": "string" }
           }
-        }
+        },
+        "transfers": { "$ref": "#/definitions/transfers" }
       }
     },
     "stats": {
@@ -332,10 +366,11 @@
     "in_registry": {
       "type": "object",
       "required": ["address", "chain_id", "generated_at", "not_trading_signal", "market_now", "in_registry", "resembles", "issuer", "identity",
-        "reference", "latest", "series", "notes", "chain", "links", "sources", "same_stock_elsewhere", "impostor_listing",
+        "reference", "latest", "transfers", "series", "notes", "chain", "links", "sources", "same_stock_elsewhere", "impostor_listing",
         "readings_loaded", "registry_age_s"],
       "additionalProperties": false,
       "properties": {
+        "transfers": { "$ref": "#/definitions/transfers" },
         "address": { "$ref": "#/definitions/address" },
         "chain_id": { "$ref": "#/definitions/chain_id" },
         "generated_at": { "$ref": "#/definitions/iso_time" },

@@ -7,7 +7,11 @@
 //   - each chain's last recorder run row, <root>/stock-peg/stock-peg-runs-<day>.jsonl (errors, refusals, format changes);
 //   - the age of the newest token-static day file in each chain's token dataset, the input the look-alike list is built
 //     from, which another project produces (tokenStreamChecks below; scripts/stocks/data-roots.mjs);
-//   - the status file the backup of /var/lib/pos writes, when POS_BACKUP_STATUS names it (backupChecks below).
+//   - the status file the backup of /var/lib/pos writes, when POS_BACKUP_STATUS names it (backupChecks below);
+//   - the B20 transfer-rule changes the site saw and its current baselines (`base.b20.changes` and `.tokens` in
+//     /api/status, docs/b20-transfers-tz.md §5): one alert per change not told before, and the difference with the
+//     baseline this job last told the owner about, kept in a small file beside the alert state (sendB20Changes below).
+//     The site holds no bot token; this job does.
 // The thresholds are THRESHOLDS and the constants beside each check; the rules are pure, so the tests hold every one.
 //
 // Usage: node scripts/stocks/health-check.mjs [--site=http://127.0.0.1:3005/stocks] (roots from STOCKS_ROOT_BASE and
@@ -19,6 +23,7 @@ import { isEntryPoint } from '../lib/invoked-directly.mjs'
 import { alert } from '../lib/alert.mjs'
 import { dataRoot, tokenDataset } from './data-roots.mjs'
 import { readStatus } from '../ops/pos-backup.mjs'
+import { changeText, snapshotChanges } from '../../evm/core/stocks/b20.mjs'
 
 export const THRESHOLDS = Object.freeze({
   registry_age_s: 900, // the site answers 503 for the chain past this (evm/core/stocks/verify.mjs REGISTRY_FRESH_S)
@@ -195,6 +200,92 @@ export function lastRuns (root, now, n = 2) {
 // sees a new token. Measured on the host on 12.11 over 30 days of observed_at: quiet stretches of up to 5.1 h on an
 // ordinary day, and one real outage of about 30 h on both chains (1 to 2 Nov). 8 h is past every ordinary quiet stretch
 // and catches an outage within a third of a day. STP_TOKEN_STREAM_MAX_AGE_H overrides it.
+/**
+ * Where health-check keeps the B20 baseline it last told the owner about: STP_B20_SENT, else beside the alert state, in
+ * the unit's state directory.
+ */
+export const b20SentFile = (env = process.env) => env.STP_B20_SENT || path.join(path.dirname(env.STP_ALERT_STATE || '/var/lib/stp-alerts/state.json'), 'b20-sent.json')
+
+/** One change applied to a kept snapshot: what the owner has now been told. */
+function applyChange (snap, c) {
+  if (c.kind === 'policy_id') snap.policies = { ...snap.policies, [c.scope]: c.to }
+  else if (c.kind === 'paused') snap.paused = c.to
+  else if (c.kind === 'answer') snap.answers = { ...snap.answers, [c.key]: c.to }
+}
+
+/** How many told changes are remembered by id: far more than the site lists (apps/b20-reader.mjs CHANGES_KEPT). */
+export const B20_TOLD_KEPT = 2000
+/** A listed change's id: its token, kind, scope, account and block. The same change seen in two runs has the same id. */
+export const b20ChangeKey = (token, c) => [token, c.kind, c.scope ?? '', c.account ?? '', c.address ?? '', c.block].join('|')
+/** The answers key of a listed change, as snapshotOf names it. */
+const answerKey = (c) => (c.account === 'ordinary_wallet' ? 'ordinary_wallet' : c.account + ':' + c.address) + '|' + c.scope
+
+/**
+ * One alert per B20 change (docs/b20-transfers-tz.md §5). Two sources from /api/status, `base.b20`:
+ *   - `changes`, the site's recent changes with their block and time: each one not told before is sent, in block order,
+ *     so a pause and an unpause between two runs of this job are two alerts;
+ *   - `tokens`, the site's current baselines: after a restart of the site (whose list starts empty) the difference with
+ *     the baseline this job last told the owner about is sent, so nothing is lost.
+ * Never backwards: a change or a baseline at a block not above the one last told for that token is not compared. A
+ * change counts as told only when Telegram took it ('sent'); 'logged' or 'failed' is tried again next run, and a token
+ * whose change could not be sent waits whole, so the order holds. The kept file is written after each alert sent. A
+ * token seen for the first time is kept without an alert. Never throws.
+ * @returns {Promise<string[]>} one line per alert sent this run
+ */
+export async function sendB20Changes ({ status, file, alertImpl = alert, env = process.env }) {
+  const b20 = status && status.base && status.base.b20
+  const cur = b20 && b20.tokens && typeof b20.tokens === 'object' ? b20.tokens : null
+  if (!cur) return []
+  const listed = Array.isArray(b20.changes) ? b20.changes : []
+  let kept = {}, told = []
+  try { const j = JSON.parse(fs.readFileSync(file, 'utf8')); if (j && j.tokens && typeof j.tokens === 'object') kept = j.tokens; if (j && Array.isArray(j.told)) told = j.told.filter((x) => typeof x === 'string') } catch (_) { /* nothing kept yet */ }
+  const toldSet = new Set(told)
+  const save = () => { try { fs.mkdirSync(path.dirname(file), { recursive: true }); const tmp = file + '.tmp'; fs.writeFileSync(tmp, JSON.stringify({ tokens: kept, told: told.slice(-B20_TOLD_KEPT) }), { mode: 0o600 }); fs.renameSync(tmp, file) } catch (_) { /* tried again next run */ } }
+  const send = async (token, symbol, block, c) => {
+    const text = changeText({ symbol: typeof symbol === 'string' ? symbol.slice(0, 16) : null, token, block }, [c])
+    try { return (await alertImpl({ key: `b20:base:${token}`, text }, { env, everyMs: 0 })) === 'sent' } catch (_) { return false }
+  }
+  const out = []
+  let dirty = false
+  for (const [token, snap] of Object.entries(cur)) {
+    if (!/^0x[0-9a-f]{40}$/.test(token) || !snap || typeof snap !== 'object' || !snap.policies || !Number.isInteger(snap.block)) continue
+    const prev = kept[token]
+    if (!prev) { kept[token] = { policies: { ...snap.policies }, paused: snap.paused ?? null, answers: { ...(snap.answers || {}) }, block: snap.block }; dirty = true; continue }
+    const last = Number.isInteger(prev.block) ? prev.block : -1
+    let waiting = false
+    // 1. The site's list, in block order: each change at or above the last block told (two changes can share a block,
+    // and one of them may still wait), not told before.
+    const mine = listed.filter((c) => c && c.token === token && Number.isInteger(c.block) && c.block >= last && ['policy_id', 'paused', 'answer'].includes(c.kind)).sort((a, b) => a.block - b.block)
+    for (const c of mine) {
+      const id = b20ChangeKey(token, c)
+      if (toldSet.has(id)) continue
+      if (!(await send(token, snap.symbol, c.block, c))) { waiting = true; break }
+      applyChange(prev, c.kind === 'answer' ? { ...c, key: answerKey(c) } : c); prev.block = c.block
+      told.push(id); toldSet.add(id); save(); dirty = false
+      out.push(`${token} ${c.kind} ${c.scope ?? ''} ${c.block}`.trim())
+    }
+    if (waiting) continue
+    // 2. The baseline, never backwards: only a reading above the last block told is compared.
+    if (!(snap.block > (Number.isInteger(prev.block) ? prev.block : -1))) continue
+    let sentAll = true
+    for (const c of snapshotChanges(prev, snap)) {
+      if (!(await send(token, snap.symbol, snap.block, c))) { sentAll = false; break }
+      applyChange(prev, c)
+      save(); dirty = false
+      out.push(`${token} ${c.kind} ${c.scope ?? ''} ${snap.block}`.trim())
+    }
+    if (!sentAll) continue
+    // Values the kept baseline has not seen yet (a new venue, a pause that was unreadable) are taken without an alert,
+    // and the baseline is now as of this block.
+    if (prev.paused == null && (snap.paused === true || snap.paused === false)) prev.paused = snap.paused
+    for (const [k, v] of Object.entries(snap.answers || {})) if (!(k in (prev.answers || {}))) prev.answers = { ...(prev.answers || {}), [k]: v }
+    for (const sc of Object.keys(snap.policies)) if (prev.policies?.[sc] == null && snap.policies[sc] != null) prev.policies = { ...prev.policies, [sc]: snap.policies[sc] }
+    prev.block = snap.block; dirty = true
+  }
+  if (dirty) save()
+  return out
+}
+
 export const TOKEN_STREAM_MAX_AGE_S = 8 * 3600
 const STATIC_DAY = /^token-static-(\d{4}-\d{2}-\d{2})\.jsonl(\.gz)?$/
 
@@ -325,6 +416,7 @@ if (isEntryPoint(import.meta.url)) {
   }
   const sent = []
   for (const ch of checks) sent.push([ch.key, await alert({ key: ch.key, text: ch.text, ok: !ch.bad })])
+  for (const line of await sendB20Changes({ status, file: b20SentFile() })) sent.push(['b20:' + line, 'sent'])
   const bad = checks.filter((c) => c.bad).map((c) => c.key)
   console.log('[stp-health] ' + JSON.stringify({ bad, sent: sent.filter(([, s]) => s === 'sent').map(([k]) => k) }))
 }

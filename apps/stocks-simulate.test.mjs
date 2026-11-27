@@ -15,6 +15,9 @@ import { SELECTORS as AERO } from './simulate/quote-aerodrome.mjs'
 import { STABLES, mapKey, allowanceKey, simulateSwap } from './simulate/sim-evm.mjs'
 import { world, T, X, OTHER, W, POOL, POOL2, D, REVERT, HIGH, OTHER_ROUTER, w, strip } from './simulate/fake-world.mjs'
 import { KYBER_ROUTER } from '../packages/proofofstock-guard/examples/agent-buy.mjs'
+import { createB20Chain } from './simulate/fake-b20.mjs'
+import { createB20Reader } from './b20-reader.mjs'
+import { transfersOf, ORDINARY_WALLET, UNISWAP_V4_POOL_MANAGER } from '../evm/core/stocks/b20.mjs'
 
 let passed = 0, failed = 0
 const failures = []
@@ -445,6 +448,119 @@ console.log('it never sends')
   const methods = new Set(wd.requests.filter((q) => q.kind === 'rpc').map((q) => q.method))
   check('...and the node is asked only to read and to call', [...methods].every((m) => ['eth_blockNumber', 'eth_getBlockByNumber', 'eth_getBalance', 'eth_getStorageAt', 'eth_call', 'eth_estimateGas', 'eth_simulateV1'].includes(m)), [...methods].join(' '))
   check('every chain it answers on has an issuer list (the tool\'s chain enum)', JSON.stringify(Object.keys(CHAINS_SIM).sort()) === JSON.stringify(['base', 'robinhood']))
+}
+
+console.log('the issuer\'s B20 rules (docs/b20-transfers-tz.md §4)')
+{
+  const zero = { sender: '0', receiver: '0', executor: '0' }
+  const everyone = [KYBER_ROUTER, D.router, POOL, POOL2, UNISWAP_V4_POOL_MANAGER, ORDINARY_WALLET]
+  /**
+   * A Base world whose token carries B20 rules, read once by the site's reader (its blocks stamped with the test's clock,
+   * `readAgo` earlier); the world's request log starts empty. `list` is the issuer list's pause for the passport.
+   */
+  async function b20World ({ policies = zero, paused = false, kinds = {}, o = {}, readAgo = 0, list = [] } = {}) {
+    const chain = createB20Chain({ tokens: { [T]: { policies, paused } }, kinds })
+    let lag = readAgo
+    const wd = world('base', { b20: chain, blockTime: () => Math.floor((clock - lag) / 1000), ...o })
+    const reader = createB20Reader({ fetchImpl: wd.fetchImpl, env: {}, now, log: () => {} })
+    await reader.refresh([{ address: T, symbol: 'TSLAc', paused: list }], { poolsOf: () => [POOL, POOL2] })
+    lag = 0
+    wd.requests.length = 0; wd.swapCalls = 0
+    const data = siteData({ passport: { issuer: { paused: list } } })
+    data.transfers = (c, a) => ({ block: transfersOf(reader.get(a), { now: clock, listPaused: list }), reading: reader.get(a) })
+    return { wd, chain, data }
+  }
+  const swapAsked = (wd) => wd.requests.some((q) => q.kind === 'rpc' && ['eth_call', 'eth_estimateGas', 'eth_simulateV1'].includes(q.method) && [D.router, KYBER_ROUTER].includes(String(q.params[0]?.to || q.params[0]?.blockStateCalls?.[0]?.calls?.[2]?.to).toLowerCase()))
+
+  const p = await b20World({ paused: true })
+  const pr = await run(p.wd, { wallet: W }, { data: p.data })
+  check('transfers paused on chain: refused, transfers_paused, no quote', pr.body.outcome === 'refused' && pr.body.verdict.reason === 'transfers_paused' && pr.body.quote === null && /paused on chain/.test(pr.body.summary))
+  check('...and no outside call at all: the refusal is from memory', outside(p.wd) === 0, JSON.stringify(p.wd.requests.slice(0, 3)))
+  check('...context.transfers says paused, with its time', pr.body.context.transfers.state === 'paused' && pr.body.context.transfers.age_s === 0)
+  const both = await b20World({ paused: true, list: ['TRANSFER'] })
+  const br = await run(both.wd, {}, { data: both.data })
+  check('paused on chain and on the issuer\'s list: the chain\'s reason, transfers_paused', br.body.verdict.reason === 'transfers_paused')
+  const listOnly = await b20World({ paused: false, list: ['TRANSFER'] })
+  const lr = await run(listOnly.wd, {}, { data: listOnly.data })
+  check('unpaused on chain, still paused on the issuer\'s list: the chain decides, quoted, context says open', lr.body.outcome === 'quoted' && lr.body.context.transfers.state === 'open')
+  const noChain = await b20World({ paused: false, list: ['TRANSFER'], readAgo: 3600e3 })
+  const nr = await run(noChain.wd, {}, { data: noChain.data })
+  check('no current chain answer: the issuer\'s list is the fallback, refused paused', nr.body.outcome === 'refused' && nr.body.verdict.reason === 'paused' && nr.body.context.transfers.reason === 'stale')
+
+  const st = await b20World({ paused: true, readAgo: 3600e3 })
+  const sr = await run(st.wd, {}, { data: st.data })
+  check('a stale reading never refuses: the answer goes on, quoted, and context.transfers says unknown, stale', sr.body.outcome === 'quoted' && sr.body.context.transfers.state === 'unknown' && sr.body.context.transfers.reason === 'stale' && /could not be read \(stale\)/.test(sr.body.summary))
+
+  const fl = await b20World()
+  fl.data.transfers = (c, a) => ({ block: transfersOf({ token: T, error: 'read_failed', read_at: clock, accounts: [] }, { now: clock }), reading: { error: 'read_failed' } })
+  const fr = await run(fl.wd, { wallet: W }, { data: fl.data })
+  check('a failed reading never refuses either, and no wallet check is built on it', fr.body.outcome === 'quoted' && fr.body.context.transfers.reason === 'read_failed' && fr.body.simulation.result === 'would_succeed' && !('issuer_policy' in fr.body.simulation))
+
+  const k = await b20World({ policies: { ...zero, executor: '4' }, kinds: { 4: { type: 'block', members: [KYBER_ROUTER] } } })
+  const kr = await run(k.wd, {}, { data: k.data })
+  check('the KyberSwap router refused as executor: its line is venue_not_allowed_by_issuer and KyberSwap is never asked', kr.body.venues.kyberswap.result === 'unknown' && kr.body.venues.kyberswap.reason === 'venue_not_allowed_by_issuer' && !k.wd.requests.some((q) => q.kind === 'aggregator'))
+  check('...the Aerodrome quote still answers, and the lead says why the line is missing', kr.body.quote.result === 'ok' && /refuse KyberSwap's router/.test(kr.body.summary) && /restrict this token's transfers \(venue_refused/.test(kr.body.summary))
+
+  const a = await b20World({ policies: { ...zero, executor: '4' }, kinds: { 4: { type: 'block', members: [D.router] } } })
+  const ar = await run(a.wd, { wallet: W }, { data: a.data })
+  check('the Aerodrome router refused as executor: the single-pool buy is still quoted (the pool pays the wallet)', ar.body.outcome === 'quoted' && ar.body.quote.result === 'ok' && ar.body.simulation.result === 'would_succeed')
+  check('...but the sell-back, which that router pulls, is venue_not_allowed_by_issuer', ar.body.sell_back.result === 'unknown' && ar.body.sell_back.reason === 'venue_not_allowed_by_issuer' && /refuse the router the sell-back would use/.test(ar.body.summary))
+  const pl = await b20World({ policies: { ...zero, sender: '4' }, kinds: { 4: { type: 'block', members: [POOL] } } })
+  const plr = await run(pl.wd, {}, { data: pl.data })
+  check('the pool the quote chose, refused as a sender: that line is venue_not_allowed_by_issuer, no sell-back on it', plr.body.quote.reason === 'venue_not_allowed_by_issuer' && plr.body.sell_back.reason === 'no_buy_quote')
+  check('...and the KyberSwap route that delivers from the same pool is refused too', plr.body.venues.kyberswap.result === 'unknown' && plr.body.venues.kyberswap.reason === 'venue_not_allowed_by_issuer')
+
+  // A split KyberSwap route: half through POOL, half through POOL2; only POOL2 is refused as a sender.
+  const split = ({ tokenIn, tokenOut, amountIn, sell, rs }) => {
+    if (sell) return { status: 200, body: { code: 0, data: { routeSummary: rs } } }
+    const half = (BigInt(amountIn) / 2n).toString(), rest = (BigInt(amountIn) - BigInt(amountIn) / 2n).toString()
+    return { status: 200, body: { code: 0, data: { routeSummary: { ...rs, route: [[{ pool: POOL, tokenIn, tokenOut, exchange: 'uniswap-v3', swapAmount: half, amountOut: '1' }], [{ pool: POOL2, tokenIn, tokenOut, exchange: 'uniswap-v3', swapAmount: rest, amountOut: '1' }]] } } } }
+  }
+  const sp = await b20World({ policies: { ...zero, sender: '4' }, kinds: { 4: { type: 'block', members: [POOL2] } }, o: { kyber: split } })
+  const spr = await run(sp.wd, {}, { data: sp.data })
+  check('a split KyberSwap route whose second delivering pool is refused: that line is venue_not_allowed_by_issuer', spr.body.venues.kyberswap.result === 'unknown' && spr.body.venues.kyberswap.reason === 'venue_not_allowed_by_issuer' && spr.body.quote.result === 'ok', JSON.stringify(spr.body.venues.kyberswap))
+  const rcv = await b20World({ policies: { ...zero, receiver: '5' }, kinds: { 5: { type: 'block', members: [POOL] } } })
+  const rcvr = await run(rcv.wd, {}, { data: rcv.data })
+  check('the Aerodrome pool refused as a receiver: the buy is quoted, the sell-back into it is venue_not_allowed_by_issuer', rcvr.body.quote.result === 'ok' && rcvr.body.sell_back.result === 'unknown' && rcvr.body.sell_back.reason === 'venue_not_allowed_by_issuer')
+  // The buy takes POOL; the reverse quote can only go through POOL2. The pool checked is the one the sell-back uses.
+  const sbB = await b20World({ policies: { ...zero, receiver: '5' }, kinds: { 5: { type: 'block', members: [POOL2] } }, o: { sellTick: 50 } })
+  const sbBr = await run(sbB.wd, {}, { data: sbB.data })
+  check('the sell-back through another pool, that pool refused as a receiver: venue_not_allowed_by_issuer', sbBr.body.quote.result === 'ok' && sbBr.body.sell_back.result === 'unknown' && sbBr.body.sell_back.reason === 'venue_not_allowed_by_issuer', JSON.stringify(sbBr.body.sell_back))
+  const sbA = await b20World({ policies: { ...zero, receiver: '5' }, kinds: { 5: { type: 'block', members: [POOL] } }, o: { sellTick: 50 } })
+  const sbAr = await run(sbA.wd, {}, { data: sbA.data })
+  check('...and the buy pool refused as a receiver does not stop a sell-back through another pool', sbAr.body.sell_back.result === 'ok', JSON.stringify(sbAr.body.sell_back))
+
+  const allow = { 9: { type: 'allow', members: everyone } }
+  const wr = await b20World({ policies: { ...zero, receiver: '9' }, kinds: allow })
+  const wrr = await run(wr.wd, { wallet: W }, { data: wr.data })
+  const sim = wrr.body.simulation
+  check('a wallet the receiver policy refuses: would_revert, wallet_not_allowed_by_issuer, at the pinned head', sim.result === 'would_revert' && sim.reason === 'wallet_not_allowed_by_issuer' && sim.revert.kind === 'issuer_policy' && sim.issuer_policy.receive === false && Number.isInteger(sim.head_block))
+  check('...and no swap call made: the router is never called, the dry run never starts', wr.wd.swapCalls === 0 && !swapAsked(wr.wd) && !wr.wd.requests.some((q) => q.method === 'eth_simulateV1'))
+  check('...the wallet\'s read is pinned by block hash, canonical only', wr.wd.requests.some((q) => q.method === 'eth_call' && q.params[1] && q.params[1].blockHash && q.params[1].requireCanonical === true && JSON.stringify(q).includes(strip(W))))
+  check('...said in the lead, as the chain\'s fact', /receiver policy on Base refuses 0x1111/.test(wrr.body.summary) && wrr.body.outcome === 'quoted')
+
+  const ok = await b20World({ policies: { ...zero, receiver: '9' }, kinds: { 9: { type: 'allow', members: [...everyone, W] } } })
+  const okr = await run(ok.wd, { wallet: W }, { data: ok.data })
+  check('a wallet on the allowlist: the dry run runs as before, and issuer_policy says receive true', okr.body.simulation.result === 'would_succeed' && okr.body.simulation.issuer_policy.receive === true && ok.wd.swapCalls > 0)
+
+  const snd = await b20World({ policies: { ...zero, sender: '6' }, kinds: { 6: { type: 'block', members: [W] } } })
+  const sndr = await run(snd.wd, { wallet: W }, { data: snd.data })
+  check('a wallet the sender policy refuses: its sell-back is unknown, wallet_not_allowed_by_issuer, never a dollar figure', sndr.body.simulation.issuer_policy.send === false && sndr.body.sell_back.result === 'unknown' && sndr.body.sell_back.reason === 'wallet_not_allowed_by_issuer' && sndr.body.sell_back.usd_back === null && /sender policy on chain refuses this wallet/.test(sndr.body.summary))
+  const nosnd = await run(snd.wd, {}, { data: snd.data })
+  check('...without a wallet the sell-back is quoted as before', nosnd.body.sell_back.result === 'ok')
+
+  // The reviewer's case: the cycle's reading refused the ordinary wallet; the receiver id then moved to always-allow, so
+  // the caller's own read says nothing; the swap fails opaquely. Nothing names the issuer's policy.
+  const at = await b20World({ policies: { ...zero, receiver: '9' }, kinds: { 9: { type: 'allow', members: everyone.filter((x) => x !== ORDINARY_WALLET) } }, o: { routerRevertsAnyway: true } })
+  at.chain.tokens[T].policies = zero
+  const atr = await run(at.wd, { wallet: W }, { data: at.data })
+  check('an opaque revert while only the ordinary wallet was refused: revert_unattributed, never issuer_policy', atr.body.simulation.result === 'unknown' && atr.body.simulation.reason === 'revert_unattributed' && atr.body.simulation.revert.kind === null && atr.body.simulation.issuer_policy.receive === null, JSON.stringify(atr.body.simulation))
+  const tk = await b20World({ policies: { ...zero, receiver: '9' }, kinds: { 9: { type: 'allow', members: everyone.filter((x) => x !== ORDINARY_WALLET) } }, o: { refuses: new Set([W]), bubble: true } })
+  tk.chain.tokens[T].policies = zero
+  const tkr = await run(tk.wd, { wallet: W }, { data: tk.data })
+  check('...and a token revert there stays token_rule: the cycle\'s reading names no cause', tkr.body.simulation.result === 'would_revert' && tkr.body.simulation.revert.kind === 'token_rule')
+  const rh = await run(world('robinhood'), {}, { data: siteData({ chain: 'robinhood' }) })
+  check('Robinhood Chain: no B20 reading, context.transfers null', rh.body.context.transfers === null)
 }
 
 console.log(`\n${passed} passed, ${failed} failed`)

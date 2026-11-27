@@ -263,6 +263,7 @@ The newest recorded reading for this token. The recorder runs every 900 s; this 
 | [`premium_at_reference_time`](#field-premium_at_reference_time) | object or null | | see below | |
 | [`pools`](#field-pools) | object | | never null | |
 | [`liquidity`](#field-liquidity) | object | | never null | |
+| [`transfers`](#field-transfers) | object or null | | Robinhood Chain (Base only). The same object as the top-level `transfers` | |
 
 `dex_inside_quote` is `true` when `bid <= dex_price_usd <= ask`. It is decided even when the premium is refused.
 
@@ -333,6 +334,62 @@ quote: what a given trade would cost depends on the pool's shape and the trade's
 
 Why 50,000 USD: in a constant-product pool a trade of `x` moves the price by about `2x / depth`, so in a pool of 50,000
 USD a trade of 2,500 USD moves it by about 10%. `thin` is a fact about the pool, not advice.
+
+<a id="field-transfers"></a>
+### `transfers`
+
+Base only: what the token's own **B20 transfer rules** allow, read from Base at one block in the site's 5-minute refresh
+(`evm/core/stocks/b20.mjs`, `apps/b20-reader.mjs`). Every Coinbase stock token on Base is a B20 token; since the Denim
+upgrade the issuer can bind a policy of the policy registry (`0x8453000000000000000000000000000000000002`) to each
+transfer scope and pause transfers, with no change to the token's address and no event on the token when a policy's
+members change. It is the issuer's own rule about its own token: it never changes `in_registry`, the impostor verdict or
+a held record. `null` on Robinhood Chain, whose tokens are not B20.
+
+It is at the top level of an issuer-listed passport (`transfers`), whether or not there is a price reading: a token
+listed today has no `latest` yet and may already be paused on chain. `latest.transfers`, when there is a `latest`, is
+the same object. `checked_at` and `age_s` are the time of the block the rules were read at, from the block's own
+header, never the time we asked: a node that lags behind gives a stale reading, not a fresh one. A head below the last
+block read, or one ahead of our clock, is refused; of the two nodes the one with the newest head by its own time is
+read; every read is pinned by block hash with `requireCanonical`, and every Multicall3 answer must be exactly the
+canonical encoding of what it decodes to.
+
+| Field | Type | Null means | Example |
+|---|---|---|---|
+| `state` | string | never null. `open`, `restricted`, `paused` or `unknown` | `"open"` |
+| `reason` | string or null | `open` and `paused` | `"ordinary_wallet_refused"` |
+| `checked_at` | string or null | never read | `"2026-11-27T14:55:00.000Z"` |
+| `age_s` | integer or null | never read | `120` |
+| `block` | integer or null | the read failed | |
+| `policies` | object | | `{ "sender": "0", "receiver": "0", "executor": "0" }` |
+| `ordinary_wallet` | object | | `{ "send": true, "receive": true }` |
+| `venues` | array | | `[{ "name": "kyberswap_router", "address": "0x6131…37b5", "allowed": true, "scopes": { "executor": true, "receiver": true, "sender": true } }]` |
+| `pause` | object | | see below |
+| `source` | string | never null | `"the token's B20 policies and pause state, read from Base"` |
+
+The state, in this order:
+
+1. `unknown` with `reason` `not_read` (no reading yet), `read_failed` (a read failed), or `stale` (the reading is older
+   than 900 s by its block's time). A stale or failed reading is never `open`.
+2. `paused`: `isPaused(TRANSFER)` on the token is true. Before any other state.
+3. `unknown` with `undecodable` (the pause or a bound id did not decode) or `policy_missing` (a bound policy id does
+   not exist in the registry: the registry answers an unknown id as an empty set, so an unknown blocklist would say
+   "allowed" for everyone; `policyExists` is read first, and such an id is never `open`).
+4. `restricted` with `ordinary_wallet_refused`: a fixed address nobody controls (`ORDINARY_WALLET`, the last 20 bytes of
+   keccak256 of a pinned phrase) is refused as a sender, a receiver or a caller. The scope is an allowlist, or blocks
+   everyone.
+5. `restricted` with `venue_refused`: a router or pool we name is refused (`allowed: false`): the KyberSwap router
+   (executor, receiver, sender), the pinned Aerodrome Slipstream router (executor), the token's pools in the recorder's
+   book, deepest first, at most 5 (sender, executor, and receiver for a sell-back), and the Uniswap v4 PoolManager
+   (sender, executor, receiver). Each venue's `scopes` says every scope on its own, so a role can be asked: `allowed` is
+   all of them.
+6. `open`: every check above passed.
+
+The state follows what `isAuthorized` answers, never the shape of the id: an inverted id, a union or an intersection is
+whatever the registry says it is. Id `0` is the built-in "always allow" and needs no read.
+
+`pause` says the pause twice, labelled by source: `chain` (`isPaused(TRANSFER)`, null when the reading is not current)
+and `issuer_list` (the issuer's `paused_features`, true when it lists any), with `issuer_list_features` as given and
+`agree`. When they disagree, both are said and the journal gets a line; the chain is what a swap meets.
 
 <a id="field-pools"></a>
 ### `pools`
@@ -435,6 +492,8 @@ Every gap in the answer is a code here. Codes appear in the order below, each at
 | `sources_disagree` | `latest.premium_refused` is `sources_disagree`: the chain and an aggregator priced the deepest pool more than 2% apart. `latest.dex_price_usd` is the chain's price |
 | `pools_capped` | `latest.pools.capped` is `true` |
 | `multiplier_change_pending` | `multiplier_pending` is not null and differs from `multiplier` |
+| `transfers_restricted` | Base: `latest.transfers.state` is `restricted` |
+| `transfers_paused` | Base: `latest.transfers.state` is `paused` |
 
 At most one of `no_reference`, `reference_held_market_open` and `reference_held_market_closed` appears.
 

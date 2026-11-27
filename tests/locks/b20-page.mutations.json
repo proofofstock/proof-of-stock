@@ -1,0 +1,28 @@
+{
+  "_finding": "The token page draws the B20 line from the passport's top-level block, not from the price row, and an open line expires by its block time (outside review of #268).",
+  "target": "apps/stocks-web/app.js",
+  "runner": [
+    "node",
+    "apps/b20-web.test.mjs"
+  ],
+  "mutations": [
+    {
+      "name": "an open line never expires",
+      "find": "    const expired = known && (ageS == null || ageS > 900)",
+      "replace": "    const expired = false",
+      "expect": "FAIL rendered: open a minute later is open; an hour later the same line is unknown"
+    },
+    {
+      "name": "the line is drawn from the price row",
+      "find": "      p.chain === 'base' ? transfersField(p.transfers) : null,",
+      "replace": "      p.chain === 'base' && l ? transfersField(l.transfers) : null,",
+      "expect": "FAIL the token page has words for both notes, and draws the line from the top-level block"
+    },
+    {
+      "name": "the B20 notes never expire",
+      "find": "    const current = (n) => !B20_NOTE[n] || (transfersView(p.transfers, Date.now()) || {}).state === B20_NOTE[n]",
+      "replace": "    const current = (n) => true",
+      "expect": "FAIL rendered an hour later: no pause note"
+    }
+  ]
+}

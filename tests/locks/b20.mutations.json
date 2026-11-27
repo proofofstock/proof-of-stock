@@ -1,0 +1,106 @@
+{
+  "_finding": "The B20 transfer rules are facts with their time, and unreadable is unknown, never open (docs/b20-transfers-tz.md §0.1, §7): an unknown policy id that answers true for everyone, a failed or stale read and a pause that does not decode are unknown; the pause comes first; the state follows isAuthorized and not the shape of the id; the issuer list is said beside the chain; a failed or unread answer is never a change.",
+  "target": "evm/core/stocks/b20.mjs",
+  "runner": [
+    "node",
+    "evm/core/stocks/b20.test.mjs"
+  ],
+  "mutations": [
+    {
+      "name": "a bound id that does not exist is not missing",
+      "find": "  if (ex === false) return 'missing'",
+      "replace": "  if (false) return 'missing'",
+      "expect": "FAIL an unknown id answering true for everyone"
+    },
+    {
+      "name": "a missing policy no longer makes the state unknown",
+      "find": "  if (verdicts.includes('missing')) return { ...out, reason: 'policy_missing' }",
+      "replace": "",
+      "expect": "FAIL an unknown id answering true for everyone"
+    },
+    {
+      "name": "a stale reading is taken as current",
+      "find": "  if (!fresh) return { ...out, reason: 'stale' }",
+      "replace": "  if (false) return { ...out, reason: 'stale' }",
+      "expect": "FAIL a reading older than"
+    },
+    {
+      "name": "a failed read is not named",
+      "find": "  if (reading.error) return { ...out, reason: 'read_failed' }",
+      "replace": "",
+      "expect": "FAIL a failed read: unknown, read_failed"
+    },
+    {
+      "name": "paused is not a state",
+      "find": "  if (reading.paused === true) return { ...out, state: 'paused', reason: null }",
+      "replace": "",
+      "expect": "FAIL paused on chain: paused, before any other state"
+    },
+    {
+      "name": "a pause that did not decode is read as not paused",
+      "find": "  if (reading.paused !== false) return { ...out, reason: 'undecodable' }",
+      "replace": "",
+      "expect": "FAIL a pause that did not decode"
+    },
+    {
+      "name": "the receiver scope is not checked for the ordinary wallet",
+      "find": "  if (send === false || receive === false)",
+      "replace": "  if (send === false)",
+      "expect": "FAIL the ordinary wallet refused in the receiver scope"
+    },
+    {
+      "name": "a refused venue does not restrict",
+      "find": "  if (venues.some((x) => x.v === false))",
+      "replace": "  if (false)",
+      "expect": "FAIL the KyberSwap router refused as executor"
+    },
+    {
+      "name": "an inverted id is read by its shape as allow",
+      "find": "  if (id === ALWAYS_ALLOW) return true",
+      "replace": "  if (id === ALWAYS_ALLOW || BigInt(id) >= (1n << 63n)) return true",
+      "expect": "FAIL an inverted allowlist of everyone refuses everyone"
+    },
+    {
+      "name": "a word above 2^64 is taken as an id",
+      "find": "  return v < (1n << 64n) ? v.toString() : null",
+      "replace": "  return v.toString()",
+      "expect": "FAIL a word above 2^64 is no policy id"
+    },
+    {
+      "name": "the issuer list is not said beside the chain",
+      "find": "  const list = Array.isArray(listPaused) ? listPaused.length > 0 : null",
+      "replace": "  const list = chain",
+      "expect": "FAIL ...paused on chain and not on the issuer"
+    },
+    {
+      "name": "a failed reading is compared for the alert",
+      "find": "  if (!prev || !next || prev.error || next.error) return []",
+      "replace": "  if (!prev || !next) return []",
+      "expect": "FAIL a failed reading is never compared"
+    },
+    {
+      "name": "an unread answer counts as a change",
+      "find": "      if (a !== b && a !== null && b !== null)",
+      "replace": "      if (a !== b)",
+      "expect": "FAIL an answer that could not be read is not a change"
+    },
+    {
+      "name": "a venue is refused in a role it does not play",
+      "find": "(scopes ? scopes.some((s) => v.scopes && v.scopes[s] === false) : v.allowed === false)",
+      "replace": "v.allowed === false",
+      "expect": "FAIL a pool refused only as a receiver"
+    },
+    {
+      "name": "a change of the probe wallet carries its address",
+      "find": "address: acc.name === 'ordinary_wallet' ? null : acc.address, from: a, to: b })",
+      "replace": "address: acc.address, from: a, to: b })",
+      "expect": "FAIL a change of the ordinary wallet"
+    },
+    {
+      "name": "the snapshot gives the probe wallet's address",
+      "find": "answers[(a.name === 'ordinary_wallet' ? 'ordinary_wallet' : a.name + ':' + a.address) + '|' + s] = v",
+      "replace": "answers[(a.name + ':' + a.address) + '|' + s] = v",
+      "expect": "FAIL the snapshot for health-check: no probe address"
+    }
+  ]
+}

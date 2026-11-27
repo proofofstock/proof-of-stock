@@ -982,7 +982,7 @@ and the fields are described under [`/api/simulate`](./http-api.md#route-simulat
 | `sell_back` | the reverse quote for the tokens just quoted: `usd_back`, `round_trip_cost` |
 | `venues` | on Base: `aerodrome.link` (its swap page with the checked contract filled in) and `kyberswap`, the second line, with `more_than_primary` and `same_route` as facts |
 | `simulation` | with a wallet only: `would_succeed`, `would_revert` (with `revert.kind`) or `unknown` (with `reason`), `head_block`, `wallet_state`, `simulated_with` |
-| `context` | `market`, `reference` (held, halted, its age), `notes`, `liquidity` (the passport's pool depth and `thin`) |
+| `context` | `market`, `reference` (held, halted, its age), `notes`, `liquidity` (the passport's pool depth and `thin`), `transfers` (Base: the token's B20 transfer rules, `state`, `reason`, `checked_at`, `age_s`; `null` on Robinhood Chain) |
 | `not_trading_signal`, `disclaimer` | `true`, and "It is not investment advice." |
 
 ### Errors
@@ -1001,6 +1001,26 @@ around the swap: the stable down by exactly the amount asked, the token up by at
 
 A quote that could not be read, or a dry run that could not be judged, is not an error: it is `unknown` with a reason
 from a fixed list, and never a made-up number, `would_succeed` or `would_revert`.
+
+On Base the token's own **B20 transfer rules** ([passport `transfers`](passport.md#field-transfers)) are checked
+from the site's last reading, before any outside call. A current reading of the chain's pause decides: paused on chain
+is a refusal, `verdict.reason: "transfers_paused"`, with no quote, and a pause the issuer's list still shows after the
+chain has unpaused does not refuse. The issuer's list (`paused`) is the fallback only when the chain gave no current
+answer, and the only source on Robinhood Chain. A venue is checked in the role it plays in the stock token's transfer:
+on an Aerodrome single-pool buy the pool pays the wallet, so the pool (as sender and caller) is checked, and a refused
+pool makes the line `unknown`, `reason: "venue_not_allowed_by_issuer"`; the Aerodrome router pulls the token only on
+the sell-back and the pool receives it there, so a router refused as the caller, or the pool the reverse quote uses refused as the
+receiver, makes the sell-back that reason; for KyberSwap the router and every pool its route delivers from, on every split, are
+checked. A venue the issuer refuses is not asked. With a wallet, one more read at the chain's head,
+pinned by its hash with `requireCanonical` and current by its own header time, asks the token's receiver and sender
+policies about that wallet (`simulation.issuer_policy`). A wallet the receiver policy refuses gets
+`simulation.result: "would_revert"` with `reason: "wallet_not_allowed_by_issuer"` and `revert.kind: "issuer_policy"`
+without the swap being run: the one case where `would_revert` is said without a dry run, because the chain gave it as a
+fact. A wallet the sender policy refuses gets no sell-back: `sell_back.result: "unknown"`, `reason:
+"wallet_not_allowed_by_issuer"`. Nothing is attributed to the issuer's policy from our own probe of an ordinary wallet:
+without the caller's own read, a revert stays `token_rule` or `revert_unattributed`. A reading that is `unknown`
+(stale, failed, a policy that does not exist) never refuses: the answer goes on, and `context.transfers` says the state
+and why. On Robinhood Chain `context.transfers` is `null`.
 
 ### Limits
 

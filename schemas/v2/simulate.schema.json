@@ -24,7 +24,7 @@
         "issuer_factory": { "type": ["object", "null"] },
         "use_instead": { "type": ["string", "null"], "pattern": "^0x[0-9a-f]{40}$" },
         "list_proof": { "type": ["object", "null"] },
-        "reason": { "enum": ["impostor", "not_listed", "not_minted", "paused", "paused_unknown", "ticker_not_exact", "ticker_ambiguous"] },
+        "reason": { "enum": ["impostor", "not_listed", "not_minted", "paused", "paused_unknown", "ticker_not_exact", "ticker_ambiguous", "transfers_paused"] },
         "candidates": { "type": "array", "items": { "type": "object", "required": ["symbol", "address"], "properties": { "symbol": { "type": ["string", "null"] }, "address": { "type": "string" }, "match_quality": { "type": ["string", "null"] } } } },
         "paused": { "type": "array" }
       }
@@ -155,7 +155,7 @@
       "required": ["result", "wallet", "head_block", "rpc", "wallet_state", "simulated_with", "amount_out_simulated_base_units", "gas_units", "revert"],
       "properties": {
         "result": { "enum": ["would_succeed", "would_revert", "unknown"] },
-        "reason": { "enum": ["no_quote", "build_failed", "router_not_allowed", "rpc_unavailable", "block_unavailable", "rpc_gas_cap", "override_unverified", "override_suspect", "revert_empty", "return_undecodable", "below_min_out", "estimate_disagrees", "revert_unattributed", "no_probe_pool", "build_unverified", "build_mismatch", "aggregator_busy", "timed_out", "debit_unverified", "transfer_mismatch", "deadline_passed"] },
+        "reason": { "enum": ["no_quote", "build_failed", "router_not_allowed", "rpc_unavailable", "block_unavailable", "rpc_gas_cap", "override_unverified", "override_suspect", "revert_empty", "return_undecodable", "below_min_out", "estimate_disagrees", "revert_unattributed", "no_probe_pool", "build_unverified", "build_mismatch", "aggregator_busy", "timed_out", "debit_unverified", "transfer_mismatch", "deadline_passed", "wallet_not_allowed_by_issuer"] },
         "wallet": { "type": "string", "pattern": "^0x[0-9a-f]{40}$" },
         "head_block": { "type": ["integer", "null"], "description": "the chain's head when it was read, not the quote's block" },
         "rpc": { "enum": ["public", "custom"] },
@@ -163,6 +163,7 @@
         "simulated_with": { "type": "array", "items": { "enum": ["stable_balance", "stable_allowance", "native_balance"] }, "uniqueItems": true },
         "amount_out_simulated_base_units": { "type": ["string", "null"], "pattern": "^[0-9]+$" },
         "gas_units": { "type": ["integer", "null"] },
+        "issuer_policy": { "type": "object", "description": "Base only: what the token's B20 receiver and sender policies answer for this wallet, read at the chain's head pinned by its hash (docs/b20-transfers-tz.md §4); null each when it could not be read", "required": ["receive", "send", "head_block"], "additionalProperties": false, "properties": { "receive": { "type": ["boolean", "null"] }, "send": { "type": ["boolean", "null"] }, "head_block": { "type": ["integer", "null"] } } },
         "simulated_block": { "type": ["object", "null"], "description": "the context of the eth_simulateV1 block the verdict comes from: its number and time, and whether it is the read block's child, built on the read block's own post-state (the state eth_call and eth_estimateGas used)", "properties": { "number": { "type": ["integer", "null"] }, "timestamp": { "type": ["integer", "null"] }, "child_of_read_block": { "type": "boolean" } } },
         "transfers": { "type": "object", "description": "the net change of the wallet's balances across the swap, read inside one eth_simulateV1 block: the stable down by exactly the amount asked, the token up by at least the minimum", "required": ["stable_debit_base_units", "token_credit_base_units"], "properties": { "stable_debit_base_units": { "type": "string", "pattern": "^-?[0-9]+$", "description": "signed: negative when the wallet ended with more of the stable" }, "token_credit_base_units": { "type": "string", "pattern": "^-?[0-9]+$", "description": "signed: negative when the wallet ended with less of the token" } } },
         "revert": {
@@ -172,7 +173,7 @@
               "type": "object",
               "required": ["kind", "probe", "reason", "selector", "data", "untrusted_text"],
               "properties": {
-                "kind": { "enum": ["token_rule", "stable_blocklist", "min_out", null] },
+                "kind": { "enum": ["token_rule", "stable_blocklist", "min_out", "issuer_policy", null] },
                 "probe": { "enum": ["stable", "token", null] },
                 "reason": { "type": ["string", "null"] },
                 "selector": { "type": ["string", "null"] },
@@ -191,14 +192,20 @@
         "market": { "type": "object", "required": ["session"] },
         "reference": { "type": ["object", "null"] },
         "notes": { "type": "array", "items": { "enum": ["reference_held_market_closed", "reference_held_market_open", "trading_halted", "multiplier_change_pending", "reference_spread_wide", "minted_unknown"] } },
-        "liquidity": { "type": ["object", "null"] }
+        "liquidity": { "type": ["object", "null"] },
+        "transfers": {
+          "type": ["object", "null"],
+          "description": "Base only: the token's B20 transfer rules from the site's last reading (docs/b20-transfers-tz.md); null on Robinhood Chain. unknown never refuses",
+          "required": ["state", "reason", "checked_at", "age_s", "block", "source"],
+          "properties": { "state": { "enum": ["open", "restricted", "paused", "unknown"] }, "reason": { "type": ["string", "null"] }, "checked_at": { "type": ["string", "null"] }, "age_s": { "type": ["integer", "null"] }, "block": { "type": ["integer", "null"] }, "source": { "type": ["string", "null"] } }
+        }
       }
     },
     "links": { "type": "object", "required": ["passport", "docs"], "properties": { "passport": { "type": ["string", "null"] }, "docs": { "type": ["string", "null"] } } }
   },
   "definitions": {
     "quote_result": { "enum": ["ok", "no_route", "unknown"] },
-    "quote_reason": { "enum": ["aggregator_unavailable", "aggregator_busy", "quote_mismatch", "quote_empty", "quoter_mismatch", "venue_unconfirmed", "rpc_unavailable", "decimals_unavailable", "no_buy_quote", "timed_out"] },
+    "quote_reason": { "enum": ["aggregator_unavailable", "aggregator_busy", "quote_mismatch", "quote_empty", "quoter_mismatch", "venue_unconfirmed", "rpc_unavailable", "decimals_unavailable", "no_buy_quote", "timed_out", "venue_not_allowed_by_issuer", "wallet_not_allowed_by_issuer"] },
     "route": {
       "oneOf": [
         { "type": "null" },

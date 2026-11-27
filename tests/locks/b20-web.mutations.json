@@ -1,0 +1,34 @@
+{
+  "_finding": "Only the trusted Base records are read for their B20 rules (docs/b20-transfers-tz.md §1), the passport block is handed in for the trusted record only, and the changes reach /api/status for health-check to send.",
+  "target": "apps/stocks-web.mjs",
+  "runner": [
+    "node",
+    "apps/b20-web.test.mjs"
+  ],
+  "mutations": [
+    {
+      "name": "the raw list is read, held records included",
+      "find": "    const records = b20 ? freshRecords('base') : null",
+      "replace": "    const records = b20 ? rawFreshRecords('base') : null",
+      "expect": "FAIL OK and PAU are read; NEW (held) and the impostor never"
+    },
+    {
+      "name": "the passport gets no transfers block",
+      "find": "      transfers: chain === 'base' && inRegistry ? transfersBlock(addr) : null })",
+      "replace": "      transfers: null })",
+      "expect": "FAIL the passport: in_registry, the issuer named, latest.transfers restricted with its note"
+    },
+    {
+      "name": "the baselines never reach the status path",
+      "find": "tokens: b20.snapshots(new Map((freshRecords('base') || []).map((x) => [x.address, x.symbol ?? null])))",
+      "replace": "tokens: {}",
+      "expect": "FAIL /api/status carries base.b20"
+    },
+    {
+      "name": "the changes are not on the status path",
+      "find": "tokens: b20.snapshots(new Map((freshRecords('base') || []).map((x) => [x.address, x.symbol ?? null]))), changes: b20.changes() }",
+      "replace": "tokens: b20.snapshots(new Map((freshRecords('base') || []).map((x) => [x.address, x.symbol ?? null]))), changes: [] }",
+      "expect": "FAIL ...and the change itself is listed"
+    }
+  ]
+}

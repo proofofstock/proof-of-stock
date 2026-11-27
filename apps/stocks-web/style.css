@@ -283,6 +283,8 @@ a.btn { text-decoration: none; display: inline-block; }
 .exam.miss .foot-dot { background: var(--warn); box-shadow: 0 0 0 3px color-mix(in srgb, var(--warn) 22%, transparent); }
 .exam:focus-visible { outline: 2px solid var(--accent-hi); outline-offset: 2px; }
 .field .v.warn { color: var(--warn); }
+.field .v .tr-restricted, .field .v .tr-paused { color: var(--warn); }
+.field .v .tr-unknown { color: var(--dim); }
 .field .exam-t { font-size: 11.5px; white-space: nowrap; min-width: 24ch; }
 .exam-sha code { word-break: break-all; }
 .disclaimer { max-width: 980px; margin: 14px auto 0; color: var(--faint); font: 12.5px/1.5 var(--sans); text-align: center; }

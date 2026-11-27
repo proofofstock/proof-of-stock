@@ -157,7 +157,8 @@ export function world (chain = 'base', o = {}) {
       if (c.to === D.quoter && f === AERO.quoteExactInputSingle) {
         const tokenIn = addrAt(c.data, 0), tokenOut = addrAt(c.data, 1), ts = Number(at(c.data, 3))
         if (tokenIn === '0x4200000000000000000000000000000000000006') return { success: true, data: '0x' + w(3_000_000) + w(1n << 96n) + w(0) + w(100000) }
-        const q = wd.quotes[ts]
+        // A sell-back that only one tick spacing can route (`sellTick`): its reverse quote takes another pool than the buy.
+        const q = tokenIn === TOKEN && wd.sellTick != null ? (ts === wd.sellTick ? wd.sellOut : REVERT) : wd.quotes[ts]
         // A reverted quote carries revert data long enough to be misread as the Quoter's four words.
         if (q === REVERT || q == null) return { success: false, data: errorString('Unexpected error: no pool can route this size here, at this tick spacing') }
         if (q === 'short') return { success: true, data: '0x' + w(24900000n) }
@@ -167,6 +168,9 @@ export function world (chain = 'base', o = {}) {
         const after = wd.partial[ts] || (tokenIn === TOKEN && wd.partial.sell) ? (zeroForOne ? MIN_LIMIT : MAX_LIMIT) : 1n << 96n
         return { success: true, data: '0x' + w(out) + w(after) + w(1) + w(150000) }
       }
+      // The token's B20 rules and the policy registry, when a test gives the chain some (apps/simulate/fake-b20.mjs).
+      const b20 = wd.b20 ? wd.b20.answer(c) : null
+      if (b20) return b20
       return { success: false, data: '0x' }
     })
     return encodeAggregate3Result(out)
@@ -183,7 +187,7 @@ export function world (chain = 'base', o = {}) {
     const { method, params } = body
     if (wd.rpcDown && wd.rpcDown(method, params)) throw new Error('timeout')
     if (method === 'eth_blockNumber') { wd.readHead = wd.head; return { result: '0x' + (wd.head++).toString(16) } }
-    if (method === 'eth_getBlockByNumber') { const n = params[0] === 'latest' ? BigInt(wd.head) : BigInt(params[0]); return { result: { number: '0x' + n.toString(16), timestamp: '0x' + (1764600000n + n * 2n).toString(16), hash: hashOf(n), ...(wd.baseFee != null ? { baseFeePerGas: wd.baseFee } : {}) } } }
+    if (method === 'eth_getBlockByNumber') { const n = params[0] === 'latest' ? BigInt(wd.head) : BigInt(params[0]); return { result: { number: '0x' + n.toString(16), timestamp: '0x' + (wd.blockTime ? BigInt(wd.blockTime(n)) : 1764600000n + n * 2n).toString(16), hash: hashOf(n), ...(wd.baseFee != null ? { baseFeePerGas: wd.baseFee } : {}) } } }
     const tag = params[1]
     if (tag && typeof tag === 'object') { if (!tag.blockHash || !byHash.has(String(tag.blockHash).toLowerCase())) return { error: { code: -32000, message: 'header for hash not found' } }; wd.hashTags++ }
     const pinned = tag !== 'latest'

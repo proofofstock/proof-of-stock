@@ -147,6 +147,22 @@ export function ageWords (s) {
   return `${Math.round(s / 86400)} days old`
 }
 
+/**
+ * The B20 transfer rules in one sentence (docs/b20-transfers-tz.md §3), or null when the passport has none (Robinhood
+ * Chain). A fact with its time and source: "restricted" is what the chain answered, never a verdict on the token.
+ */
+export function transfersWords (t) {
+  if (!t) return null
+  const when = `read from Base ${ageWords(t.age_s).replace(' old', ' ago')}`
+  const head = t.state === 'open' ? `Transfers: open under the issuer's B20 rules, ${when}.`
+    : t.state === 'restricted' ? `Transfers: restricted by the issuer's B20 rules (${t.reason}), ${when}.`
+      : t.state === 'paused' ? `Transfers: paused on chain by the issuer (isPaused(TRANSFER)), ${when}.`
+        : `Transfers: unknown (${t.reason}); the token's B20 rules could not be read as current.`
+  const p = t.pause
+  const both = p && p.agree === false ? ` The chain says transfers are ${p.chain ? 'paused' : 'not paused'} and the issuer's list says ${p.issuer_list ? 'paused' : 'not paused'}; a swap meets the chain's.` : ''
+  return head + both
+}
+
 /** The passport in one sentence: official or not, then the prices, the gap and their ages, then the notes by code. */
 export function passportLead (p, chainName, pctOf, usdOf) {
   if (!p.in_registry) {
@@ -163,6 +179,8 @@ export function passportLead (p, chainName, pctOf, usdOf) {
   if (ref && ref.price_usd > 0) parts.push(`Issuer reference ${usdOf(ref.price_usd)} per token, ${ageWords(ref.age_s)}.`)
   if (l && l.dex_price_usd != null) parts.push(`Deepest on-chain price ${usdOf(l.dex_price_usd)}` + (l.premium != null ? `, ${pctOf(l.premium)} against the reference` : l.premium_refused === 'implausible_vs_reference' ? ', which is too far from the issuer price to be the same asset: treat the pool as unidentified, not as a difference in price' : ` (no difference computed: ${l.premium_refused})`) + `, read ${ageWords(l.age_s).replace(' old', ' ago')}.`)
   else if (l) parts.push(`No on-chain price (${l.premium_refused}), read ${ageWords(l.age_s).replace(' old', ' ago')}.`)
+  const tw = transfersWords(p.transfers)
+  if (tw) parts.push(tw)
   if (p.notes && p.notes.length) parts.push('Notes: ' + p.notes.join(', ') + '.')
   parts.push(LISTED_IS_NOT_A_PRICE)
   return parts.join(' ')

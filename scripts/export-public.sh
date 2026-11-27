@@ -46,7 +46,7 @@ git -C "$ROOT" archive "$REV" | tar -x -C "$DEST"
 
 # Internal notes: design notes and the operator's own access, kept private.
 STUB='This page is internal design notes and is not published. The public documentation is in docs/README.md.'
-STUBBED='docs/stocks-truth-layer-tz.md docs/stocks-passport-agent.md docs/list-locks-tz.md docs/agent-test-tz.md docs/simulate-buy-tz.md'
+STUBBED='docs/stocks-truth-layer-tz.md docs/stocks-passport-agent.md docs/list-locks-tz.md docs/agent-test-tz.md docs/simulate-buy-tz.md docs/b20-transfers-tz.md'
 for f in $STUBBED; do
   [ -e "$DEST/$f" ] && printf '# Internal\n\n%s\n' "$STUB" > "$DEST/$f"
 done

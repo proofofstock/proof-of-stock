@@ -1,0 +1,112 @@
+{
+  "_finding": "The B20 reads (docs/b20-transfers-tz.md §1, §5, outside review of #268): pinned by block hash with requireCanonical, stamped with the block's own time and never with ours, a head below the last one used or ahead of the clock refused, every aggregate3 answer decoded strictly, policyExists before isAuthorized and once per id, the second RPC when the first fails, a baseline that keeps the last value read so a failed sub-call never hides a change, and the wallet read refused when its head is old, behind the reading, or the policy moved. The bounds and success-word checks of the decoder are held by its canonical re-encoding, which is locked.",
+  "target": "apps/b20-reader.mjs",
+  "runner": [
+    "node",
+    "apps/b20-reader.test.mjs"
+  ],
+  "mutations": [
+    {
+      "name": "isAuthorized is asked of an id that does not exist",
+      "find": "    if (id != null && id !== ALWAYS_ALLOW && exists[id] === true) pairs.set",
+      "replace": "    if (id != null && id !== ALWAYS_ALLOW) pairs.set",
+      "expect": "FAIL an unknown id is never asked isAuthorized"
+    },
+    {
+      "name": "the pin does not ask requireCanonical",
+      "find": "export const pinOf = (hash) => ({ blockHash: hash, requireCanonical: true })",
+      "replace": "export const pinOf = (hash) => ({ blockHash: hash })",
+      "expect": "FAIL every eth_call is aggregate3 at the pinned block hash, canonical only"
+    },
+    {
+      "name": "a reading is stamped with our clock",
+      "find": "      token: p.t.address, block: head.number, block_hash: head.hash, read_at: head.time,",
+      "replace": "      token: p.t.address, block: head.number, block_hash: head.hash, read_at: now(),",
+      "expect": "FAIL a node whose head is an hour old"
+    },
+    {
+      "name": "a head ahead of the clock is taken",
+      "find": "      try { const head = await pinHead(fetchImpl, url); if (head.time <= now() + FUTURE_SKEW_MS) heads.push({ url, head });",
+      "replace": "      try { const head = await pinHead(fetchImpl, url); if (true) heads.push({ url, head });",
+      "expect": "FAIL a node whose head is an hour ahead of our clock"
+    },
+    {
+      "name": "a head below the last one used is taken",
+      "find": "  if (head.number < minBlock) throw new Error('rpc: head below the last block read')",
+      "replace": "",
+      "expect": "FAIL the first node down, the second behind the last block used"
+    },
+    {
+      "name": "an id shared by tokens is read once per token",
+      "find": "  const ids = [...new Set(per.flatMap((p) => Object.values(p.policies)).filter((id) => id != null && id !== ALWAYS_ALLOW))]",
+      "replace": "  const ids = per.flatMap((p) => Object.values(p.policies)).filter((id) => id != null && id !== ALWAYS_ALLOW)",
+      "expect": "FAIL once per id"
+    },
+    {
+      "name": "the second RPC is never tried",
+      "find": "    for (const url of rpcPairOf(env)) {",
+      "replace": "    for (const url of rpcPairOf(env).slice(0, 1)) {",
+      "expect": "FAIL the first RPC down: the second answers"
+    },
+    {
+      "name": "the baseline is never moved on",
+      "find": "      good.set(addr, next)",
+      "replace": "      if (!good.has(addr)) good.set(addr, next)",
+      "expect": "FAIL the next cycle, the same rules: no new change"
+    },
+    {
+      "name": "a failed sub-call resets the baseline",
+      "find": "  const pick = (a, b) => (b === true || b === false ? b : a)",
+      "replace": "  const pick = (a, b) => b",
+      "expect": "FAIL the cycle whose sub-call failed"
+    },
+    {
+      "name": "the pause disagreement is journaled every cycle",
+      "find": "      if (p.agree !== pauseAgree.get(addr)) {",
+      "replace": "      if (true) {",
+      "expect": "FAIL ...not again next cycle"
+    },
+    {
+      "name": "the wallet read takes an old head",
+      "find": "  if (now() - head.time > STALE_S * 1000) return null",
+      "replace": "",
+      "expect": "FAIL a head an hour old by its header time"
+    },
+    {
+      "name": "the wallet read takes a head behind the reading",
+      "find": "  if (Number.isInteger(reading.block) && head.number < reading.block) return null",
+      "replace": "",
+      "expect": "FAIL a head below the reading"
+    },
+    {
+      "name": "the wallet read is built on an id that moved",
+      "find": "  if (idOf(r[0]) !== ids.receiver || idOf(r[1]) !== ids.sender) return { head_block: head.number, receive: null, send: null }",
+      "replace": "",
+      "expect": "FAIL the bound id changed since the reading"
+    },
+    {
+      "name": "the answer is not held to its canonical encoding",
+      "find": "  if (encodeAggregate3Result(out).toLowerCase() !== hex.toLowerCase()) throw new Error('aggregate3: not the canonical encoding of its own results')",
+      "replace": "",
+      "expect": "FAIL a tuple offset pointing back at another tuple"
+    },
+    {
+      "name": "the first node is read whatever its age",
+      "find": "    heads.sort((a, b) => b.head.time - a.head.time || b.head.number - a.head.number)",
+      "replace": "",
+      "expect": "FAIL the first node an hour behind, the second current"
+    },
+    {
+      "name": "an old head moves the baseline",
+      "find": "      if (!current) continue",
+      "replace": "",
+      "expect": "FAIL every node an hour behind"
+    },
+    {
+      "name": "the wallet read takes a head ahead of the clock",
+      "find": "  if (head.time > now() + FUTURE_SKEW_MS) return null",
+      "replace": "",
+      "expect": "FAIL the wallet read refuses a head an hour ahead of the clock"
+    }
+  ]
+}

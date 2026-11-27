@@ -190,6 +190,22 @@ console.log('the answer and its schema')
   for (const [k, inSchema, inCode] of pairs) check(`the ${k} enum equals the code's`, JSON.stringify(inSchema) === JSON.stringify([...inCode]), JSON.stringify(inSchema) + ' vs ' + JSON.stringify(inCode))
 }
 
+console.log('the issuer\'s B20 rules in the answer')
+{
+  const tr = (state, reason = null) => ({ state, reason, checked_at: '2026-12-01T14:59:00.000Z', age_s: 62, block: 100, source: 'the token\'s B20 policies and pause state, read from Base', policies: {}, venues: [] })
+  const paused = assemble({ input: inp(), verify: listed, passport: passport(), refusal: 'transfers_paused', transfers: tr('paused'), quote: okQuote(), stable: USDC, decimals: 8, now: NOW })
+  check('transfers paused: refused with no quote, context.transfers says paused, and it validates', paused.outcome === 'refused' && paused.verdict.reason === 'transfers_paused' && paused.quote === null && paused.context.transfers.state === 'paused' && valid(paused), JSON.stringify(valid.errors))
+  check('...its lead names the chain\'s pause and its age, no word of advice', /transfers are paused on chain \(isPaused\(TRANSFER\), read from Base 62 s ago\)/.test(paused.summary) && !BANNED_WORDS.test(withoutAllowed(paused.summary)))
+  const venue = build({ quote: { result: 'unknown', reason: 'venue_not_allowed_by_issuer', quotedAt: null }, extra: { transfers: tr('restricted', 'venue_refused'), second: { result: 'unknown', reason: 'venue_not_allowed_by_issuer', source: 'kyberswap', quotedAt: null } } })
+  check('a venue the issuer refuses: checked, the reason kept, both lines said in the lead, and it validates', venue.outcome === 'checked' && venue.quote.reason === 'venue_not_allowed_by_issuer' && venue.venues.kyberswap.reason === 'venue_not_allowed_by_issuer' && /refuse the Aerodrome router or pool/.test(venue.summary) && /refuse KyberSwap's router/.test(venue.summary) && valid(venue), JSON.stringify(valid.errors))
+  check('...no word of advice there either', !BANNED_WORDS.test(withoutAllowed(venue.summary)))
+  const refusedSim = { result: 'would_revert', reason: 'wallet_not_allowed_by_issuer', wallet: W, head_block: 30000000, rpc: 'public', wallet_state: { stable_balance_enough: null, allowance_enough: null, gas_balance_enough: null }, simulated_with: [], amount_out_simulated_base_units: null, gas_units: null, revert: { kind: 'issuer_policy', probe: null, reason: null, selector: null, data: null, untrusted_text: 'x' }, issuer_policy: { receive: false, send: true, head_block: 30000000 } }
+  const w = build({ extra: { simulation: refusedSim, transfers: tr('restricted', 'ordinary_wallet_refused') } })
+  check('a wallet the receiver policy refuses: would_revert said as the chain\'s fact, and it validates', /receiver policy on Base refuses 0x1111/.test(w.summary) && valid(w), JSON.stringify(valid.errors))
+  check('unknown never refuses: an unknown reading is an answer with the reason said', build({ extra: { transfers: tr('unknown', 'stale') } }).outcome === 'quoted' && /could not be read \(stale\)/.test(build({ extra: { transfers: tr('unknown', 'stale') } }).summary))
+  check('no reading (Robinhood Chain): context.transfers null and nothing said', build().context.transfers === null && !/transfer rules/.test(build().summary))
+}
+
 console.log('it never sends')
 {
   const files = ['./simulate.mjs', '../../../apps/stocks-simulate.mjs', '../../../apps/simulate/sim-evm.mjs', '../../../apps/simulate/quote-kyberswap.mjs', '../../../apps/simulate/quote-aerodrome.mjs']

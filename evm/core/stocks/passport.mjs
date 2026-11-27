@@ -16,6 +16,7 @@ import { symbolLabel, nameLabel, UNTRUSTED_TEXT_NOTE } from './untrusted-text.mj
 import { usEquitySession } from './market-session.mjs'
 import { resemblance } from './impostor.mjs'
 import { mintedOf } from './registries.mjs'
+import { noteOf as transfersNote } from './b20.mjs'
 
 // A reference older than this is "held": the issuer is not updating it right now.
 // ── Pool depth (owner, 26.11) ─────────────────────────────────────────────────────────────────────────────────────────
@@ -63,7 +64,7 @@ export const PUBLIC_WINDOW_H = 24
 export const NOTE_CODES = Object.freeze([
   'not_in_registry', 'no_readings', 'no_reference', 'reference_held_market_closed', 'reference_held_market_open',
   'trading_halted', 'paused', 'no_dex_price', 'pools_capped', 'multiplier_change_pending', 'calendar_unknown',
-  'reference_spread_wide', 'reading_stale', 'not_minted', 'sources_disagree',
+  'reference_spread_wide', 'reading_stale', 'not_minted', 'sources_disagree', 'transfers_restricted', 'transfers_paused',
 ])
 // The refusals that mean no DEX price was found; the others (no_reference, reference_spread_wide, sources_disagree) have a
 // DEX price and lack a usable reference, or a price two sources agree on, and get their own note.
@@ -95,8 +96,10 @@ const SESSION_GROUP = Object.freeze({ regular: 'regular', pre: 'extended', post:
  * @param {{symbol?: string, name?: string}} [p.identity]  what our dataset knows of the token
  * @param {number} p.now
  * @param {number} [p.windowH]
+ * @param {object|null} [p.transfers]  the token's B20 transfer rules (evm/core/stocks/b20.mjs transfersOf), Base only;
+ *   null elsewhere. It adds a note and `latest.transfers`, and never touches in_registry, issuer or resembles.
  */
-export function buildPassport ({ address, chainId, registry, readings = [], identity = {}, now, windowH = DEFAULT_WINDOW_H }) {
+export function buildPassport ({ address, chainId, registry, readings = [], identity = {}, now, windowH = DEFAULT_WINDOW_H, transfers = null }) {
   const addr = String(address || '').toLowerCase()
   const rec = (registry || []).find((r) => r.address === addr) || null
   const notes = []
@@ -147,6 +150,9 @@ export function buildPassport ({ address, chainId, registry, readings = [], iden
     if (latest.premium_refused === 'implausible_vs_reference') notes.push('pool_price_implausible')
     if (latest.pools?.capped) notes.push('pools_capped')
   }
+  // The issuer's own B20 rule on chain (docs/b20-transfers-tz.md §3): a fact beside the list, never a verdict.
+  const tn = transfersNote(transfers)
+  if (tn) notes.push(tn)
   const pending = latest ? latest.multiplier_pending : rec.multiplier_pending
   if (pending != null && pending !== (latest ? latest.multiplier : rec.multiplier)) notes.push('multiplier_change_pending')
 
@@ -192,7 +198,11 @@ export function buildPassport ({ address, chainId, registry, readings = [], iden
       premium_at_reference_time: premiumAt(inWindow, ref && ref.updated_at),
       pools: { seen: latest.pools.seen, eligible: latest.pools.eligible, capped: latest.pools.capped, top: latest.pools.top },
       liquidity: liquidityOf(latest.pools),
+      transfers: transfers ?? null,
     } : null,
+    // The B20 rules on their own, whether or not there is a price reading (a token listed today has none yet); the same
+    // object as latest.transfers when there is one.
+    transfers: transfers ?? null,
     series,
     notes,
   }

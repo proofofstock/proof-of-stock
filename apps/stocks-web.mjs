@@ -92,6 +92,8 @@ import { createPassSales, rpcCaller } from './pass-sales.mjs'
 import { passBazaar, openApiOf } from './x402-discovery.mjs'
 import { createAgentTest, readJsonBody } from './stocks-agent-test.mjs'
 import { createSimulator } from './stocks-simulate.mjs'
+import { createB20Reader } from './b20-reader.mjs'
+import { transfersOf } from '../evm/core/stocks/b20.mjs'
 import { parseInput as parseSimulate, unitsOf as simulateUnits, SIMULATE_UNITS, SIMULATE_WALLET_UNITS, WALLET_IN_URL } from '../evm/core/stocks/simulate.mjs'
 import { resultPage, resultBadge, explainerPage } from './stocks-agent-test-page.mjs'
 
@@ -329,6 +331,10 @@ export function createStocksWeb ({
   // simulate_buy (docs/simulate-buy-tz.md): { fetchImpl, env, aggregatorPerS }. A test hands in its fake aggregator and
   // node here; unset, the site's own fetchImpl and the host's environment (STP_RPC_*, STP_AGGREGATOR_PER_S).
   simulate: simOpts = {},
+  // The B20 transfer rules (docs/b20-transfers-tz.md): { enabled, fetchImpl, env }. Read from Base in the refresh
+  // cycle through the factory mirror's RPC pair; unset, the site's own fetchImpl and the host's environment. A test hands
+  // in its fake node here, or enabled: false. The alert is scripts/stocks/health-check.mjs's, from /api/status.
+  b20: b20Opts = {},
 } = {}) {
   const registries = new Map() // chain → { records, at, error }
   // Addresses that were listed and have left the registry, since this process started: chain → Map(address → { at, symbol }).
@@ -336,6 +342,7 @@ export function createStocksWeb ({
   const windows = Object.fromEntries(Object.keys(CHAINS).map((c) => [c, createWindowCache({ root: roots[c], windowH, now })]))
   const names = new Map() // chain → Map(address → { symbol, name }), from stock-names.json
   const decimalsBook = new Map() // chain → Map(address → decimals), from the recorder's pool book: the token list's decimals
+  const poolBook = new Map() // chain → Map(token → [pool address]), the recorder's book: the pools the B20 check names
   const impostors = new Map() // chain → the parsed impostors.json, or { error }
   const buckets = new Map() // client key → { sec, n, slots }: its last second seen, units in the window, units per second
   const history = createHistoryStore({ roots, now, log })
@@ -512,7 +519,15 @@ export function createStocksWeb ({
     try {
       const j = JSON.parse(fs.readFileSync(path.join(roots[chain], 'stock-peg', 'pool-book.json'), 'utf8'))
       decimalsBook.set(chain, new Map(Object.entries(j.decimals || {}).filter(([a, d]) => /^0x[0-9a-f]{40}$/.test(a) && Number.isInteger(d)).map(([a, d]) => [a, d])))
-    } catch (_) { if (!decimalsBook.has(chain)) decimalsBook.set(chain, new Map()) }
+      // A pool with its own contract only: a v4 pool is an id inside the PoolManager, which the B20 check names itself.
+      const byToken = new Map()
+      for (const e of Object.values(j.pools || {})) {
+        if (!e || !/^0x[0-9a-f]{40}$/.test(String(e.pool)) || !/^0x[0-9a-f]{40}$/.test(String(e.token))) continue
+        if (!byToken.has(e.token)) byToken.set(e.token, [])
+        byToken.get(e.token).push(e.pool)
+      }
+      poolBook.set(chain, byToken)
+    } catch (_) { if (!decimalsBook.has(chain)) decimalsBook.set(chain, new Map()); if (!poolBook.has(chain)) poolBook.set(chain, new Map()) }
   }
   // /tokenlist.json, built once per read of the issuer lists and of the pool book (the cache key says which).
   let tokenListCache = { key: null, body: null }
@@ -534,6 +549,31 @@ export function createStocksWeb ({
     exam.refresh().catch(() => {})
     glama.refresh().catch(() => {})
     await Promise.all(Object.keys(CHAINS).flatMap((c) => [refreshRegistry(c), windows[c].refresh(), Promise.resolve(refreshImpostors(c)), Promise.resolve(refreshNames(c)), Promise.resolve(refreshDecimals(c)), Promise.resolve(history.refresh(c))]))
+    // The B20 rules of the trusted Base records, after the list they read is in. Not awaited: a slow node must not hold
+    // the start of the site or the next refresh; a cycle still running is not started twice (apps/b20-reader.mjs).
+    refreshB20().catch((e) => internal('b20', e, null))
+  }
+
+  // ── The B20 transfer rules (docs/b20-transfers-tz.md) ────────────────────────────────────────────────────────────
+  // Read for the trusted Base records only: a held record or an impostor is never read, and nothing here is read by the
+  // verdict. What the reader keeps is turned into the passport block and simulate_buy's check on request, from memory.
+  const b20 = b20Opts.enabled === false ? null : createB20Reader({ fetchImpl: b20Opts.fetchImpl || fetchImpl, env: b20Opts.env || process.env, now, log })
+  /** A token's pools for the B20 check, deepest first: the latest reading's pools by depth, then the recorder's book. */
+  function b20PoolsOf (addr) {
+    const latest = windows.base.get().window?.byToken.get(addr)?.latest
+    const top = Array.isArray(latest?.pools?.top) ? [...latest.pools.top] : []
+    top.sort((a, b) => (Number(b?.liquidity_usd) || 0) - (Number(a?.liquidity_usd) || 0))
+    const own = top.map((p) => String(p?.pair_address || '').toLowerCase()).filter((a) => /^0x[0-9a-f]{40}$/.test(a))
+    return [...new Set([...own, ...(poolBook.get('base')?.get(addr) || [])])]
+  }
+  function refreshB20 () {
+    const records = b20 ? freshRecords('base') : null
+    return records ? b20.refresh(records, { poolsOf: b20PoolsOf }) : Promise.resolve()
+  }
+  /** The passport's `latest.transfers` for a trusted Base record: the reader's last reading with its age, never a guess. */
+  function transfersBlock (addr) {
+    const rec = (freshRecords('base') || []).find((r) => r.address === addr)
+    return transfersOf(b20 ? b20.get(addr) : null, { now: now(), listPaused: rec ? rec.paused : null })
   }
 
   // The wall of findings, written into the page so a reader that runs no script sees the board, not "Loading" (22.11).
@@ -787,7 +827,9 @@ export function createStocksWeb ({
     const identity = inRegistry ? {} : nameOf(chain, addr)
     // Built against the raw fresh list: a held record never gets here (503 above), so in_registry is the trusted answer,
     // and a copy of a brand-new listing still resembles it (outside review, 25.11). The held original is not named.
-    const p = buildPassport({ address: addr, chainId: CHAINS[chain].chainId, registry: lr.raw, readings: inRegistry && w.window ? readingsOf(w.window.byToken.get(addr), addr) : [], identity, now: now(), windowH: Math.min(hours, windowH) })
+    const p = buildPassport({ address: addr, chainId: CHAINS[chain].chainId, registry: lr.raw, readings: inRegistry && w.window ? readingsOf(w.window.byToken.get(addr), addr) : [], identity, now: now(), windowH: Math.min(hours, windowH),
+      // The issuer's B20 rules (Base only): a fact beside the verdict, which they never change.
+      transfers: chain === 'base' && inRegistry ? transfersBlock(addr) : null })
     if (p.resembles && p.resembles.registry_address && lr.held.has(p.resembles.registry_address)) p.resembles = { ...p.resembles, registry_address: null }
     const elsewhere = inRegistry ? sameStockElsewhere(loaded().byChain, chain, addr, now(), hours * 3600) : []
     const listed = inRegistry ? null : impostors.get(chain)?.byAddress?.get(addr) || null
@@ -853,7 +895,12 @@ export function createStocksWeb ({
         readings_tokens: w.window ? w.window.byToken.size : null, readings_age_s: w.window ? Math.round((now() - w.window.loaded_at) / 1000) : null, readings_error: w.error ? internal(`readings ${c}`, w.error, 'the readings could not be read') : null,
         newest_reading_at: newest == null ? null : new Date(newest).toISOString(), newest_reading_age_s: newest == null ? null : Math.round((now() - newest) / 1000),
         impostors_listed: imp && imp.items ? imp.items.length : null, impostors_age_s: Number.isFinite(impAt) ? Math.round((now() - impAt) / 1000) : null,
-        ...listLockStatus(c) }]
+        ...listLockStatus(c),
+        // The B20 baselines this process holds and the changes it saw lately, each with its block and time
+        // (docs/b20-transfers-tz.md §5), for scripts/stocks/health-check.mjs, which keeps its own copy and alerts on each
+        // change not told: per token the bound ids, the pause and each answer by account name and scope. The probe wallet
+        // is named, never given by its address; no caller's wallet is in them.
+        ...(c === 'base' ? { b20: b20 ? { reader: 'on', cycles: b20.counters.cycles, failed_cycles: b20.counters.failed, tokens: b20.snapshots(new Map((freshRecords('base') || []).map((x) => [x.address, x.symbol ?? null]))), changes: b20.changes() } : { reader: 'off', cycles: 0, failed_cycles: 0, tokens: {}, changes: [] } } : {}) }]
     }))
   }
 
@@ -1047,7 +1094,9 @@ export function createStocksWeb ({
       const p = await passportOf(c, a, null, snap)
       const rec = p.status === 200 && snap?.records ? snap.records.find((r) => r.address === a) : null
       return rec ? { ...p, current: { paused: rec.paused } } : p
-    } })
+    },
+    // The B20 rules from memory (docs/b20-transfers-tz.md §4): the passport's block and the reading under it, Base only.
+    transfers: (c, a) => (c === 'base' && b20 ? { block: transfersBlock(a), reading: b20.get(a) } : null) })
   const simulator = createSimulator({
     data: simData,
     fetchImpl: simOpts.fetchImpl || fetchImpl, env: simOpts.env || process.env, now, log, origin: publicOrigin + publicPath, aggregatorPerS: simOpts.aggregatorPerS ?? null,
@@ -1686,6 +1735,8 @@ export function createStocksWeb ({
   let timer = null, sweepTimer = null
   return {
     server, refreshAll, x402,
+    // The B20 reader's cycle, for the tests that run one on purpose; the timer runs it in refreshAll.
+    b20Refresh: () => refreshB20(),
     examRefresh: (force) => exam.refresh(force),
     // `fd` is a listening socket handed over by systemd (systemdListenFd); without one the server binds port and host.
     async start (port, host, { fd = null } = {}) {

@@ -358,6 +358,33 @@ is public and each can be run without us, which is the point: a check you have t
 Keeping one answer, rather than checking the whole service, is a different thing:
 [Keep a receipt of a check](../how-to/keep-a-receipt.md).
 
+## The issuer's on-chain transfer rules (B20)
+
+Every Coinbase stock token on Base is a B20 token, Base's native token standard. Since the Denim upgrade the issuer can,
+without changing the token's address, bind a policy to each transfer scope (who sends, who receives, who calls the
+transfer) and pause transfers. A policy lives in Base's policy registry: an allowlist or a blocklist, or a union or
+intersection of them, any of them inverted, and its members can change at any time with no event on the token. So a
+token can be the issuer's own, listed, minted and fairly priced, and still not transferable to a given wallet, or
+through a given router or pool.
+
+We read these rules from the chain every 5 minutes, at one block, and say them as facts with their time: on the passport
+(`latest.transfers`: open, restricted, paused or unknown), in `simulate_buy` (before any quote), and on the token page.
+Three rules hold:
+
+- **It is not a verdict.** A B20 rule is the issuer's own decision about its own token. It is not evidence of a
+  look-alike, and it never makes a record listed, not listed or held. "Listed" is decided only as described above.
+- **Facts, not advice.** "Restricted" says that the chain refused a fixed address nobody controls, or a router or pool
+  we name; it does not say "unsafe" or "avoid". Many issuers restrict transfers for legal reasons.
+- **Unreadable is unknown, never open.** A failed read, a reading older than 15 minutes, an answer that does not
+  decode, or a bound policy the registry does not hold is `unknown` with its reason. The registry answers an unknown
+  policy as an empty set, so an unknown blocklist would say "allowed" to everyone: existence is read first.
+
+The pause is said twice, as the chain says it and as the issuer's list says it, and a disagreement is written to our
+journal; the chain is what a swap meets. When a token's rules change between two readings, the owner gets one alert
+(sent by our health check, which holds the alert settings; the site itself holds none); it changes no verdict. A
+reading is as old as the block it was read at, by the block's own time. Robinhood Chain tokens are not B20, and their pause stays what Robinhood's
+list says.
+
 ## Known limitations
 
 - **Recorded, not live.** Readings are taken every 15 minutes. `latest` is the last recorded reading, and the site

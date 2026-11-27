@@ -335,9 +335,18 @@ The answer, abridged (every number made up; the shape is the point):
 ```
 
 - `outcome`: `refused` (the verdict stopped it: `verdict.reason` is `impostor`, `not_listed`, `not_minted`, `paused`,
-  `paused_unknown`, `ticker_not_exact` or `ticker_ambiguous`; no quote was made), `quoted` (the buy quote exists; the
+  `paused_unknown`, `ticker_not_exact`, `ticker_ambiguous` or `transfers_paused`; no quote was made), `quoted` (the buy quote exists; the
   sell-back, the second line and the dry run may each still be `unknown`) or `checked` (the verdict passed and no quote
   could be made). There is no outcome meaning "go".
+- On Base the token's B20 transfer rules (the passport's `transfers`) are read from memory before any outside call.
+  A current reading of the chain's pause decides (`transfers_paused`); the issuer's list is the fallback only when the
+  chain gave no current answer. A quote line is `unknown` with `venue_not_allowed_by_issuer` when the issuer refuses
+  the address that would move the stock token (the Aerodrome pool on a buy, its router and the pool the reverse quote uses on the
+  sell-back, KyberSwap's router and every pool its route delivers from). With a wallet, the receiver policy refusing it is `simulation.result: "would_revert"`,
+  `reason: "wallet_not_allowed_by_issuer"`, with no swap run; the sender policy refusing it makes the sell-back
+  `unknown` with the same reason; `simulation.issuer_policy` says what both answered, read at the head pinned by its
+  hash. A stale or failed reading never refuses; `context.transfers` says its state, reason and age, and is `null`
+  on Robinhood Chain.
 - `premium_check.within` is `|effective_premium| <= limit`: a discount past the limit is outside it too. It is `null`
   with `within_refused` when the reference is held (`reference_held`: a price from the last close is not what the limit
   was set for), when its age is unknown (`reference_age_unknown`), or when there is no premium (`no_premium`).

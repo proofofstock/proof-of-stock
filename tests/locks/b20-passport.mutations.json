@@ -1,0 +1,34 @@
+{
+  "_finding": "A B20 rule never changes the verdict (docs/b20-transfers-tz.md §0.1), and it is said whether or not there is a price reading (outside review of #268): the passport carries the rule at the top level and in latest, with its note, beside an in_registry that the rule never touches.",
+  "target": "evm/core/stocks/passport.mjs",
+  "runner": [
+    "node",
+    "apps/b20-web.test.mjs"
+  ],
+  "mutations": [
+    {
+      "name": "the note is not said",
+      "find": "  if (tn) notes.push(tn)",
+      "replace": "  if (false) notes.push(tn)",
+      "expect": "FAIL the passport: in_registry, the issuer named, latest.transfers restricted with its note"
+    },
+    {
+      "name": "a pause on chain changes in_registry",
+      "find": "    in_registry: true,\n    resembles: null,",
+      "replace": "    in_registry: !transfers || transfers.state !== 'paused',\n    resembles: null,",
+      "expect": "FAIL paused: in_registry"
+    },
+    {
+      "name": "latest.transfers is left out",
+      "find": "      transfers: transfers ?? null,\n    } : null,",
+      "replace": "    } : null,",
+      "expect": "FAIL the passport: in_registry, the issuer named, latest.transfers restricted with its note"
+    },
+    {
+      "name": "the top-level block is left out",
+      "find": "    transfers: transfers ?? null,\n    series,",
+      "replace": "    series,",
+      "expect": "FAIL listed today, no reading, paused on chain"
+    }
+  ]
+}

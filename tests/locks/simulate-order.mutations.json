@@ -8,8 +8,8 @@
   "mutations": [
     {
       "name": "a refused token still calls the RPC",
-      "find": "    if (refusalOf(v.body, passport, current)) return { status: 200, body: assemble({ input, verify: v.body, listProof, passport, current, stable: C.stable, links, now: t0 }) }",
-      "replace": "    if (refusalOf(v.body, passport, current)) { await tokenDecimals(f, chain, rpcUrlOf(chain, env).url, address); return { status: 200, body: assemble({ input, verify: v.body, listProof, passport, current, stable: C.stable, links, now: t0 }) } }",
+      "find": "    if (refusalOf(v.body, passport, pauseFrom)) return { status: 200, body: assemble({ input, verify: v.body, listProof, passport, current: pauseFrom, transfers, stable: C.stable, links, now: t0 }) }",
+      "replace": "    if (refusalOf(v.body, passport, pauseFrom)) { await tokenDecimals(f, chain, rpcUrlOf(chain, env).url, address); return { status: 200, body: assemble({ input, verify: v.body, listProof, passport, current: pauseFrom, transfers, stable: C.stable, links, now: t0 }) } }",
       "expect": "FAIL no outside call for a refused token"
     },
     {

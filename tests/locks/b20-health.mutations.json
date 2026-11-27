@@ -1,0 +1,58 @@
+{
+  "_finding": "health-check tells the owner about each B20 change once (docs/b20-transfers-tz.md §5, outside reviews of #268): each listed change not told, in block order, then the difference with its own kept baseline; never backwards; told only when Telegram took it; written after each alert sent.",
+  "target": "scripts/stocks/health-check.mjs",
+  "runner": [
+    "node",
+    "scripts/stocks/health-b20.test.mjs"
+  ],
+  "mutations": [
+    {
+      "name": "a change told is not kept as told",
+      "find": "      applyChange(prev, c.kind === 'answer' ? { ...c, key: answerKey(c) } : c); prev.block = c.block",
+      "replace": "      prev.block = c.block",
+      "expect": "FAIL a listed answer change is sent and kept under its answers key"
+    },
+    {
+      "name": "a journal fallback counts as told",
+      "find": "    try { return (await alertImpl({ key: `b20:base:${token}`, text }, { env, everyMs: 0 })) === 'sent' } catch (_) { return false }",
+      "replace": "    try { return (await alertImpl({ key: `b20:base:${token}`, text }, { env, everyMs: 0 })) !== 'failed' } catch (_) { return false }",
+      "expect": "FAIL no bot configured"
+    },
+    {
+      "name": "the kept baseline is written only at the end",
+      "find": "      applyChange(prev, c)\n      save(); dirty = false",
+      "replace": "      applyChange(prev, c)\n      dirty = true",
+      "expect": "FAIL the first change is on disk before the second alert is sent"
+    },
+    {
+      "name": "the site's list of changes is not read",
+      "find": "  const listed = Array.isArray(b20.changes) ? b20.changes : []",
+      "replace": "  const listed = []",
+      "expect": "FAIL a pause and an unpause between two runs: two alerts"
+    },
+    {
+      "name": "a listed change is sent again",
+      "find": "      if (toldSet.has(id)) continue",
+      "replace": "",
+      "expect": "FAIL two changes in one block, the second alert failed"
+    },
+    {
+      "name": "a baseline is diffed backwards",
+      "find": "    if (!(snap.block > (Number.isInteger(prev.block) ? prev.block : -1))) continue",
+      "replace": "",
+      "expect": "FAIL a baseline at a block not above the last told"
+    },
+    {
+      "name": "a listed change below the last told is sent",
+      "find": "&& c.block >= last &&",
+      "replace": "&&",
+      "expect": "FAIL a listed change at a block not above the last told"
+    },
+    {
+      "name": "a baseline difference told is not kept as told",
+      "find": "      applyChange(prev, c)\n      save(); dirty = false",
+      "replace": "      save(); dirty = false",
+      "expect": "FAIL a change the site saw while health-check was not running is still sent"
+    }
+  ]
+}
