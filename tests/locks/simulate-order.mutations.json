@@ -1,0 +1,64 @@
+{
+  "_finding": "simulate_buy decides the order of its calls here (docs/simulate-buy-tz.md §4.2, §5.4, §5.5): a refused token costs no aggregator or RPC call, so the tool can never find liquidity for a look-alike; a dry run, per wallet and per block, is never served from the cache; and no client key takes more than its share of the aggregator cap, so a greedy caller cannot keep every other one at busy. Each aggregator call takes its permit when it goes out, after the cache, so the cap counts real calls in the second they are sent.",
+  "target": "apps/stocks-simulate.mjs",
+  "runner": [
+    "node",
+    "apps/stocks-simulate.test.mjs"
+  ],
+  "mutations": [
+    {
+      "name": "a refused token still calls the RPC",
+      "find": "    if (refusalOf(v.body, passport, current)) return { status: 200, body: assemble({ input, verify: v.body, listProof, passport, current, stable: C.stable, links, now: t0 }) }",
+      "replace": "    if (refusalOf(v.body, passport, current)) { await tokenDecimals(f, chain, rpcUrlOf(chain, env).url, address); return { status: 200, body: assemble({ input, verify: v.body, listProof, passport, current, stable: C.stable, links, now: t0 }) } }",
+      "expect": "FAIL no outside call for a refused token"
+    },
+    {
+      "name": "the cache serves a simulation",
+      "find": "const CACHEABLE = new Set(['quote'])",
+      "replace": "const CACHEABLE = new Set(['quote', 'simulation'])",
+      "expect": "FAIL a simulation is never cached"
+    },
+    {
+      "name": "the per-client share is removed",
+      "find": "    if (mine + 1 > perClient) return false\n",
+      "replace": "",
+      "expect": "FAIL one greedy client sending distinct amounts beside a quiet one: the quiet client is answered"
+    },
+    {
+      "name": "calls go out without a permit",
+      "find": "      if (!permit(client)) return Promise.reject(new Error(BUSY_MARK))\n",
+      "replace": "",
+      "expect": "FAIL the global aggregator cap refuses"
+    },
+    {
+      "name": "a call starts after the answer is sent",
+      "find": "    if (gate.done || now() >= gate.deadlineAt) return Promise.reject(new Error('the answer is already sent'))\n",
+      "replace": "",
+      "expect": "FAIL the deadline runs from the request's arrival"
+    },
+    {
+      "name": "the deadline runs from the simulator, not the arrival",
+      "find": "    const deadlineAt = (Number.isFinite(startedAt) ? startedAt : t0) + budgetMs",
+      "replace": "    const deadlineAt = t0 + budgetMs",
+      "expect": "FAIL the deadline runs from the request's arrival"
+    },
+    {
+      "name": "the share is raised above a quarter",
+      "find": "  const perClient = Math.floor(perS * AGGREGATOR_SHARE)",
+      "replace": "  const perClient = Math.max(3, Math.floor(perS * AGGREGATOR_SHARE))",
+      "expect": "FAIL the per-client share is a quarter of the cap, never more"
+    },
+    {
+      "name": "a cap below 4 is served",
+      "find": "  if (perS < MIN_FAIR_CAP) throw new Error(",
+      "replace": "  if (false) throw new Error(",
+      "expect": "FAIL a cap below 4 is refused at start"
+    },
+    {
+      "name": "a cap that is not a whole number falls back to the default",
+      "find": "  if (!Number.isInteger(perS)) throw new Error(",
+      "replace": "  if (false) throw new Error(",
+      "expect": "FAIL STP_AGGREGATOR_PER_S of 0, a fraction or a word is refused"
+    }
+  ]
+}

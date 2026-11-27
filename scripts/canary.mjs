@@ -21,7 +21,7 @@ import { addressesSha256 } from '../evm/core/stocks/list-proof.mjs'
 export const KNOWN = Object.freeze({
   listed: { chain: 'base', address: '0xb20000000000000000000078ee7ce2fe4908108c', symbol: 'NVDAc' },
   lookalike: { chain: 'base', address: '0x02ecff464a843629b63b8462e42ffc35e38bb384' },
-  tools: 10,
+  tools: 11,
 })
 const ISSUERS = Object.freeze({
   base: { url: 'https://api.coinbase.com/v1/tokenized-stocks?page_size=500', addresses: (b) => (Array.isArray(b?.tokens) && !b.next_page_token ? b.tokens.map((t) => t.contract_address) : null) },

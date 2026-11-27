@@ -1,0 +1,118 @@
+{
+  "_finding": "KyberSwap's answer is untrusted input (docs/simulate-buy-tz.md §3.2, outside review of #266): a quote is held to exactly the tokens and the amount asked, in its summary and along its route, amounts are decimal strings, a missing number stays null and only a 4xx says no route; a built swap is decoded and held to the stable, the token, the wallet and the amount, and one we cannot decode is not run.",
+  "target": "apps/simulate/quote-kyberswap.mjs",
+  "runner": [
+    "node",
+    "apps/stocks-simulate.test.mjs"
+  ],
+  "mutations": [
+    {
+      "name": "the tokenIn / tokenOut check is removed",
+      "find": "  if (low(rs.tokenIn) !== low(tokenIn) || low(rs.tokenOut) !== low(tokenOut)) return { result: 'unknown', reason: 'quote_mismatch', source: 'kyberswap', quotedAt: at }\n",
+      "replace": "",
+      "expect": "FAIL a quote for another token is quote_mismatch"
+    },
+    {
+      "name": "the amountIn check is removed",
+      "find": "  if (!isUnits(rs.amountIn) || rs.amountIn !== String(amountIn)) return { result: 'unknown', reason: 'quote_mismatch', source: 'kyberswap', quotedAt: at }\n",
+      "replace": "",
+      "expect": "FAIL a sell-back for another amount is quote_mismatch"
+    },
+    {
+      "name": "the amountOut > 0 check is removed",
+      "find": "  if (!isUnits(rs.amountOut) || !(BigInt(rs.amountOut) > 0n)) return",
+      "replace": "  if (!isUnits(rs.amountOut)) return",
+      "expect": "FAIL an amountOut of zero is quote_empty"
+    },
+    {
+      "name": "a JSON number is taken as base units",
+      "find": "  if (!isUnits(rs.amountOut) || !(BigInt(rs.amountOut) > 0n)) return",
+      "replace": "  if (!/^\\d+$/.test(String(rs.amountOut)) || !(BigInt(rs.amountOut) > 0n)) return",
+      "expect": "FAIL an amountOut sent as a JSON number"
+    },
+    {
+      "name": "the route's own hops are not checked",
+      "find": "  const bad = routeProblem(rs, tokenIn, tokenOut, amountIn)",
+      "replace": "  const bad = null",
+      "expect": "FAIL a route whose last hop delivers another token"
+    },
+    {
+      "name": "the build's output token is not checked",
+      "find": "if (desc.srcToken !== low(tokenIn) || desc.dstToken !== low(tokenOut) || ",
+      "replace": "if (desc.srcToken !== low(tokenIn) || ",
+      "expect": "FAIL a build for another output token"
+    },
+    {
+      "name": "the build's recipient is not checked",
+      "find": "|| !paysWallet || ",
+      "replace": "|| ",
+      "expect": "FAIL a build for another recipient"
+    },
+    {
+      "name": "an undecodable build is run",
+      "find": "  if (!desc) return { ok: false, reason: 'build_unverified', to: low(tx.routerAddress) }",
+      "replace": "  if (!desc) return { ok: true, to: low(tx.routerAddress), data: String(tx.data).toLowerCase(), payTo: null, desc: null }",
+      "expect": "FAIL a build with an entry point we do not decode is not run"
+    },
+    {
+      "name": "a 5xx saying \"no route\" is read as no route",
+      "find": "const NO_ROUTE = (r) => r.status >= 400 && r.status < 500 && r.status !== 429 && r.body &&",
+      "replace": "const NO_ROUTE = (r) => r.body &&",
+      "expect": "FAIL a 5xx that says \"no route\" is an outage"
+    },
+    {
+      "name": "a missing gasUsd becomes zero",
+      "find": "gasUsd = numOrNull(rs.gasUsd)",
+      "replace": "gasUsd = Number(rs.gasUsd)",
+      "expect": "FAIL a missing gasUsd stays null"
+    },
+    {
+      "name": "a swap build without executor data is run",
+      "find": "  if (desc.entry === 'swap' && !(BigInt(desc.executorBytes) > 0n)) return { ok: false, reason: 'build_unverified', to: low(tx.routerAddress) }\n",
+      "replace": "",
+      "expect": "FAIL a swap build with no executor data"
+    },
+    {
+      "name": "a zero dstReceiver is refused",
+      "find": "  const paysWallet = desc.dstReceiver === low(wallet) || /^0x0{40}$/.test(desc.dstReceiver)",
+      "replace": "  const paysWallet = desc.dstReceiver === low(wallet)",
+      "expect": "FAIL a build that pays msg.sender"
+    },
+    {
+      "name": "a hop without addresses is chained",
+      "find": "    if (p.some((h) => !ADDRESS.test(String(h.tokenIn || '')) || !ADDRESS.test(String(h.tokenOut || '')))) return 'quote_mismatch'\n",
+      "replace": "",
+      "expect": "FAIL two adjacent hops with no intermediate address"
+    },
+    {
+      "name": "a 429 is not busy",
+      "find": "  if (r.busy || r.status === 429) return { result: 'unknown', reason: 'aggregator_busy', source: 'kyberswap', quotedAt: null }",
+      "replace": "  if (r.busy) return { result: 'unknown', reason: 'aggregator_busy', source: 'kyberswap', quotedAt: null }",
+      "expect": "FAIL a 429 is busy"
+    },
+    {
+      "name": "no route is read from a message",
+      "find": "NO_ROUTE_CODES.includes(r.body.code)",
+      "replace": "(NO_ROUTE_CODES.includes(r.body.code) || /no route/i.test(String(r.body.message || '')))",
+      "expect": "FAIL a 4xx saying \"no route\" without the documented code"
+    },
+    {
+      "name": "a negative gasUsd is kept",
+      "find": "(typeof v === 'number' && Number.isFinite(v) && v >= 0)",
+      "replace": "(typeof v === 'number' && Number.isFinite(v))",
+      "expect": "FAIL a negative gasUsd is null"
+    },
+    {
+      "name": "the build's amount is not checked",
+      "find": "desc.amount !== String(amountIn) || partialFill || ",
+      "replace": "partialFill || ",
+      "expect": "FAIL a build for another input amount"
+    },
+    {
+      "name": "a partial-fill build is accepted",
+      "find": "desc.amount !== String(amountIn) || partialFill || ",
+      "replace": "desc.amount !== String(amountIn) || ",
+      "expect": "FAIL a build with the partial-fill flag"
+    }
+  ]
+}

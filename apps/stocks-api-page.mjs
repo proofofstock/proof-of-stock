@@ -9,6 +9,7 @@
 // routes are the ones docs/reference/http-api.md documents, and apps/api-page.test.mjs holds the two lists together.
 
 import { siteBar } from './stocks-nav.mjs'
+import { SIMULATE_UNITS, SIMULATE_WALLET_UNITS } from '../evm/core/stocks/simulate.mjs'
 
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))
 
@@ -33,6 +34,12 @@ export const HTTP_ROUTES = Object.freeze([
   { id: 'passport', path: '/api/passport', params: 'chain, address, hours', cost: 'passport', doc: 'route-passport',
     ask: 'A token\'s whole passport: the listing, the issuer\'s price and its age, the on-chain premium and 24 hours of its history.',
     example: (o) => `curl -s '${o}/api/passport?chain=base&address=${EXAMPLE_ADDRESS}'` },
+  { id: 'simulate', path: '/api/simulate', params: 'chain, token, usd, slippage_bps, max_premium', cost: SIMULATE_UNITS, doc: 'route-simulate',
+    ask: 'What a dollar amount of a listed stock token would get right now, for that exact size: the verdict first (a look-alike gets no quote), then a live quote, the effective premium over the issuer\'s price against your limit, the sell-back and the market\'s state. Nothing is signed; no transaction is returned.',
+    example: (o) => `curl -s '${o}/api/simulate?chain=base&token=${EXAMPLE_ADDRESS}&usd=25'` },
+  { id: 'simulate-wallet', method: 'POST', path: '/api/simulate', params: 'chain, token, usd, wallet', cost: SIMULATE_WALLET_UNITS, doc: 'route-simulate',
+    ask: 'The same with your public wallet address, in a JSON body only (a URL is written to the web server\'s log): that swap run as a dry run by eth_call for your wallet, and whether it would revert, and why. Never send a private key.',
+    example: (o) => `curl -sS -X POST ${o}/api/simulate -H 'content-type: application/json' -d '{"chain": "base", "token": "${EXAMPLE_ADDRESS}", "usd": 25, "wallet": "0x..."}'` },
   { id: 'overview', path: '/api/overview', params: 'chain', cost: 1, doc: 'route-overview',
     ask: 'Per chain, the tokens whose on-chain price sits furthest from the issuer\'s, as of the latest reading (every 15 minutes, not a live quote).',
     example: (o) => `curl -s '${o}/api/overview?chain=base'` },
@@ -106,6 +113,7 @@ export const TOOL_INFO = Object.freeze({
   verify_anchor: { cost: 1, ask: 'Proof that a day\'s record has not changed: its Bitcoin proof and the mirror transactions.', args: {} },
   largest_gaps: { cost: 1, ask: 'The landing board: the listed tokens whose on-chain price sits furthest from the issuer\'s, with when each was read.', args: { chain: 'base' } },
   data_freshness: { cost: 1, ask: 'When each issuer list and pool price was last read, and whether it is late: the facts of /status.', args: {} },
+  simulate_buy: { cost: SIMULATE_UNITS, ask: 'What a dollar amount would get right now for that exact size, after the verdict: the quote, the effective premium against your limit, the sell-back and, with a public wallet, a dry run of that swap. Nothing is signed. ' + SIMULATE_WALLET_UNITS + ' units with a wallet.', args: { chain: 'base', token: EXAMPLE_ADDRESS, usd: 25 } },
   address_on_date: { cost: 1, ask: 'What an address was on a past UTC day, from the archive recorded then; UNKNOWN when nothing was.', args: { chain: 'base', address: EXAMPLE_ADDRESS, date: '2026-11-20' } },
 })
 
@@ -221,14 +229,14 @@ export function apiPage ({ origin, version, assets, tools, limits, pass = null }
       <div class="ap-tiers">
         <div class="ap-tier free"><span class="ap-tier-k">Free</span><b>${esc(String(perMinute))} units</b><span>a minute per client (one IP address; IPv6 by its /56), HTTP and MCP together. A call costs 1 unit, a passport ${esc(String(passportUnits))}, a batch of n addresses ⌈n/10⌉ (${esc(String(freeBatch))} addresses: ${esc(String(Math.ceil(freeBatch / 10)))} units).</span></div>
         ${tierPass}
-        <div class="ap-tier mcp"><span class="ap-tier-k">MCP</span><b>${esc(String(tools.length))} tools</b><span>read-only, on the same limit and the same pass, at <code>${esc(origin)}/mcp</code>.</span></div>
+        <div class="ap-tier mcp"><span class="ap-tier-k">MCP</span><b>${esc(String(tools.length))} tools</b><span>read-only (one quotes live and runs a dry run, signing nothing), on the same limit and the same pass, at <code>${esc(origin)}/mcp</code>.</span></div>
       </div>
       <nav class="ap-jump" aria-label="On this page"><a href="#http">HTTP API</a><a href="#paid">Paid pass</a><a href="#mcp">MCP tools</a><a href="#units">What a minute buys</a></nav>
     </section>
 
     <section class="ap-sec" id="http" aria-labelledby="http-title">
       <div class="ap-sec-head"><h2 id="http-title">HTTP API</h2><span class="ap-badge free">free</span></div>
-      <p class="ap-sec-lede">Read-only JSON over GET at <code>${esc(origin)}</code>; only the agent test takes a POST. A refused request costs nothing; over the limit the answer says when to come back.</p>
+      <p class="ap-sec-lede">Read-only JSON over GET at <code>${esc(origin)}</code>; only the agent test and <code>/api/simulate</code> with a wallet take a POST. A refused request costs nothing; over the limit the answer says when to come back.</p>
       <div class="ap-list">${HTTP_ROUTES.map(route).join('')}
       </div>
     </section>

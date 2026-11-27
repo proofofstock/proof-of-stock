@@ -1,0 +1,136 @@
+{
+  "_finding": "simulate_buy's answer is facts, never advice, and never a number made up (docs/simulate-buy-tz.md §0.1, §3.3, §7): a look-alike gets no quote, a Robinhood token (minted: null) is answered, a missing pause flag is not 'not paused', a zero quote is no price, the premium follows peg.mjs's refusals and `within` the reference's state both ways round, and no text we do not control or word of advice enters the lead.",
+  "target": "evm/core/stocks/simulate.mjs",
+  "runner": [
+    "node",
+    "evm/core/stocks/simulate.test.mjs"
+  ],
+  "mutations": [
+    {
+      "name": "an impostor is assembled with a quote",
+      "find": "      amount_in: amountIn, quote: null, premium: null,",
+      "replace": "      amount_in: amountIn, quote: quoteBlock(quote, { decimals, usd: input.usd, slippageBps: input.slippageBps, now }), premium: null,",
+      "expect": "FAIL an impostor gets no quote"
+    },
+    {
+      "name": "minted !== true refuses",
+      "find": "  if (issuer.minted === false) return 'not_minted'",
+      "replace": "  if (issuer.minted !== true) return 'not_minted'",
+      "expect": "FAIL a Robinhood token is answered"
+    },
+    {
+      "name": "a missing paused is read as not paused",
+      "find": "  if (!Array.isArray(paused)) return 'paused_unknown'",
+      "replace": "  if (!Array.isArray(paused)) return null",
+      "expect": "FAIL paused_unknown"
+    },
+    {
+      "name": "the amountOut > 0 guard is removed",
+      "find": "  if (!isUnits(q.amountOut) || !(BigInt(q.amountOut) > 0n)) return { ...head, result: 'unknown', reason: 'quote_empty', ...times, ...empty }",
+      "replace": "  if (!isUnits(q.amountOut)) return { ...head, result: 'unknown', reason: 'quote_empty', ...times, ...empty }",
+      "expect": "FAIL amountOut \"0\" is quote_empty"
+    },
+    {
+      "name": "the spread refusal is removed",
+      "find": "  else if (spreadWide(ref)) out.premium_refused = 'reference_spread_wide'",
+      "replace": "  else if (false) out.premium_refused = 'reference_spread_wide'",
+      "expect": "FAIL a reference spread above MAX_REFERENCE_SPREAD"
+    },
+    {
+      "name": "within is set from a held reference",
+      "find": "  if (notes.includes('reference_held_market_closed') || notes.includes('reference_held_market_open')) return { ...o, within_refused: 'reference_held' }\n",
+      "replace": "",
+      "expect": "FAIL within is null for a held reference"
+    },
+    {
+      "name": "within is set from a reference of unknown age",
+      "find": "  if (premium.reference_age_s == null) return { ...o, within_refused: 'reference_age_unknown' }\n",
+      "replace": "",
+      "expect": "FAIL within is null for a reference whose age is unknown"
+    },
+    {
+      "name": "within (float) compares the signed premium",
+      "find": "export const withinLimit = (premium, limit) => Math.abs(premium) <= limit",
+      "replace": "export const withinLimit = (premium, limit) => premium <= limit",
+      "expect": "FAIL the edge: exactly the limit is within"
+    },
+    {
+      "name": "a revert reason is put into the lead",
+      "find": "${REVERT_WORDS[sim.revert?.kind] || 'for a reason we could not attribute'}",
+      "replace": "${sim.revert?.reason || REVERT_WORDS[sim.revert?.kind] || 'for a reason we could not attribute'}",
+      "expect": "FAIL text we do not control stays out of our sentence"
+    },
+    {
+      "name": "a pool label is put into the lead",
+      "find": "const venue = q.source === 'aerodrome' ? 'Aerodrome, one pool' : 'KyberSwap'",
+      "replace": "const venue = q.route && q.route.pools ? q.route.pools.join(', ') : 'KyberSwap'",
+      "expect": "FAIL text we do not control stays out of our sentence"
+    },
+    {
+      "name": "the multiplier is applied to the reference",
+      "find": "    const ratio = effectivePrice / out.reference_usd\n",
+      "replace": "    const ratio = effectivePrice / (out.reference_usd * (ref.multiplier ?? 1))\n",
+      "expect": "FAIL the effective premium is the effective price over the reference, and no multiplier is applied"
+    },
+    {
+      "name": "the plausibility ratio is skipped",
+      "find": "    if (!(ratio > 0) || ratio > MAX_PLAUSIBLE_RATIO || ratio < 1 / MAX_PLAUSIBLE_RATIO) out.premium_refused = 'implausible_vs_reference'\n    else out.effective_premium = ratio - 1",
+      "replace": "    out.effective_premium = ratio - 1",
+      "expect": "FAIL a 5x quote is not a premium"
+    },
+    {
+      "name": "within compares with < at the edge",
+      "find": "Math.abs(premium) <= limit",
+      "replace": "Math.abs(premium) < limit",
+      "expect": "FAIL the edge: exactly the limit is within"
+    },
+    {
+      "name": "the default limit is changed",
+      "find": "export const DEFAULT_MAX_PREMIUM = 0.03",
+      "replace": "export const DEFAULT_MAX_PREMIUM = 0.05",
+      "expect": "FAIL defaults:"
+    },
+    {
+      "name": "a banned word is put into the lead",
+      "find": "  const tail = 'Facts with their time and source, not advice.'",
+      "replace": "  const tail = 'Facts with their time and source: a good deal.'",
+      "expect": "FAIL no advice words in any lead"
+    },
+    {
+      "name": "the look-alike's own symbol is used in the lead",
+      "find": "      return `${v.address} is not on ${who}'s list",
+      "replace": "      return `${v.symbol || v.address} is not on ${who}'s list",
+      "expect": "FAIL creator's text stays out of our sentence"
+    },
+    {
+      "name": "within (exact) compares the signed premium",
+      "find": "  return lower <= mid && mid <= upper",
+      "replace": "  return mid <= upper",
+      "expect": "FAIL a discount past the limit is outside too"
+    },
+    {
+      "name": "within (exact) excludes the edge",
+      "find": "  return lower <= mid && mid <= upper",
+      "replace": "  return lower < mid && mid < upper",
+      "expect": "FAIL an assembled quote at exactly +3% and -3%"
+    },
+    {
+      "name": "the exact comparison is not used",
+      "find": "  return x == null ? { ...o, within_refused: 'no_premium' } : { ...o, within: x }",
+      "replace": "  return { ...o, within: withinLimit(premium.effective_premium, limit) }",
+      "expect": "FAIL an assembled quote at exactly +3% and -3%"
+    },
+    {
+      "name": "the pause is read from the passport's reading",
+      "find": "  const paused = current ? current.paused : issuer.paused",
+      "replace": "  const paused = issuer.paused",
+      "expect": "FAIL the pause is read from the issuer's snapshot now"
+    },
+    {
+      "name": "an exponent limit falls back to float",
+      "find": "  const m = /^(\\d+)(?:\\.(\\d+))?(?:e([+-]?\\d+))?$/.exec(s)",
+      "replace": "  const m = /^(\\d+)(?:\\.(\\d+))?$/.exec(s)",
+      "expect": "FAIL exact for any limit, an exponent included"
+    }
+  ]
+}

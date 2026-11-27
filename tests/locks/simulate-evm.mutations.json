@@ -1,0 +1,166 @@
+{
+  "_finding": "The dry run (docs/simulate-buy-tz.md §5.2, outside review of #266) runs a swap only to the pinned router, reads every word strictly, overrides only what the wallet lacks and reads it back (the stable's own isBlacklisted unchanged), keeps USDC's blocklist bit, never touches the stock token, attributes a wrapped revert only with evidence (the stable paid where the router pays, a token refusal with its own data while a control passes), and calls nothing would_succeed or would_revert that it could not show. would_succeed rests on the wallet's net balances in one eth_simulateV1 block around the swap (stable down by exactly the amount asked, token up by at least the minimum), its context pinned to the read block and checked; a revert is named only by the pinned routers' exact minimum-out errors, the stable's own blocklist answer, or a probe that reproduces the swap's own revert data while a control passes.",
+  "target": "apps/simulate/sim-evm.mjs",
+  "runner": [
+    "node",
+    "apps/stocks-simulate.test.mjs"
+  ],
+  "mutations": [
+    {
+      "name": "the router allowlist check is removed",
+      "find": "  if (!routers.map(low).includes(low(build.to))) return { ...head0, ...unknown('router_not_allowed') }\n",
+      "replace": "",
+      "expect": "FAIL a build to any router but the pinned one is not simulated"
+    },
+    {
+      "name": "the read-back check is removed",
+      "find": "    if ((gotBal & LOW_BITS) !== (wantBal & LOW_BITS) || gotAllow < amountIn) return { ...head1, ...unknown('override_unverified') }\n",
+      "replace": "",
+      "expect": "FAIL an override that does not read back"
+    },
+    {
+      "name": "the blocklist bit is not preserved",
+      "find": "hex32((S.blocklistHighBit ? slotWord & HIGH_BIT : 0n) | amountIn)",
+      "replace": "hex32(amountIn)",
+      "expect": "FAIL USDC's blocklist bit survives"
+    },
+    {
+      "name": "a wrapped revert is classified from its own text, without the stable probe",
+      "find": "  const p1 = await call(stable, '0x' + SEL.transferFrom + abi.addr(wallet) + abi.addr(payTo) + abi.uint(amountIn), router, tag, ov)",
+      "replace": "  const p1 = sw",
+      "expect": "FAIL a token that refuses the wallet: token_rule through the router"
+    },
+    {
+      "name": "an unattributed revert becomes would_revert",
+      "find": "  return { ...head1, ...unknown('revert_unattributed', { revert: revertOf(null, null) }) }",
+      "replace": "  return { ...head1, result: 'would_revert', amount_out_simulated_base_units: null, gas_units: null, revert: revertOf('token_rule', null) }",
+      "expect": "FAIL a wrapped revert both probes pass"
+    },
+    {
+      "name": "would_succeed without the eth_estimateGas agreement",
+      "find": "    if (!est.ok) return { ...head1, ...unknown(est.kind === 'gas_cap' ? 'rpc_gas_cap' : 'estimate_disagrees', { amount_out_simulated_base_units: out.toString() }) }\n    if (qtyOf(est.result) == null) return { ...head1, ...unknown('return_undecodable', { amount_out_simulated_base_units: out.toString() }) }\n",
+      "replace": "",
+      "expect": "FAIL eth_call passing while eth_estimateGas fails"
+    },
+    {
+      "name": "the stock token's address is allowed into the override object",
+      "find": "  if (Object.hasOwn(override, low(token))) {",
+      "replace": "  if (false) {",
+      "expect": "FAIL the token runs as it is"
+    },
+    {
+      "name": "an incomplete storage answer is read as zero",
+      "find": "slotWord = w32(slotR.result),",
+      "replace": "slotWord = w32(slotR.result) ?? 0n,",
+      "expect": "FAIL an incomplete storage answer (0x) is no reading"
+    },
+    {
+      "name": "the stable's isBlacklisted is not read back under the override",
+      "find": "    if (listed1 !== listed0) return { ...head1, ...unknown('override_unverified') }\n",
+      "replace": "",
+      "expect": "FAIL a storage read the stable's own isBlacklisted contradicts"
+    },
+    {
+      "name": "the stable probe pays the router, not where the router pays",
+      "find": "  const payTo = /^0x[0-9a-f]{40}$/.test(low(build.payTo)) ? low(build.payTo) : router",
+      "replace": "  const payTo = router",
+      "expect": "FAIL the stable probe pays where the router pays"
+    },
+    {
+      "name": "a call starts after the deadline",
+      "find": "  const rc = (method, params) => (over() ? Promise.resolve({ ok: false, kind: 'late' }) : rpcCall(fetchImpl, url, method, params))",
+      "replace": "  const rc = (method, params) => rpcCall(fetchImpl, url, method, params)",
+      "expect": "FAIL the dry run past its deadline asks the node nothing"
+    },
+    {
+      "name": "a non-canonical quantity is read",
+      "find": "export const qtyOf = (h) => (typeof h === 'string' && /^0x(0|[1-9a-fA-F][0-9a-fA-F]{0,63})$/.test(h) ? BigInt(h) : null)",
+      "replace": "export const qtyOf = (h) => (typeof h === 'string' && /^0x[0-9a-fA-F]{1,64}$/.test(h) ? BigInt(h) : null)",
+      "expect": "FAIL a quantity that is not canonical"
+    },
+    {
+      "name": "a boolean of 2 is read",
+      "find": "export const bool01 = (h) => { const x = w32(h); return x === 0n || x === 1n ? x : null }",
+      "replace": "export const bool01 = (h) => w32(h)",
+      "expect": "FAIL a boolean answer that is not 0 or 1"
+    },
+    {
+      "name": "would_succeed without the simulated block",
+      "find": "    if (!cs || cs.some((c) => !c || c.status !== '0x1')) return unverified('debit_unverified', simulatedBlock ? { simulated_block: simulatedBlock } : {})",
+      "replace": "    if (!cs) return { ...head1, result: 'would_succeed', amount_out_simulated_base_units: out.toString(), gas_units: Number(qtyOf(est.result)), revert: null }\n    if (cs.some((c) => !c || c.status !== '0x1')) return unverified('debit_unverified')",
+      "expect": "FAIL base: a node without eth_simulateV1"
+    },
+    {
+      "name": "a swap failing in the simulated block is ignored",
+      "find": "    if (!cs || cs.some((c) => !c || c.status !== '0x1')) return",
+      "replace": "    if (!cs) return",
+      "expect": "FAIL base: a swap whose status in the simulated block is a failure"
+    },
+    {
+      "name": "a net debit short of the amount is accepted",
+      "find": "if (debit !== amountIn || credit < minOut)",
+      "replace": "if (debit < 0n || credit < minOut)",
+      "expect": "FAIL base: a swap that took the full amount and refunded part"
+    },
+    {
+      "name": "a net credit below the minimum is accepted",
+      "find": "if (debit !== amountIn || credit < minOut)",
+      "replace": "if (debit !== amountIn)",
+      "expect": "FAIL robinhood: a swap that paid the minimum and took a fee"
+    },
+    {
+      "name": "a probe that does not reproduce the swap revert names it",
+      "find": "    if (strip(p2.data) && low(p2.data) === low(sw.data) && ctl.ok) return",
+      "replace": "    if (strip(p2.data) && ctl.ok) return",
+      "expect": "FAIL a wrapped, opaque swap failure the probe does not reproduce"
+    },
+    {
+      "name": "a reproduced refusal without the control names it",
+      "find": "    if (strip(p2.data) && low(p2.data) === low(sw.data) && ctl.ok) return",
+      "replace": "    if (strip(p2.data) && low(p2.data) === low(sw.data)) return",
+      "expect": "FAIL a token that refuses every transfer"
+    },
+    {
+      "name": "the block is built on an older parent",
+      "find": "calls: [bal(stable), bal(low(token)), tx, bal(stable), bal(low(token))] }], validation: false }, tag])",
+      "replace": "calls: [bal(stable), bal(low(token)), tx, bal(stable), bal(low(token))] }], validation: false }, qty(head - 1)])",
+      "expect": "FAIL a partial fill on the read block's own post-state is not would_succeed"
+    },
+    {
+      "name": "a block of another parent is taken",
+      "find": "    if (simulatedBlock && !simulatedBlock.child_of_read_block) return unverified('debit_unverified', { simulated_block: simulatedBlock })\n",
+      "replace": "",
+      "expect": "FAIL a block of another parent than the read block is no evidence"
+    },
+    {
+      "name": "the swap deadline is not checked against the block time",
+      "find": "    if (simulatedBlock && Number.isFinite(build.deadline) && !(simulatedBlock.timestamp < build.deadline)) return",
+      "replace": "    if (false) return",
+      "expect": "FAIL a swap whose deadline the simulated block's time has reached"
+    },
+    {
+      "name": "the swap's own return in the block is not checked",
+      "find": "    if (simOut == null || simOut < minOut) return unverified('debit_unverified', { simulated_block: simulatedBlock })\n",
+      "replace": "",
+      "expect": "FAIL robinhood: a swap whose own return in the simulated block is below the minimum"
+    },
+    {
+      "name": "min-out is read from any router's string",
+      "find": "  if (raw.reason != null && minOutReason != null && raw.reason === minOutReason) return",
+      "replace": "  if (raw.reason != null && ['Too little received', 'Return amount is not enough'].includes(raw.reason)) return",
+      "expect": "FAIL each router's own minimum-out string only"
+    },
+    {
+      "name": "the read block is pinned by height",
+      "find": "    tag = { blockHash: headHash }",
+      "replace": "    tag = qty(head)",
+      "expect": "FAIL every read of the dry run is pinned by the block's hash"
+    },
+    {
+      "name": "the simulated block's parent hash is not checked",
+      "find": " && low(blk.parentHash) === headHash } : null",
+      "replace": " } : null",
+      "expect": "FAIL a reorg (the simulated block"
+    }
+  ]
+}

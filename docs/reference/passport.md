@@ -277,6 +277,10 @@ premium = dex_price_usd / reference.price_usd - 1
 applied. `premium > 0` means the on-chain price is above the issuer's reference. A stale reference is not a refusal:
 the premium is computed against it, and its age is in `reference.age_s` and in the notes.
 
+This is the premium at the pool's mid price, whatever the size. What a given amount would actually pay, its
+`effective_premium` over the same reference and the price impact of that size, is
+[`simulate_buy`](./tools.md#tool-simulate_buy) (or [`/api/simulate`](./http-api.md#route-simulate)).
+
 <a id="field-premium_refused"></a>
 ### `premium_refused`
 

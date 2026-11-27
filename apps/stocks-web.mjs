@@ -7,6 +7,8 @@
 //   GET /stocks/api/overview           per chain, the tokens whose DEX price sits furthest from the issuer's reference
 //   GET /stocks/api/impostors          per chain, tokens claiming to be an issuer token they are not (scripts/stocks/impostor-list.mjs)
 //   GET /stocks/api/passport?chain&address[&hours]   with the same share (same ISIN) on the other chain
+//   GET /stocks/api/simulate?chain&token&usd[&slippage_bps&max_premium]   what $usd would get now (simulate_buy), no wallet
+//   POST /stocks/api/simulate          the same with a wallet, in a JSON body only (docs/simulate-buy-tz.md)
 //   GET /stocks/api/matrix             every share (ISIN) listed on both Base and Robinhood: each venue's premium, the gap
 //   GET /stocks/api                    every call with its price, for people (apps/stocks-api-page.mjs)
 //   GET /stocks/api/status             what the server holds: registry and readings age per chain
@@ -18,12 +20,15 @@
 //   POST /stocks/mcp                   the same passport as a public MCP server (apps/stocks-mcp-http.mjs)
 //   GET /healthz                       for the deploy gate, not proxied: 200 once at least one issuer registry is loaded, else 503
 //
-// ⚠ NOTHING ON THE REQUEST PATH WALKS THE DATASET OR CALLS OUT. Registries are refreshed in the background every 5
+// ⚠ NOTHING ON THE REQUEST PATH WALKS THE DATASET OR CALLS OUT, except /api/simulate and simulate_buy, which ask an
+// aggregator and a node for a quote and a dry run (apps/stocks-simulate.mjs) after a verdict from memory, and sign
+// nothing. Registries are refreshed in the background every 5
 // minutes and the readings window is held in memory (evm/core/stocks/readings-window.mjs); a request reads both from
 // memory. The name of a token outside the registry comes from our own dataset, through the names file the impostor
 // timer writes (scripts/stocks/impostor-list.mjs); a token it does not name is answered without a name.
 //
-// ⚠ PUBLIC AND READ-ONLY. GET and HEAD only, no cookies, no accounts, no wallet, no trading. Every passport carries
+// ⚠ PUBLIC AND READ-ONLY. GET and HEAD only (POST for /mcp, the agent test and /api/simulate's wallet), no cookies,
+// no accounts, no trading; a wallet sent to /api/simulate is used for that one answer and kept nowhere. Every passport carries
 // `not_trading_signal: true` and the page says the same in words. Strict CSP: the page loads only its own files.
 //
 // Env: STOCKS_WEB_PORT (3005), STOCKS_WEB_HOST (127.0.0.1), STOCKS_ROOT_BASE, STOCKS_ROOT_ROBINHOOD,
@@ -86,6 +91,8 @@ import { boardOf, withBoard, BOARD_LIMIT } from './stocks-board.mjs'
 import { createPassSales, rpcCaller } from './pass-sales.mjs'
 import { passBazaar, openApiOf } from './x402-discovery.mjs'
 import { createAgentTest, readJsonBody } from './stocks-agent-test.mjs'
+import { createSimulator } from './stocks-simulate.mjs'
+import { parseInput as parseSimulate, unitsOf as simulateUnits, SIMULATE_UNITS, SIMULATE_WALLET_UNITS, WALLET_IN_URL } from '../evm/core/stocks/simulate.mjs'
 import { resultPage, resultBadge, explainerPage } from './stocks-agent-test-page.mjs'
 
 // The paid-pass module is a host file, never a tracked one (owner, 15.11): this repository is exported to a public
@@ -243,22 +250,26 @@ export function llmsTxt (docs, origin, version, passLine = null) {
     '- Once a day a public exam asks this service about every token whose right answer comes from the issuers; the reports are committed to the `exam` branch of the public repository, with the hash of the question set.',
     '- An independent check runs on GitHub\'s runners, not on this host, and rehashes each issuer\'s list straight from the issuer. It asks to run every 30 minutes; GitHub\'s scheduler drops most of those, so in practice it lands a handful of times a day. Every run is public: github.com/proofofstock/proof-of-stock/actions.',
     '',
-    'Two things worth knowing before you read an answer: `recent_impostors` and `/api/history/cases` are a 7-day window, not the whole list (the answer carries `window_days` and `listed_total`), and the rate limit is 60 units in any 60 seconds, where a passport costs 3 and a batch verify costs one per ten addresses.',
+    'Two things worth knowing before you read an answer: `recent_impostors` and `/api/history/cases` are a 7-day window, not the whole list (the answer carries `window_days` and `listed_total`), and the rate limit is 60 units in any 60 seconds, where a passport costs 3, a batch verify one per ten addresses, and `simulate_buy` (or `/api/simulate`) ' + SIMULATE_UNITS + ', or ' + SIMULATE_WALLET_UNITS + ' with a wallet: it reaches an aggregator and a node for a live quote and a dry run of one swap, signs nothing, and sends the wallet to them for that one answer only.',
     '')
   const names = { tutorials: 'Tutorials', 'how-to': 'How-to guides', reference: 'Reference', explanation: 'Explanation', more: 'More' }
   return head.concat(...['tutorials', 'how-to', 'reference', 'explanation', 'more'].filter((s) => sections[s]).map((s) => [`## ${names[s]}`, '', ...sections[s], ''])).join('\n')
 }
 
-/** How many rate-limit units an MCP message costs: a verify batch of n addresses is ⌈n/10⌉, anything else 1. */
+/** How many rate-limit units an MCP message costs: a verify batch of n addresses is ⌈n/10⌉, a passport PASSPORT_UNITS, simulate_buy SIMULATE_UNITS (SIMULATE_WALLET_UNITS with a wallet), anything else 1. */
 // ⚠ THE RECORDER'S PRICE HISTORY IS OURS, A PASSPORT IS NOT A DOWNLOAD. A passport shows at most PUBLIC_HOURS of
 //   readings, its chart points only when asked (series=1), and costs PASSPORT_UNITS of the per-minute limit, so walking
 //   every token every day to rebuild the dataset takes hours instead of minutes. The site keeps 72 h for its own stats.
 export const PUBLIC_HOURS = PUBLIC_WINDOW_H
 export const PASSPORT_UNITS = 3
+export { SIMULATE_UNITS, SIMULATE_WALLET_UNITS }
 export function batchUnits (raw) {
   try {
     const m = JSON.parse(raw)
     if (m && m.method === 'tools/call' && m.params && m.params.name === 'stock_passport') return PASSPORT_UNITS
+    // simulate_buy reaches an aggregator and a node: 10 units, 15 with a wallet (docs/simulate-buy-tz.md §5.4).
+    // Arguments that do not parse cost 1, like any refused call: the extra units are charged only for a call that runs.
+    if (m && m.method === 'tools/call' && m.params && m.params.name === 'simulate_buy') return parseSimulate(m.params.arguments ?? {}).error ? 1 : simulateUnits(m.params.arguments)
     const a = m && m.method === 'tools/call' && m.params && m.params.name === 'verify_stock_tokens' && m.params.arguments && m.params.arguments.addresses
     return Array.isArray(a) ? Math.max(1, Math.ceil(a.length / 10)) : 1
   } catch (_) { return 1 }
@@ -315,6 +326,9 @@ export function createStocksWeb ({
   agentTestHidden = process.env.STP_AGENT_TEST_HIDDEN || null,
   // Test ids we ran ourselves as examples: their page and badge say "Example" (TZ §2.3). Comma-separated, on the host.
   agentTestExamples = (process.env.STP_AGENT_TEST_EXAMPLES || '').split(',').map((s) => s.trim()).filter(Boolean),
+  // simulate_buy (docs/simulate-buy-tz.md): { fetchImpl, env, aggregatorPerS }. A test hands in its fake aggregator and
+  // node here; unset, the site's own fetchImpl and the host's environment (STP_RPC_*, STP_AGGREGATOR_PER_S).
+  simulate: simOpts = {},
 } = {}) {
   const registries = new Map() // chain → { records, at, error }
   // Addresses that were listed and have left the registry, since this process started: chain → Map(address → { at, symbol }).
@@ -610,7 +624,8 @@ export function createStocksWeb ({
     }
     b.sec = sec
   }
-  function limited (ipRaw, units = 1) {
+  // `charge`, when given, is filled with what was charged ({ key, sec, units }), so a refund can go back to that slot.
+  function limited (ipRaw, units = 1, charge = null) {
     const ip = clientKey(ipRaw)
     // The limit a client is measured against: the free minute, or ten times it while a paid pass is live. A client
     // without a pass is measured exactly as the day before.
@@ -627,7 +642,7 @@ export function createStocksWeb ({
         // untracked (that let it make unlimited requests) and never refused outright (that would let anyone holding
         // many addresses, an IPv6 /32 is 16M /56s, lock every new visitor out). A shard is shared by few clients
         // unless the table is under attack, and nginx still limits each address.
-        if (buckets.size >= BUCKETS_MAX) return spillLimited(ip, sec, units, cap)
+        if (buckets.size >= BUCKETS_MAX) return spillLimited(ip, sec, units, cap, charge)
       }
       // Uint16: a pass carries up to 600 units a minute, and a burst can exceed one byte inside a single second slot.
       b = { sec, n: 0, slots: new Uint16Array(RATE_WINDOW_S) }
@@ -637,10 +652,39 @@ export function createStocksWeb ({
     if (b.n + units > cap) return true
     b.slots[sec % RATE_WINDOW_S] += units
     b.n += units
+    if (charge) Object.assign(charge, { key: ip, sec, units })
     return false
   }
+  /**
+   * Gives back up to `units` of one charge (a simulate_buy refused as busy keeps the verdict's): to the second it was
+   * charged in, never more than it charged, and nothing once that second has left the window. A charge in the shared
+   * spill windows has no record and gets nothing back.
+   */
+  function refund (charge, units) {
+    if (!charge || !(units > 0) || !Number.isInteger(charge.sec)) return 0
+    // A charge in a shared spill window goes back to that shard's row for its second, while that row still holds it.
+    if (Number.isInteger(charge.spill)) {
+      const sec = Math.floor(now() / 1000)
+      if (sec - charge.sec >= RATE_WINDOW_S || spillSec - charge.sec >= RATE_WINDOW_S) return 0
+      const i = (charge.sec % RATE_WINDOW_S) * SPILL_SHARDS + charge.spill, back = Math.min(units, charge.units, spill[i])
+      spill[i] -= back
+      charge.units -= back
+      return back
+    }
+    if (charge.key == null) return 0
+    const b = buckets.get(charge.key)
+    if (!b) return 0
+    const sec = Math.floor(now() / 1000)
+    slide(b, sec)
+    if (sec - charge.sec >= RATE_WINDOW_S) return 0
+    const i = charge.sec % RATE_WINDOW_S, back = Math.min(units, charge.units, b.slots[i])
+    b.slots[i] -= back
+    b.n -= back
+    charge.units -= back
+    return back
+  }
   // The shared windows past the cap: row t % 60 holds every shard's units of second t.
-  function spillLimited (ip, sec, units, cap = RATE.perMinute) {
+  function spillLimited (ip, sec, units, cap = RATE.perMinute, charge = null) {
     if (sec > spillSec) {
       const from = sec - spillSec >= RATE_WINDOW_S ? sec - RATE_WINDOW_S + 1 : spillSec + 1
       for (let t = from; t <= sec; t++) spill.fill(0, (t % RATE_WINDOW_S) * SPILL_SHARDS, (t % RATE_WINDOW_S + 1) * SPILL_SHARDS)
@@ -653,6 +697,7 @@ export function createStocksWeb ({
     for (let r = 0; r < RATE_WINDOW_S; r++) n += spill[r * SPILL_SHARDS + s]
     if (n + units > cap) return true
     spill[(sec % RATE_WINDOW_S) * SPILL_SHARDS + s] += units
+    if (charge) Object.assign(charge, { key: null, spill: s, sec, units })
     return false
   }
 
@@ -719,10 +764,15 @@ export function createStocksWeb ({
     return { byChain, missing }
   }
 
-  /** One token's passport, as the API and the MCP server both answer it: { status, body }. */
-  async function passportOf (chain, address, hoursArg) {
+  /**
+   * One token's passport, as the API and the MCP server both answer it: { status, body }. `snap`, when given, is the
+   * registry snapshot the caller already decided a verdict against (simulate_buy): a passport is then built from that
+   * read or not at all, so a verdict and a reference never come from two different reads.
+   */
+  async function passportOf (chain, address, hoursArg, snap = null) {
     if (!CHAINS[chain]) return { status: 400, body: { error: `chain must be one of ${Object.keys(CHAINS).join(', ')}` } }
     const reg = registries.get(chain)
+    if (snap && snap !== reg) return { status: 503, body: { error: 'the issuer list was read again while answering; ask again', chain } }
     if (!reg?.records) return { status: 503, body: { error: 'the issuer registry is not loaded yet', detail: reg?.error ?? null } }
     if (!freshRecords(chain)) return { status: 503, body: { error: `the issuer registry has not been read in the last ${REGISTRY_FRESH_S / 60} minutes, so no verdict is given`, registry_age_s: reg.at != null ? Math.round((now() - reg.at) / 1000) : null, detail: reg.error ?? null } }
     if (!ADDRESS.test(String(address || ''))) return { status: 400, body: { error: 'address must be 0x followed by 40 hex characters' } }
@@ -853,8 +903,10 @@ export function createStocksWeb ({
     for (const c of chains) {
       const lr = listedRecords(c)
       if (!lr || !lr.held.size) continue
+      // find_stock_token and /api/find: the held records searched on their own, so a held company found by name or
+      // prefix is named beside an exact trusted match. simulate_buy resolves with heldForSimulate below.
       const recs = lr.raw.filter((r) => lr.held.has(r.address))
-      for (const m of findAcross({ [c]: { records: recs } }, q).matches) held.push({ chain: c, symbol: m.symbol, address: m.address, reason: lr.held.get(m.address).reason })
+      for (const m of findAcross({ [c]: { records: recs } }, q).matches) held.push({ chain: c, symbol: m.symbol, address: m.address, reason: lr.held.get(m.address).reason, match_quality: m.match_quality })
     }
     return held.length ? { held, held_note: 'On the issuer\'s list, but the chain does not back them yet or contradicts them: no verdict is given for these addresses.' } : {}
   }
@@ -972,6 +1024,45 @@ export function createStocksWeb ({
     }]))
     return { generated_at: new Date(t).toISOString(), market_now: usEquitySession(t), stale_after_s: OVERVIEW_STALE_S, ranked_by: 'absolute premium', limit_per_chain: GAPS_LIMIT, chains, missing: chain ? [] : missing }
   }
+  /**
+   * simulate_buy's view of the held records a ticker names: matched against the whole raw list, so one rule decides for
+   * trusted and held alike (a literal match on any record wins, and Coinbase's trailing "c" is stripped only when nothing
+   * matches as written; `normalized` says it was). Only this resolver uses it; find keeps its own held list.
+   */
+  function heldForSimulate (c, q) {
+    const lr = listedRecords(c)
+    if (!lr || !lr.held.size) return []
+    const r = findAcross({ [c]: { records: lr.raw } }, q, 1000)
+    return r.matches.filter((m) => lr.held.has(m.address)).map((m) => ({ chain: c, symbol: m.symbol, address: m.address, reason: lr.held.get(m.address).reason, match_quality: m.match_quality, normalized: Boolean(r.query_normalized) }))
+  }
+  /** find_stock_token's answer on one chain, from memory: the matches, the held records, the source. */
+  function findOn (c, q) { const { byChain } = loaded(); if (!byChain[c]) throw unavailable(`the ${c} registry is not loaded yet`); return { ...findAcross({ [c]: byChain[c] }, q), ...heldMatches([c], q), ...sourceOf(c) } }
+  // simulate_buy (docs/simulate-buy-tz.md): the verdict from the very functions verify_stock_tokens, find_stock_token and
+  // stock_passport call, against one snapshot; the quotes and the dry run in apps/stocks-simulate.mjs, the only module
+  // of the site that calls out on a request.
+  // The passport comes with the issuer's own record from the same snapshot (`current`): the pause is read from there,
+  // since the passport's latest reading may be up to a day old.
+  const simData = Object.freeze({ snapshot: (c) => registries.get(c), find: (c, q) => ({ ...findOn(c, q), held: heldForSimulate(c, q) }), verify: verifyOf, listProof: proofOf,
+    passport: async (c, a, snap) => {
+      const p = await passportOf(c, a, null, snap)
+      const rec = p.status === 200 && snap?.records ? snap.records.find((r) => r.address === a) : null
+      return rec ? { ...p, current: { paused: rec.paused } } : p
+    } })
+  const simulator = createSimulator({
+    data: simData,
+    fetchImpl: simOpts.fetchImpl || fetchImpl, env: simOpts.env || process.env, now, log, origin: publicOrigin + publicPath, aggregatorPerS: simOpts.aggregatorPerS ?? null,
+  })
+  /**
+   * One simulate_buy answer for HTTP and MCP alike: the arguments checked, then the run. A busy answer gives back all
+   * but PASSPORT_UNITS of what the call was charged (the verdict's work was done; the quote was not).
+   */
+  async function simulateOf (raw, { fromText = false, ip = null, charge = null, startedAt = null } = {}) {
+    const p = parseSimulate(raw, { fromText })
+    if (p.error) return { status: 400, body: { error: p.error } }
+    const r = await simulator.run(p.input, { client: ip ? clientKey(ip) : 'anonymous', startedAt })
+    if (r.busy) refund(charge, simulateUnits(p.input) - PASSPORT_UNITS)
+    return r
+  }
   // The tools as the MCP server lists them, for /api: one list, so the page cannot name a tool the server lacks.
   const mcpTools = toolsFor(Math.min(PUBLIC_HOURS, windowH))
   let apiHtml = null
@@ -980,7 +1071,7 @@ export function createStocksWeb ({
     chains: Object.keys(CHAINS),
     log,
     maxHours: Math.min(PUBLIC_HOURS, windowH),
-    find: (c, q) => { const { byChain } = loaded(); if (!byChain[c]) throw unavailable(`the ${c} registry is not loaded yet`); return { ...findAcross({ [c]: byChain[c] }, q), ...heldMatches([c], q), ...sourceOf(c) } },
+    find: findOn,
     list: (c) => {
       const recs = freshRecords(c)
       if (!recs) throw unavailable(`the ${c} registry has not been read in the last ${REGISTRY_FRESH_S / 60} minutes; no list is given`)
@@ -1013,6 +1104,7 @@ export function createStocksWeb ({
     gaps: gapsOf,
     freshness: () => freshnessOf(statusNumbers(), now()),
     archiveAt: archiveOn,
+    simulate: (args, ctx = {}) => simulateOf(args, { ip: ctx.ip || null, charge: ctx.charge || null, startedAt: ctx.startedAt ?? null }),
   })
   // No `authorization` among the allowed headers: the server takes no credentials and nginx clears the header before
   // the app, so allowing it only told a browser page it could send one (pentest, 22.11).
@@ -1096,9 +1188,9 @@ export function createStocksWeb ({
     if (passFails.size > 10000) for (const [k, v] of passFails) if (now() - v.since >= PASS_FAIL_WINDOW_MS) passFails.delete(k)
   }
 
-  async function limitGate (req, res, { units = 1, cors = {}, headers = {}, mcp = false } = {}) {
+  async function limitGate (req, res, { units = 1, cors = {}, headers = {}, mcp = false, charge = null } = {}) {
     const ip = clientIp(req)
-    if (!limited(ip, units)) return false
+    if (!limited(ip, units, charge)) return false
     const key = clientKey(ip)
     const noStore = { 'cache-control': 'no-store' }
     if (!x402.enabled) { send(res, 429, mcp ? { jsonrpc: '2.0', id: null, error: { code: -32000, message: TOO_MANY.error } } : TOO_MANY, undefined, { ...headers, ...cors, ...noStore, 'retry-after': '60' }); return true }
@@ -1128,7 +1220,7 @@ export function createStocksWeb ({
     }
     passFails.delete(key)
     for (const [h, v] of Object.entries({ ...PAY_EXPOSE, ...receiptHeaders(r, pay.version) })) res.setHeader(h, v)
-    if (limited(ip, units)) { send(res, 429, mcp ? { jsonrpc: '2.0', id: null, error: { code: -32000, message: TOO_MANY.error } } : TOO_MANY, undefined, { ...headers, ...cors, ...noStore, 'retry-after': '10' }); return true }
+    if (limited(ip, units, charge)) { send(res, 429, mcp ? { jsonrpc: '2.0', id: null, error: { code: -32000, message: TOO_MANY.error } } : TOO_MANY, undefined, { ...headers, ...cors, ...noStore, 'retry-after': '10' }); return true }
     return false
   }
 
@@ -1170,6 +1262,7 @@ export function createStocksWeb ({
   const passFails = new Map() // client key -> { since, n }: failed purchases on passGate in the current window
 
   async function routeMcp (req, res) {
+    const startedAt = now() // simulate_buy's deadline runs from here, before the rate gate
     if (req.method === 'OPTIONS') return send(res, 204, '', 'text/plain', MCP_HEADERS)
     // A person who opens the MCP address in a browser is sent to the page's section on connecting an agent; an MCP
     // client probing for an event stream (Accept: text/event-stream) gets the 405 the spec asks for.
@@ -1191,10 +1284,41 @@ export function createStocksWeb ({
     const raw = Buffer.concat(chunks).toString('utf8')
     // A batch verify is several lookups: it counts one unit per ten addresses beyond the first ten.
     const extra = batchUnits(raw) - 1
-    if (extra > 0 && await limitGate(req, res, { units: extra, mcp: true, headers: MCP_HEADERS })) return
-    const { status, json } = await mcp.handle(raw)
+    const charge = {}
+    if (extra > 0 && await limitGate(req, res, { units: extra, mcp: true, headers: MCP_HEADERS, charge })) return
+    const { status, json } = await mcp.handle(raw, { ip: clientIp(req), charge, startedAt })
     if (status < 400) analytics.mcp(clientIp(req), req.headers, raw, mcp.toolNames)
     return json == null ? send(res, status, '', 'text/plain', MCP_HEADERS) : send(res, status, json, undefined, MCP_HEADERS)
+  }
+
+  /**
+   * GET /api/simulate without a wallet, POST /api/simulate with one (docs/simulate-buy-tz.md §1, §5.3). The wallet never
+   * travels in a URL: the web server writes the request line to its log, so a GET that carries one is refused with the
+   * reason, and a POST body (at most SIMULATE_MAX_BODY, JSON) is not logged by the proxy or by us.
+   */
+  const SIMULATE_MAX_BODY = 1024
+  const SIM_HEADERS = Object.freeze({ 'access-control-allow-origin': '*', 'access-control-allow-headers': 'content-type', 'access-control-allow-methods': 'GET, POST, OPTIONS', 'cache-control': 'no-store' })
+  async function routeSimulate (req, res, url) {
+    const startedAt = now() // the answer's deadline runs from the request's arrival, before the rate gate
+    if (req.method === 'OPTIONS') return send(res, 204, '', 'text/plain', SIM_HEADERS)
+    let raw
+    if (req.method === 'GET' || req.method === 'HEAD') {
+      if (url.searchParams.has('wallet')) return send(res, 400, { error: WALLET_IN_URL }, undefined, SIM_HEADERS)
+      raw = Object.fromEntries(url.searchParams)
+    } else if (req.method === 'POST') {
+      if (url.search) return send(res, 400, { error: 'POST the arguments as a JSON body, with nothing in the URL' }, undefined, SIM_HEADERS)
+      const b = await readJsonBody(req, SIMULATE_MAX_BODY)
+      if (b.status) return send(res, b.status, { error: b.error }, undefined, SIM_HEADERS)
+      raw = b.json
+    } else return send(res, 405, { error: 'method not allowed' }, undefined, { ...SIM_HEADERS, allow: 'GET, HEAD, POST, OPTIONS' })
+    const p = parseSimulate(raw, { fromText: true })
+    if (p.error) return send(res, 400, { error: p.error }, undefined, SIM_HEADERS)
+    // The arguments are checked above, before the limiter: a malformed request is a 400 and never reaches the limiter's
+    // payment path (where passes are on, a client over the free minute may buy one there, as on every route).
+    const charge = {}
+    if (await limitGate(req, res, { units: simulateUnits(p.input), cors: SIM_HEADERS, charge })) return
+    const r = await simulateOf(raw, { fromText: true, ip: clientIp(req), charge, startedAt })
+    return send(res, r.status, r.body, undefined, { ...SIM_HEADERS, ...(r.headers || {}) })
   }
 
   async function route (req, res) {
@@ -1214,6 +1338,7 @@ export function createStocksWeb ({
       return INDEX402_HASH_RE.test(String(index402Hash || '').trim()) ? send(res, 200, String(index402Hash).trim().toLowerCase(), 'text/plain; charset=utf-8', { 'cache-control': 'public, max-age=60' }) : send(res, 404, { error: 'not found' })
     }
     if (url.pathname === BASE_PATH + '/mcp') return routeMcp(req, res)
+    if (url.pathname === BASE_PATH + '/api/simulate') return routeSimulate(req, res, url)
     if (url.pathname.startsWith(BASE_PATH + '/api/agent-test')) {
       const out = await agentTest.handle(req.method, url.pathname.slice(BASE_PATH.length), () => readJsonBody(req), clientKey(clientIp(req)))
       if (out) { const [s, b, extra = {}, raw] = out; return raw ? send(res, s, b, 'application/json; charset=utf-8', extra) : send(res, s, b, undefined, extra) }
@@ -1571,6 +1696,10 @@ export function createStocksWeb ({
       return server.address()
     },
     agentTest,
+    // The limiter, for the tests of a refund across a second boundary.
+    limiter: { limited: (ip, units, charge) => limited(ip, units, charge), refund },
+    // simulate_buy's view of the site (the verdict, the list proof, the passport), for the tests of one snapshot.
+    simData,
     async stop () { clearInterval(timer); clearInterval(sweepTimer); await new Promise((resolve) => server.close(resolve)) },
   }
 }

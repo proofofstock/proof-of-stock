@@ -29,7 +29,7 @@ on Enterprise/Edu, an admin can grant it. Not on mobile.
 2. Select the plus button, then **Add custom MCP server**.
 3. Name it `Proof of Stock`. Under **Connection**, paste `https://proofofstock.xyz/mcp` as the server URL.
 4. For authentication, choose **No authentication**.
-5. Tick **I understand and want to continue**, then select **Create as a plugin**. You should see the ten tools.
+5. Tick **I understand and want to continue**, then select **Create as a plugin**. You should see the eleven tools.
 6. Install the plugin. In a new chat, type `@` and pick it.
 
 ### Claude Code

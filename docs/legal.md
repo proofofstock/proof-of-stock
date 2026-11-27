@@ -35,7 +35,8 @@ checking; they are not published, not resold, and not evidence.
 ## Not a trading service
 
 This is not a trading service, a broker, an exchange or a wallet. Nothing here enables trading: there are no
-accounts, no order routing, no custody and no trading tools. That holds for everyone, including US persons. Whether
+accounts, no order routing, no custody and no trading tools. `simulate_buy` quotes a swap and runs it as a dry run,
+and signs, sends and returns no transaction. That holds for everyone, including US persons. Whether
 you may hold or trade a tokenized stock is a matter between you, the issuer and the law that applies to you.
 
 ## Data licensing
@@ -81,6 +82,10 @@ reaches the numbers above.
 Three days is a decision for the site's first weeks, to see how it is used. The honest end of it is to stop keeping
 the requested link at all, not to make the window longer.
 
+A wallet address is never part of a link we take: the wallet a caller sends to `simulate_buy` (the MCP tool, or
+`POST /api/simulate`) travels in the request body, which neither log writes. It is passed to the aggregator and the
+node for that one answer, and kept by us nowhere.
+
 ## What a paid pass keeps
 
 Only if you buy a pass. The server keeps a ledger of passes and payments on disk, so that a restart neither ends your
@@ -97,6 +102,8 @@ these services; each is named so that a reader can check what leaves our host:
 - **the issuers**: Coinbase's tokenized-stocks API and Robinhood's assets and prices APIs, for the lists and the
   reference prices;
 - **market data**: DexScreener and GeckoTerminal, for pools and for the symbol search that finds look-alikes;
+- **quotes**: when someone asks `simulate_buy`, KyberSwap's route API (and, with a wallet, its swap builder, which is
+  sent that wallet address) and the chain's node, for that one answer, and only for a token on the issuer's list;
 - **the chains**: public Base and Robinhood Chain nodes, to read pools, contracts and the issuers' factories, and to
   send our daily anchor (one transaction to our own address on each chain) and, when someone buys a paid pass, the
   settlement of the payment they signed;

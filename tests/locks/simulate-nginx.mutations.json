@@ -1,0 +1,23 @@
+{
+  "_finding": "simulate_buy's wallet never reaches a log by URL (docs/simulate-buy-tz.md §5.3, outside reviews of #266): on every host the exact /api/simulate location and a ^~ /api/simulate prefix location (anything else that starts so: .json, /x, /.env) log without the query string and the Referer, with an emerg error log, and only the exact path is ever proxied.",
+  "target": "deployment/nginx/proofofstock.xyz.conf",
+  "runner": [
+    "node",
+    "deployment/nginx/nginx-conf.test.mjs"
+  ],
+  "mutations": [
+    {
+      "name": "the prefix location covers only the subdirectory",
+      "find": "location ^~ /api/simulate {",
+      "replace": "location ^~ /api/simulate/ {",
+      "expect": "FAIL /api/simulate.json, /api/simulate/x and /api/simulate/.env land in the quiet 404 location",
+      "occurrences": 5
+    },
+    {
+      "name": "the simulate log format keeps the query",
+      "find": "log_format pos_simulate '$remote_addr [$time_local] \"$request_method $uri $server_protocol\" $status $body_bytes_sent';",
+      "replace": "log_format pos_simulate '$remote_addr [$time_local] \"$request\" $status $body_bytes_sent';",
+      "expect": "FAIL /api/simulate logs with a format that has no query string"
+    }
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "_finding": "A ticker resolves against the trusted and the held exact matches together (docs/simulate-buy-tz.md §4.1, outside review of #266): a held record reached by its bare ticker or ISIN goes to the verdict and gets its 503, and one that shares the words with a trusted record makes the ticker ambiguous, never a quote for the trusted one.",
+  "target": "evm/core/stocks/simulate.mjs",
+  "runner": [
+    "node",
+    "apps/stocks-simulate.test.mjs"
+  ],
+  "mutations": [
+    {
+      "name": "held exact matches are dropped",
+      "find": "  let held = Array.isArray(found?.held) ? found.held.filter((h) => h && h.chain === chain && h.match_quality === 'exact') : []",
+      "replace": "  let held = []",
+      "expect": "FAIL a held record reached by an alias"
+    }
+  ]
+}

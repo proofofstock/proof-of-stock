@@ -1,0 +1,16 @@
+{
+  "_finding": "simulate_buy resolves a ticker against held records with their match quality (outside review of #266): a held record found by its bare ticker or ISIN must reach the verdict and get the 503 with its reason, not come back as not exact.",
+  "target": "apps/stocks-web.mjs",
+  "runner": [
+    "node",
+    "apps/list-gate.test.mjs"
+  ],
+  "mutations": [
+    {
+      "name": "held matches lose their match quality",
+      "find": "reason: lr.held.get(m.address).reason, match_quality: m.match_quality, normalized: Boolean(r.query_normalized) })",
+      "replace": "reason: lr.held.get(m.address).reason, normalized: Boolean(r.query_normalized) })",
+      "expect": "FAIL simulate_buy: a held record reached by its bare ticker or its ISIN"
+    }
+  ]
+}

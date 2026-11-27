@@ -281,11 +281,11 @@ export function createAgentTest ({ dir, now = () => Date.now(), origin, inputsFo
   return { handle, start, answer, read, hide, result, sweep, diskUsage }
 }
 
-/** Read a JSON body for the agent-test routes: application/json only, at most MAX_BODY bytes. */
-export async function readJsonBody (req) {
+/** Read a JSON body for the agent-test routes: application/json only, at most `max` bytes (MAX_BODY; /api/simulate 1 KB). */
+export async function readJsonBody (req, max = MAX_BODY) {
   const chunks = []
   let size = 0
-  for await (const c of req) { size += c.length; if (size > MAX_BODY) return { status: 413, error: 'request too large' }; chunks.push(c) }
+  for await (const c of req) { size += c.length; if (size > max) return { status: 413, error: 'request too large' }; chunks.push(c) }
   const raw = Buffer.concat(chunks).toString('utf8')
   // No body at all: a start without a label, so `curl -X POST <url>` works in bash, cmd and PowerShell alike (27.11).
   if (!raw.trim()) return { json: {} }

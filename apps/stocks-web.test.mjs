@@ -764,7 +764,10 @@ console.log('the public MCP endpoint')
   const note = await rpc({ jsonrpc: '2.0', method: 'notifications/initialized' })
   check('a notification is 202 with no body', note.status === 202 && (await note.text()) === '')
   const list = await (await rpc({ jsonrpc: '2.0', id: 3, method: 'tools/list' })).json()
-  check('ten read-only tools, none of them trading', list.result.tools.length === 10 && list.result.tools.every((t) => t.annotations && t.annotations.readOnlyHint === true && t.annotations.destructiveHint === false) &&!list.result.tools.some((t) => /buy|sell|swap|trade/.test(t.name)))
+  // simulate_buy is the one name with "buy" in it: a quote and a dry run that sign nothing (docs/simulate-buy-tz.md).
+  check('eleven read-only tools, none of them trading', list.result.tools.length === 11 && list.result.tools.every((t) => t.annotations && t.annotations.readOnlyHint === true && t.annotations.destructiveHint === false) && !list.result.tools.some((t) => t.name !== 'simulate_buy' && /buy|sell|swap|trade/.test(t.name)))
+  const simTool = list.result.tools.find((t) => t.name === 'simulate_buy')
+  check('tools/list carries simulate_buy with openWorldHint true and idempotentHint false, its description ending "Facts, not advice."', simTool && simTool.annotations.openWorldHint === true && simTool.annotations.idempotentHint === false && simTool.description.endsWith('Facts, not advice.'))
   check('...and the newest of them hands over an anchor, which is a read as well', list.result.tools.some((t) => t.name === 'verify_anchor' && t.annotations.readOnlyHint === true))
   check('the passport tool offers only the hours the site holds', list.result.tools.find((t) => t.name === 'stock_passport').inputSchema.properties.hours.maximum === 24)
   // mcptry, 12.11: agents pick a tool and fill its arguments from these descriptions, so none may be missing.
@@ -883,7 +886,7 @@ console.log('the public MCP endpoint')
   check('a non-string method is refused', (await raw({ jsonrpc: '2.0', id: 30, method: 5 })).json?.error?.code === -32600)
   check('an id with no method, result or error is refused', (await raw({ jsonrpc: '2.0', id: 31 })).json?.error?.code === -32600)
   check('a client response (id with result) is accepted with 202', (await rpc({ jsonrpc: '2.0', id: 32, result: {} })).status === 202)
-  check('tools are annotated read-only and idempotent', list.result.tools.every((t) => t.annotations && t.annotations.readOnlyHint === true && t.annotations.destructiveHint === false && t.annotations.idempotentHint === true))
+  check('tools are annotated read-only and idempotent (simulate_buy read-only, and not idempotent: a quote moves)', list.result.tools.every((t) => t.annotations && t.annotations.readOnlyHint === true && t.annotations.destructiveHint === false && t.annotations.idempotentHint === (t.name !== 'simulate_buy')))
   const nameOnly = passportLead({ in_registry: false, address: '0x' + '9a'.repeat(20), resembles: { kind: 'issuer_name_suffix', ticker: null, registry_symbol: null, registry_address: null } }, 'Robinhood Chain')
   check('a name-only impostor never reads "imitates null"', !/null/.test(nameOnly) && /copies the way the issuer names its stock tokens/.test(nameOnly), nameOnly)
   check('GET is 405: no SSE stream is offered', (await get('/stocks/mcp')).status === 405)
@@ -1523,7 +1526,8 @@ console.log('deployment')
   check('the vhost passes the client as X-Real-IP and clears X-Forwarded-For, cookies and auth', /X-Real-IP \$remote_addr/.test(vhost) && /X-Forwarded-For ""/.test(vhost) && /Cookie ""/.test(vhost) && /Authorization ""/.test(vhost))
   check('the domain root is the app\'s /stocks/, and dot-files are refused', /location \/ \{\s*limit_except GET HEAD \{ deny all; \}\s*proxy_pass http:\/\/127\.0\.0\.1:3005\/stocks\/;/.test(vhost) && /location ~ \/\\\. \{ return 404; \}/.test(vhost))
   check('the vhost sends /mcp to the app, which answers GET and DELETE with 405 and an oversized body with its own 413', /location = \/mcp \{\s*limit_except GET POST OPTIONS DELETE \{ deny all; \}\s*[^}]*?client_max_body_size 32k;\s*proxy_pass http:\/\/127\.0\.0\.1:3005\/stocks\/mcp;/.test(vhost))
-  check('www, the older names and plain http go to https://proofofstock.xyz', (vhost.match(/return 301 https:\/\/proofofstock\.xyz\$request_uri;/g) || []).length === 4 && /server_name tickerproof\.xyz www\.tickerproof\.xyz;/.test(vhost) && /server_name stockofproof\.xyz www\.stockofproof\.xyz;/.test(vhost))
+  // Twice per redirecting block: /api/simulate in a location of its own with a query-free log, and everything else.
+  check('www, the older names and plain http go to https://proofofstock.xyz', (vhost.match(/return 301 https:\/\/proofofstock\.xyz\$request_uri;/g) || []).length === 8 && /server_name tickerproof\.xyz www\.tickerproof\.xyz;/.test(vhost) && /server_name stockofproof\.xyz www\.stockofproof\.xyz;/.test(vhost))
   check('the older names still serve /mcp in place: a redirected POST is not followed', (vhost.match(/proxy_pass http:\/\/127\.0\.0\.1:3005\/stocks\/mcp;/g) || []).length === 3)
   check('the vhost allows GET and HEAD only, and rate limits', /limit_except GET HEAD \{ deny all; \}/.test(vhost) && /limit_req zone=stocks_req56/.test(vhost))
   check('every server block hides the nginx version on its own error pages', (vhost.match(/^server \{/gm) || []).length === (vhost.match(/^    server_tokens off;/gm) || []).length && /server_tokens off;/.test(vhost))
@@ -1664,6 +1668,120 @@ console.log('the public exam: /api/exam')
     check('url null turns it off: no read, 503', n === 0 && off.get().status === 503)
   }
   await appE.stop()
+}
+
+console.log('simulate_buy over HTTP and MCP (docs/simulate-buy-tz.md)')
+{
+  const { world, W: WAL } = await import('./simulate/fake-world.mjs')
+  const { batchUnits, PASSPORT_UNITS: PU } = await import('./stocks-web.mjs')
+  const { KEY_WARNING, WALLET_IN_URL } = await import('../evm/core/stocks/simulate.mjs')
+  const said = []
+  const adir = fs.mkdtempSync(path.join(os.tmpdir(), 'sim-analytics-'))
+  const mk = (wd, extra = {}) => createStocksWeb({ listLocks: false, roots: { base: baseRoot, robinhood: rhRoot }, fetchImpl, now: () => NOW, log: (m) => said.push(String(m)), analytics: { dir: adir, interfaces: () => ({}) }, exam: { url: null }, glama: { url: null }, x402Module: null, simulate: { fetchImpl: wd.fetchImpl }, ...extra })
+  const serve = async (app) => { const { port: p } = await app.start(0, '127.0.0.1'); return p }
+  const wdH = world('base', { token: A }), wdM = world('base', { token: A })
+  const appH = mk(wdH), appM = mk(wdM)
+  const pH = await serve(appH), pM = await serve(appM)
+  const ip = (n) => ({ 'x-real-ip': `198.51.100.${n}`, 'user-agent': 'sim-test-agent/1.0' })
+  const sim = (p, q, h = {}) => fetch(`http://127.0.0.1:${p}/stocks/api/simulate${q}`, { headers: h })
+  const post = (p, body, h = {}) => fetch(`http://127.0.0.1:${p}/stocks/api/simulate`, { method: 'POST', headers: { 'content-type': 'application/json', ...h }, body: typeof body === 'string' ? body : JSON.stringify(body) })
+  const mcpCall = async (p, args, h = {}) => (await (await fetch(`http://127.0.0.1:${p}/stocks/mcp`, { method: 'POST', headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream', ...h }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'simulate_buy', arguments: args } }) })).json())
+
+  const h = await sim(pH, `?chain=base&token=${A}&usd=25`, ip(60))
+  const hb = await h.json()
+  const m = await mcpCall(pM, { chain: 'base', token: A, usd: 25 }, ip(60))
+  check('/api/simulate and simulate_buy give the same body for the same fake inputs', h.status === 200 && hb.outcome === 'quoted' && JSON.stringify(m.result.structuredContent) === JSON.stringify(hb) && m.result.content[0].text === hb.summary, JSON.stringify(hb).slice(0, 300))
+  check('...no-store, so no proxy or client holds a quote longer than we do', h.headers.get('cache-control') === 'no-store' && h.headers.get('access-control-allow-origin') === '*')
+  const pre = await fetch(`http://127.0.0.1:${pH}/stocks/api/simulate`, { method: 'OPTIONS' })
+  check('a browser\'s preflight of the POST is answered', pre.status === 204 && /POST/.test(pre.headers.get('access-control-allow-methods')))
+
+  const body = (o) => JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'simulate_buy', arguments: { chain: 'base', token: A, usd: 25, ...o } } })
+  check('the units in batchUnits(): 10 without a wallet, 15 with one', batchUnits(body({})) === 10 && batchUnits(body({ wallet: WAL })) === 15)
+  const gets = [], posts = []
+  for (let i = 0; i < 7; i++) gets.push((await sim(pH, `?chain=base&token=${A}&usd=25`, ip(61))).status)
+  for (let i = 0; i < 5; i++) posts.push((await post(pH, { chain: 'base', token: A, usd: 25, wallet: WAL }, ip(62))).status)
+  check('...and on the route: six calls a free minute without a wallet, four with one', gets.join() === '200,200,200,200,200,200,429' && posts.join() === '200,200,200,200,429', gets.join() + ' / ' + posts.join())
+
+  const gw = await sim(pH, `?chain=base&token=${A}&usd=25&wallet=${WAL}`, ip(63))
+  check('a GET with wallet is refused with the 400 that says why', gw.status === 400 && (await gw.json()).error === WALLET_IN_URL)
+  const big = await post(pH, JSON.stringify({ chain: 'base', token: A, usd: 25, pad: 'x'.repeat(1100) }), ip(64))
+  check('the POST body above 1 KB is refused', big.status === 413)
+  const plain = await fetch(`http://127.0.0.1:${pH}/stocks/api/simulate`, { method: 'POST', headers: { 'content-type': 'text/plain', ...ip(64) }, body: '{"chain":"base"}' })
+  check('...and a body that is not declared JSON (415)', plain.status === 415)
+  const KEY = 'ab'.repeat(32)
+  const kh = await post(pH, { chain: 'base', token: A, usd: 25, wallet: '0x' + KEY }, ip(65))
+  const kt = await kh.text()
+  const km = await mcpCall(pM, { chain: 'base', token: A, usd: 25, wallet: '0x' + KEY }, ip(65))
+  check('a 64-hex wallet is refused with the key warning and is not echoed, over HTTP and MCP', kh.status === 400 && kt.includes(KEY_WARNING) && !kt.includes(KEY) && km.error && km.error.message.includes(KEY_WARNING) && !JSON.stringify(km).includes(KEY))
+
+  said.length = 0
+  const wpost = await post(pH, { chain: 'base', token: A, usd: 25, wallet: WAL }, ip(66))
+  const wm = await mcpCall(pM, { chain: 'base', token: A, usd: 25, wallet: WAL }, ip(66))
+  const wb = await wpost.json()
+  check('with a wallet: the dry run is in the answer, over HTTP and MCP', wb.simulation?.result === 'would_succeed' && wm.result.structuredContent.simulation?.wallet === WAL.toLowerCase(), JSON.stringify(wb.simulation))
+  await new Promise((r) => setTimeout(r, 50))
+  const filesOf = (d) => fs.readdirSync(d, { recursive: true }).map((f) => path.join(d, String(f))).filter((f) => fs.statSync(f).isFile())
+  const analyticsText = filesOf(adir).map((f) => { try { return fs.readFileSync(f, 'utf8') } catch (_) { return '' } }).join('\n')
+  check('the wallet address does not appear in the app\'s log or the analytics hit', !said.join('\n').toLowerCase().includes(WAL.toLowerCase().slice(2)) && !analyticsText.toLowerCase().includes(WAL.toLowerCase().slice(2)) && /simulate_buy/.test(analyticsText), JSON.stringify(said).slice(0, 300))
+
+  // One snapshot: a passport asked against a read that has since been replaced is not built from the new one.
+  const snap = appH.simData.snapshot('base')
+  await appH.refreshAll()
+  const stalePassport = await appH.simData.passport('base', A, snap)
+  const freshPassport = await appH.simData.passport('base', A, appH.simData.snapshot('base'))
+  check('one snapshot: a registry read again between two reads gives no passport from the second read', stalePassport.status === 503 && freshPassport.status === 200)
+
+  // The registry unavailable: no answer, and no outside call.
+  const wdDown = world('base', { token: A })
+  const appDown = mk(wdDown, { fetchImpl: async (u) => (String(u).startsWith(COINBASE_URL) ? { ok: false, status: 503, json: async () => ({}) } : fetchImpl(u)) })
+  const pD = await serve(appDown)
+  const dh = await sim(pD, `?chain=base&token=${A}&usd=25`, ip(67))
+  const dm = await mcpCall(pD, { chain: 'base', token: A, usd: 25 }, ip(67))
+  check('registry unavailable: 503 over HTTP, isError over MCP, and no outside call', dh.status === 503 && dm.result.isError === true && /registry is unavailable/.test(dm.result.content[0].text) && wdDown.requests.length === 0, JSON.stringify(dm.result))
+
+  // Busy (the aggregator's cap, on Robinhood Chain where it is the only source): a 503 with Retry-After, never a 402,
+  // and only the verdict's PASSPORT_UNITS are kept: each call is charged its 10 units up front and a busy one gets all
+  // but 3 back, so 17 fit in the free minute (51 units kept) before 10 more no longer do. Charged in full, 6 would.
+  const wdR = world('robinhood', { token: R })
+  const appR = mk(wdR, { simulate: { fetchImpl: wdR.fetchImpl, aggregatorPerS: 4 } })
+  const pR = await serve(appR)
+  // Four calls from four other clients take the second's four permits, one each (the clock is frozen, so the second
+  // never ends); the next buy quote finds the cap full.
+  for (let k = 0; k < 4; k++) await sim(pR, `?chain=robinhood&token=${R}&usd=${26 + k}`, ip(70 + k))
+  const busy = []
+  for (let i = 0; i < 18; i++) { const r = await sim(pR, `?chain=robinhood&token=${R}&usd=25`, ip(68)); busy.push(r.status + (r.headers.get('retry-after') ? 'r' : '')) }
+  check(`the global aggregator cap refuses with "busy" and Retry-After, never a 402, and charges PASSPORT_UNITS (${PU})`, busy.slice(0, 17).every((s) => s === '503r') && busy[17].startsWith('429') && Math.floor((60 - 10) / PU) + 1 === 17, busy.join(','))
+
+  // The refund goes back to the charge it belongs to: its own second, at most what it charged, nothing once expired.
+  {
+    let clk = NOW
+    const appL = mk(world('base', { token: A }), { now: () => clk })
+    const L = appL.limiter, who = '198.51.100.69'
+    const c1 = {}, c2 = {}
+    L.limited(who, 10, c1)
+    clk += 1000
+    L.limited(who, 10, c2)
+    const back1 = L.refund(c1, 7)
+    clk += 59_000 // the first second leaves the window; the second's 10 units stay
+    const roomFor50 = !L.limited(who, 50, {})
+    const over = L.limited(who, 1, {})
+    const tooMuch = L.refund(c2, 99)
+    const c3 = {}
+    L.limited(who, 3, c3)
+    clk += 61_000
+    const expired = L.refund(c3, 3)
+    check('a busy refund goes back to the second of its own charge, never more than it charged, nothing once expired', back1 === 7 && roomFor50 && over && tooMuch === 10 && expired === 0, JSON.stringify([back1, roomFor50, over, tooMuch, expired]))
+    // Past the 20,000-client table a caller is counted in a shared spill window: its charge is recorded there too, and
+    // its refund goes back to that window's row.
+    for (let i = 0; i < 20000; i++) L.limited(`10.${(i >> 16) & 255}.${(i >> 8) & 255}.${i & 255}`, 1, {})
+    const cs = {}
+    L.limited('203.0.113.250', 10, cs)
+    const backSpill = L.refund(cs, 7)
+    check('...and a caller counted in a shared spill window gets its refund there too', Number.isInteger(cs.spill) && backSpill === 7, JSON.stringify([cs, backSpill]))
+  }
+
+  for (const a of [appH, appM, appDown, appR]) await a.stop()
+  fs.rmSync(adir, { recursive: true, force: true })
 }
 
 fs.rmSync(tmp, { recursive: true, force: true })

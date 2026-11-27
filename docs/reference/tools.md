@@ -1,6 +1,8 @@
 # MCP tools
 
-Ten read-only tools on a public MCP server. None of them trades, and none signs anything for a caller. (The project
+Eleven read-only tools on a public MCP server. None of them trades, and none signs anything for a caller: the one that
+reaches outside, [`simulate_buy`](#tool-simulate_buy), asks an aggregator and a node for a quote and a dry run, and
+returns no transaction. (The project
 holds two keys, on its own host: one writes nothing but our daily anchor, see [`verify_anchor`](#tool-verify_anchor);
 the other only settles a paid pass a buyer has signed for, see [pay per call](../how-to/pay-per-call.md). No tool
 reaches either.)
@@ -24,6 +26,7 @@ curl -s https://proofofstock.xyz/mcp \
 - [`largest_gaps`](#tool-largest_gaps)
 - [`data_freshness`](#tool-data_freshness)
 - [`address_on_date`](#tool-address_on_date)
+- [`simulate_buy`](#tool-simulate_buy)
 
 <a id="protocol"></a>
 ## Protocol
@@ -36,7 +39,7 @@ curl -s https://proofofstock.xyz/mcp \
 | Auth | none. The proxy strips `Authorization` and `Cookie` |
 | CORS | `Access-Control-Allow-Origin: *`, methods `POST, OPTIONS`. `OPTIONS` answers 204 |
 | Caching | `Cache-Control: no-store` on every answer |
-| Rate limit | 60 units in any 60 seconds per client IP (IPv6: per /56), shared with the HTTP API. The window slides by the second, and a refused request costs nothing. Every POST costs 1 unit; `stock_passport` costs 3; `verify_stock_tokens` with n addresses costs ⌈n/10⌉ |
+| Rate limit | 60 units in any 60 seconds per client IP (IPv6: per /56), shared with the HTTP API. The window slides by the second, and a refused request costs nothing. Every POST costs 1 unit; `stock_passport` costs 3; `verify_stock_tokens` with n addresses costs ⌈n/10⌉; `simulate_buy` costs 10, or 15 with a wallet |
 | Body | one JSON-RPC message as `Content-Type: application/json`, at most 16 KB |
 | Methods | `initialize`, `ping`, `tools/list`, `tools/call`. Notifications (no `id`) and client responses (`id` with `result` or `error`) get 202 with no body |
 
@@ -914,5 +917,95 @@ The MCP lead adds one sentence to the archive's: that the answer is from the arc
 One address and one day per call: a window, not a download, on purpose (the full archive is available on request at
 hello@proofofstock.xyz). [`verify_anchor`](#tool-verify_anchor) lists every anchored day. 1 unit of the rate limit,
 like `GET /api/archive/at`.
+
+---
+
+<a id="tool-simulate_buy"></a>
+## `simulate_buy`
+
+What a dollar amount of a stock token would get right now, for that exact size, and what getting out would return:
+the same answer as [`GET` / `POST /api/simulate`](./http-api.md#route-simulate). The verdict comes first, from the very
+function [`verify_stock_tokens`](#tool-verify_stock_tokens) calls: a look-alike or a token not on the issuer's list is
+refused, with `use_instead` naming the listed contract, and **no quote is made for it at all**, so the tool cannot be
+used to find liquidity for a look-alike. For a listed token: a live quote (on Base, Aerodrome's own pools read from its
+contracts, with KyberSwap across venues as a second line; on Robinhood Chain, KyberSwap), the effective price and
+premium over the issuer's reference against a limit, the minimum received, gas, the sell-back, and the market session
+and the reference's age. With a public wallet address, also a dry run of that swap for that wallet by `eth_call` at one
+block. Nothing is signed or sent, and no transaction is returned.
+
+Its annotations differ from the other tools': `readOnlyHint: true`, `destructiveHint: false`, `idempotentHint: false`,
+`openWorldHint: true`. It changes nothing, but it reaches outside and two calls may differ.
+
+```bash
+curl -s https://proofofstock.xyz/mcp -H 'content-type: application/json' \
+  -d '{"jsonrpc":"2.0","id":11,"method":"tools/call","params":{"name":"simulate_buy","arguments":{"chain":"base","token":"TSLAc","usd":25}}}'
+```
+
+The lead, for the three outcomes (every number made up, a $100 share for easy reading):
+
+```
+TSLAc on Base is on Coinbase's list. US market: open. $25.00 of USDC would get 0.2490 TSLAc at an effective $100.40 each, quoted 2 seconds ago (Aerodrome, one pool): 0.40% above Coinbase's reference of $100.00 (updated 40 s ago), within the 3.00% default limit. The sell-back of those tokens, quoted now, returns $24.95. KyberSwap, across venues, quotes 0.2495 TSLAc for the same amount, through the same pool. As 0x1111…1111 stands it lacks the USDC, the approval and the gas; with those supplied, the simulated swap did not revert at block 30000000. Facts with their time and source, not advice.
+0x5a5a…5a5a is not on Coinbase's list on Base and copies TSLAc; the listed contract is 0xb200…0cd0. No quote was made.
+TSLAc on Base is on Coinbase's list. US market: open. No quote could be read from Aerodrome's quoter right now (rpc_unavailable), so there is no price for $25.00. Facts with their time and source, not advice.
+```
+
+A closed market, a held reference and a thin pool are named before any number. The lead names only the issuer's own
+symbol: a look-alike's symbol and name, the caller's ticker, a revert reason and an aggregator's pool labels stay in
+the JSON as data, labelled. The limit is named by its source ("the limit you gave" or "the default limit"), and a
+result that rests on an override says what the wallet lacks before it says the swap did not revert.
+
+### Input
+
+| Name | Type | Required | Constraint |
+|---|---|---|---|
+| `chain` | string | yes | `base` or `robinhood` |
+| `token` | string | yes | `^0x[0-9a-fA-F]{40}$`, or a ticker (`TSLA`, `TSLAc`, up to 16 of `A-Z a-z 0-9 . -`) that must equal exactly one issuer-listed token's on that chain. A prefix or company-name match is refused (`ticker_not_exact`) with the candidates; two exact matches are refused (`ticker_ambiguous`); none is picked for you |
+| `usd` | number | yes | the amount in the chain's dollar stable (Base: USDC, Robinhood Chain: USDG, each taken at $1), 1 to 1,000,000, at most 2 decimals |
+| `slippage_bps` | integer | no | 1 to 500, default 50 |
+| `max_premium` | number | no | 0 to 0.5, default 0.03 |
+| `wallet` | string | no | your **public** address, `^0x[0-9a-fA-F]{40}$`. A 64-hex string is refused with "that looks like a private key; never send one anywhere", and not echoed |
+
+### Output
+
+`structuredContent` is the answer, with `summary` first; the full shape is
+[`simulate.schema.json`](https://github.com/proofofstock/proof-of-stock/blob/main/schemas/v2/simulate.schema.json)
+and the fields are described under [`/api/simulate`](./http-api.md#route-simulate).
+
+| Field | Meaning |
+|---|---|
+| `outcome` | `refused` (the verdict stopped it; `verdict.reason` says why), `quoted` (the buy quote exists) or `checked` (the verdict passed and no quote could be made). No outcome means "go" |
+| `verdict` | the body `verify_stock_tokens` gives for the address, with `use_instead` and `list_proof` from the same registry read as the reference |
+| `amount_in` | `usd`, `asset` (USDC or USDG), `address`, `base_units`, `stable_assumed_usd: 1` |
+| `quote` | `result` (`ok`, `no_route` or `unknown` with a `reason`), `source` (`aerodrome` or `kyberswap`), `quoted_at`, `age_s`, `valid_for_s`, `cached`, `tokens_out`, `effective_price_usd`, `min_received`, `slippage_bps`, `gas`, `route`. A quote names no block: the aggregator does not say which one it quoted at |
+| `premium` | `reference_usd`, `effective_premium` (or `null` with `premium_refused`), `mid_premium` (the passport's, at the pool's mid), `price_impact` (against the recorder's mid, or `null` with `price_impact_refused`) |
+| `premium_check` | `within` is `abs(effective_premium) <= limit`, both ways; `null` with `within_refused` for a held reference, a reference of unknown age, or no premium |
+| `sell_back` | the reverse quote for the tokens just quoted: `usd_back`, `round_trip_cost` |
+| `venues` | on Base: `aerodrome.link` (its swap page with the checked contract filled in) and `kyberswap`, the second line, with `more_than_primary` and `same_route` as facts |
+| `simulation` | with a wallet only: `would_succeed`, `would_revert` (with `revert.kind`) or `unknown` (with `reason`), `head_block`, `wallet_state`, `simulated_with` |
+| `context` | `market`, `reference` (held, halted, its age), `notes`, `liquidity` (the passport's pool depth and `thin`) |
+| `not_trading_signal`, `disclaimer` | `true`, and "It is not investment advice." |
+
+### Errors
+
+| Kind | When |
+|---|---|
+| `isError` | the registry cannot be read: the same sentence as `verify_stock_tokens`; no quote without a verdict |
+| `isError` | a record held by the list locks: the address and its `reason`, as `verify_stock_tokens` names it |
+| `isError` | `the quote source is busy; try again in a few seconds`: the server's shared cap on outgoing aggregator calls (Robinhood Chain; on Base only the second line is lost). Only 3 units of the call are kept |
+| `-32602` | a missing or malformed argument, a key-shaped value (refused before anything else, never echoed), or any other argument |
+
+A held record is reached by any name the search takes as exact (its symbol, bare ticker or ISIN) and gets its error
+as above; a name written exactly as a record's symbol wins over one found only by dropping Coinbase's trailing "c", for
+trusted and held records alike. `would_succeed` needs the wallet's net balance change in one eth_simulateV1 block
+around the swap: the stable down by exactly the amount asked, the token up by at least the minimum. The whole answer has one deadline (20 s): a part that has not finished is `unknown`, `timed_out`.
+
+A quote that could not be read, or a dry run that could not be judged, is not an error: it is `unknown` with a reason
+from a fixed list, and never a made-up number, `would_succeed` or `would_revert`.
+
+### Limits
+
+10 units of the rate limit, 15 with a wallet. A quote is treated as current for 15 s, and the same question within that
+is answered from the cache (`cached: true`); a dry run is never cached. The wallet is sent to the aggregator's swap
+builder and to the node for this one answer, and is kept by us nowhere.
 
 [Not investment advice](../legal.md)

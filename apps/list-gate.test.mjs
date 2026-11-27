@@ -50,11 +50,13 @@ function roots (name, { baseMirror = 'good', archive = true } = {}) {
     { address: IMP_OK, symbol: 'OKc', name: 'Ok', kind: 'registry_symbol', ticker: 'OK', registry_symbol: 'OKc', registry_address: OK, first_seen_at: iso(NOW - 3600e3) }] }))
   return { base, robinhood: rh }
 }
-const rec = (address, symbol) => ({ contract_address: address, symbol, name: symbol + ' Inc.', isin: 'US0000000000', multiplier: '1', nav_price: '10', nav_price_updated_at: iso(NOW - 3600e3), total_supply: '5' })
+const rec = (address, symbol, isin = 'US0000000000') => ({ contract_address: address, symbol, name: symbol + ' Inc.', isin, multiplier: '1', nav_price: '10', nav_price_updated_at: iso(NOW - 3600e3), total_supply: '5' })
+let outsideCalls = 0 // simulate_buy's quotes and RPC: none may be made for a held record
 const fetchImpl = async (url) => {
   const u = String(url)
+  if (/aggregator-api\.kyberswap\.com|mainnet\.base\.org|rpc\.mainnet\.chain\.robinhood\.com/.test(u)) outsideCalls++
   const ok = (body) => ({ ok: true, status: 200, json: async () => body })
-  if (u.startsWith(COINBASE_URL)) return ok({ tokens: [rec(OK, 'OKc'), rec(NEW, 'NEWc'), rec(OLD, 'OLDc'), rec(SECONDLESS, 'SECc'), rec(REV, 'REVc'), rec(FOREIGN, 'FRNc')] })
+  if (u.startsWith(COINBASE_URL)) return ok({ tokens: [rec(OK, 'OKc'), rec(NEW, 'NEWc', 'US0000000N01'), rec(OLD, 'OLDc'), rec(SECONDLESS, 'SECc'), rec(REV, 'REVc'), rec(FOREIGN, 'FRNc')] })
   if (u.startsWith(ROBINHOOD_ASSETS_URL)) return ok({ assets: [{ tokenSymbol: 'TSLA', tokenName: 'Tesla Robinhood Token', isin: 'US88160R1014', currentMultiplier: '1', status: 'ASSET_STATUS_ACTIVE', deployments: [{ chainId: 4663, contractAddress: R }] }] })
   if (u.startsWith(ROBINHOOD_PRICES_URL)) return ok({ quotes: [] })
   return { ok: false, status: 404, json: async () => ({}) }
@@ -62,8 +64,8 @@ const fetchImpl = async (url) => {
 async function serve (r, t = () => NOW) {
   const app = createStocksWeb({ roots: r, fetchImpl, now: t, log: () => {}, analytics: { enabled: false }, exam: { url: null }, x402Module: null })
   const { port } = await app.start(0, '127.0.0.1')
-  const get = async (p) => { const res = await fetch(`http://127.0.0.1:${port}/stocks${p}`); const text = await res.text(); let json = null; try { json = JSON.parse(text) } catch (_) {} return { status: res.status, json, text } }
-  const mcp = async (name, args) => (await (await fetch(`http://127.0.0.1:${port}/stocks/mcp`, { method: 'POST', headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream' }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args } }) })).json()).result
+  const get = async (p, headers = {}) => { const res = await fetch(`http://127.0.0.1:${port}/stocks${p}`, { headers }); const text = await res.text(); let json = null; try { json = JSON.parse(text) } catch (_) {} return { status: res.status, json, text } }
+  const mcp = async (name, args, h = {}) => (await (await fetch(`http://127.0.0.1:${port}/stocks/mcp`, { method: 'POST', headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream', ...h }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args } }) })).json()).result
   return { app, get, mcp }
 }
 
@@ -117,6 +119,19 @@ try {
   check('/tokenlist.json carries trusted records only (the same source as every other route)', tl.status === 200 && tlAddrs.includes(OK) && ![NEW, OLD, SECONDLESS, REV, FOREIGN].some((a) => tlAddrs.includes(a)), JSON.stringify([tl.status, tlAddrs.length]))
   const sitemap = await s1.get('/sitemap.xml')
   check('the sitemap lists trusted records only', sitemap.text.includes('OKc') && !sitemap.text.includes('NEWc') && !sitemap.text.includes('OLDc'))
+  // simulate_buy goes through the same gate (docs/simulate-buy-tz.md §4.1): a held record gets the 503 with its reason,
+  // by address and by ticker, over HTTP and MCP, and no aggregator or RPC call is made for it.
+  outsideCalls = 0
+  const own = { 'x-real-ip': '198.51.100.40' } // a client of its own: the 10 units each leave the shared one's minute alone
+  const simNew = await s1.get(`/api/simulate?chain=base&token=${NEW}&usd=25`, own), simTick = await s1.get('/api/simulate?chain=base&token=NEWc&usd=25', own)
+  const simMcp = await s1.mcp('simulate_buy', { chain: 'base', token: OLD, usd: 25 }, own)
+  // ...and by an alias find_stock_token also takes as exact: the bare ticker, the ISIN. A collision with trusted records
+  // on the same words is ambiguous, never a quote for the trusted one.
+  const simBare = await s1.get('/api/simulate?chain=base&token=NEW&usd=25', own), simIsin = await s1.get('/api/simulate?chain=base&token=US0000000N01&usd=25', own)
+  const simShared = await s1.get('/api/simulate?chain=base&token=US0000000000&usd=25', { 'x-real-ip': '198.51.100.41' })
+  check('simulate_buy: a held record reached by its bare ticker or its ISIN still gets the 503 with its reason', simBare.status === 503 && simBare.json.reason === 'awaiting_factory_confirmation' && simIsin.status === 503 && simIsin.json.reason === 'awaiting_factory_confirmation', JSON.stringify([simBare.status, simBare.json, simIsin.status]))
+  check('...and an ISIN shared by trusted and held records is ticker_ambiguous, the held ones among the candidates, no quote', simShared.status === 200 && simShared.json.verdict.reason === 'ticker_ambiguous' && simShared.json.verdict.candidates.some((c) => c.held) && outsideCalls === 0, JSON.stringify(simShared.json?.verdict))
+  check('simulate_buy: a held record is refused with the 503 and its reason, never "not listed", and no outside call', simNew.status === 503 && simNew.json.reason === 'awaiting_factory_confirmation' && !('outcome' in simNew.json) && simTick.status === 503 && simTick.json.reason === 'awaiting_factory_confirmation' && simMcp.isError === true && /factory_conflict/.test(simMcp.content[0].text) && outsideCalls === 0, JSON.stringify([simNew.json, simTick.json, outsideCalls]))
   const pageNew = await s1.get('/?base=NEWc'), pageOk = await s1.get('/?base=OKc')
   check('the ?base=SYM page resolves a trusted record and never a held one', /rel="canonical" href="[^"]*\?base=OKc"/.test(pageOk.text) && !/\?base=NEWc"/.test(pageNew.text) && !pageNew.text.includes(NEW))
   const today = '2026-11-25'

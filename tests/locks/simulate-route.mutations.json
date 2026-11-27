@@ -1,0 +1,52 @@
+{
+  "_finding": "simulate_buy on the site (docs/simulate-buy-tz.md §1, §2 step 3, §5.3, §5.4): it costs 10 units, 15 with a wallet, over HTTP and MCP; the wallet never travels in a URL, so a GET that carries one is refused; the wallet is never written to the app's log; and a passport is built from the registry read the verdict was decided against, or not at all. A busy refund goes back to its own charge.",
+  "target": "apps/stocks-web.mjs",
+  "runner": [
+    "node",
+    "apps/stocks-web.test.mjs"
+  ],
+  "mutations": [
+    {
+      "name": "the route's units are set to 1",
+      "find": "    if (await limitGate(req, res, { units: simulateUnits(p.input), cors: SIM_HEADERS, charge })) return",
+      "replace": "    if (await limitGate(req, res, { units: 1, cors: SIM_HEADERS, charge })) return",
+      "expect": "FAIL ...and on the route: six calls a free minute"
+    },
+    {
+      "name": "the MCP units are set to 1",
+      "find": "parseSimulate(m.params.arguments ?? {}).error ? 1 : simulateUnits(m.params.arguments)",
+      "replace": "1",
+      "expect": "FAIL the units in batchUnits()"
+    },
+    {
+      "name": "a GET with wallet is accepted",
+      "find": "      if (url.searchParams.has('wallet')) return send(res, 400, { error: WALLET_IN_URL }, undefined, SIM_HEADERS)\n",
+      "replace": "",
+      "expect": "FAIL a GET with wallet is refused with the 400 that says why"
+    },
+    {
+      "name": "the wallet is written to the app's log",
+      "find": "    const p = parseSimulate(raw, { fromText })\n",
+      "replace": "    const p = parseSimulate(raw, { fromText }); log('[simulate] ' + JSON.stringify(raw))\n",
+      "expect": "FAIL the wallet address does not appear in the app's log"
+    },
+    {
+      "name": "the passport is read from a second registry snapshot",
+      "find": "    if (snap && snap !== reg) return { status: 503, body: { error: 'the issuer list was read again while answering; ask again', chain } }\n",
+      "replace": "",
+      "expect": "FAIL one snapshot"
+    },
+    {
+      "name": "a refund goes to the current second",
+      "find": "    const i = charge.sec % RATE_WINDOW_S, back = Math.min(units, charge.units, b.slots[i])",
+      "replace": "    const i = sec % RATE_WINDOW_S, back = Math.min(units, b.slots[i])",
+      "expect": "FAIL a busy refund goes back to the second of its own charge"
+    },
+    {
+      "name": "a spill-window charge gets no refund",
+      "find": "    if (Number.isInteger(charge.spill)) {",
+      "replace": "    if (false) {",
+      "expect": "FAIL ...and a caller counted in a shared spill window"
+    }
+  ]
+}

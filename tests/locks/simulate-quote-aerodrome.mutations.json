@@ -1,0 +1,46 @@
+{
+  "_finding": "Aerodrome's quote on Base is read from its own contracts (docs/simulate-buy-tz.md §3.1, outside review of #266): a Quoter is used only while its factory() is the pinned factory; a pool whose quote reverts, stops at the price limit (input left over) or answers anything but the Quoter's four words is skipped, and only confirmed absence is no_route; the base fee comes from the block header.",
+  "target": "apps/simulate/quote-aerodrome.mjs",
+  "runner": [
+    "node",
+    "apps/stocks-simulate.test.mjs"
+  ],
+  "mutations": [
+    {
+      "name": "the pairing check is removed",
+      "find": "  if (addrOf(res[0]) !== deployment.factory) return out({ result: 'unknown', reason: 'quoter_mismatch' })\n",
+      "replace": "",
+      "expect": "FAIL a quoter whose factory() is another factory gives quoter_mismatch"
+    },
+    {
+      "name": "a reverted pool quote is read",
+      "find": "    if (!q.success) { reverted++; return }\n    if (!HEX_WORDS(q.data, 4)) { unreadable++; return }",
+      "replace": "    if (!/^0x[0-9a-fA-F]{256,}$/.test(q.data)) { unreadable++; return }",
+      "expect": "FAIL a pool whose quote reverts is skipped, never zero"
+    },
+    {
+      "name": "a quote that stopped at the price limit is taken",
+      "find": "    if (hitLimit(tokenIn, tokenOut, sqrtAfter)) { partial++; return }\n",
+      "replace": "",
+      "expect": "FAIL a pool whose quote stopped at the price limit"
+    },
+    {
+      "name": "an unreadable answer is called no route",
+      "find": "  if (!best) return unreadable ? out({ result: 'unknown', reason: 'quote_empty', pools, routerPaired }) : out({ result: 'no_route', pools, routerPaired })",
+      "replace": "  if (!best) return out({ result: 'no_route', pools, routerPaired })",
+      "expect": "FAIL a successful answer that is not the Quoter"
+    },
+    {
+      "name": "the base fee is made up when the header has none",
+      "find": "    baseFee = QTY.test(String(head.baseFeePerGas)) ? BigInt(head.baseFeePerGas) : null",
+      "replace": "    baseFee = QTY.test(String(head.baseFeePerGas)) ? BigInt(head.baseFeePerGas) : 10000000n",
+      "expect": "FAIL the base fee comes from the block header"
+    },
+    {
+      "name": "a failed getPool is read as no pool",
+      "find": "    if (!pool) { unreadable++; return }",
+      "replace": "    if (!pool) { if (poolR && poolR.success) unreadable++; return }",
+      "expect": "FAIL a failed getPool read is unreadable"
+    }
+  ]
+}

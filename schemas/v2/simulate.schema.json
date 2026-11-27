@@ -1,0 +1,209 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://proofofstock.xyz/schemas/v2/simulate.schema.json",
+  "title": "simulate_buy answer",
+  "description": "One answer of the MCP tool simulate_buy and of GET / POST /api/simulate (docs/simulate-buy-tz.md, evm/core/stocks/simulate.mjs): the verdict first, then for a listed token a quote for the exact size, the effective premium, the sell-back and, with a wallet, a dry run by eth_call. Facts with their time and source; never a transaction, never advice. Every enum here is held equal to the code's by evm/core/stocks/simulate.test.mjs.",
+  "type": "object",
+  "required": ["summary", "outcome", "generated_at", "chain", "not_trading_signal", "disclaimer", "verdict", "amount_in", "quote", "premium", "premium_check", "sell_back", "venues", "context", "links"],
+  "properties": {
+    "summary": { "type": "string", "minLength": 1, "description": "the lead sentence, ours only: no look-alike's text, no revert reason, no pool label, no caller's ticker" },
+    "outcome": { "enum": ["quoted", "checked", "refused"] },
+    "generated_at": { "type": "string", "format": "date-time" },
+    "chain": { "enum": ["base", "robinhood"] },
+    "not_trading_signal": { "const": true },
+    "disclaimer": { "const": "It is not investment advice." },
+    "query": { "type": ["string", "null"], "description": "the caller's token as given: data, never in the summary" },
+    "verdict": {
+      "type": "object",
+      "required": ["listed", "address", "use_instead", "list_proof"],
+      "properties": {
+        "listed": { "type": ["boolean", "null"] },
+        "address": { "type": ["string", "null"], "pattern": "^0x[0-9a-f]{40}$" },
+        "symbol": { "type": ["string", "null"] },
+        "impostor": { "type": ["object", "null"] },
+        "issuer_factory": { "type": ["object", "null"] },
+        "use_instead": { "type": ["string", "null"], "pattern": "^0x[0-9a-f]{40}$" },
+        "list_proof": { "type": ["object", "null"] },
+        "reason": { "enum": ["impostor", "not_listed", "not_minted", "paused", "paused_unknown", "ticker_not_exact", "ticker_ambiguous"] },
+        "candidates": { "type": "array", "items": { "type": "object", "required": ["symbol", "address"], "properties": { "symbol": { "type": ["string", "null"] }, "address": { "type": "string" }, "match_quality": { "type": ["string", "null"] } } } },
+        "paused": { "type": "array" }
+      }
+    },
+    "amount_in": {
+      "type": "object",
+      "required": ["usd", "asset", "address", "base_units", "stable_assumed_usd"],
+      "properties": {
+        "usd": { "type": "number", "minimum": 1, "maximum": 1000000 },
+        "asset": { "enum": ["USDC", "USDG"] },
+        "address": { "type": "string", "pattern": "^0x[0-9a-f]{40}$" },
+        "base_units": { "type": "string", "pattern": "^[0-9]+$" },
+        "stable_assumed_usd": { "const": 1 }
+      }
+    },
+    "quote": {
+      "oneOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "required": ["result", "source", "quoted_at", "age_s", "valid_for_s", "cached", "tokens_out", "tokens_out_base_units", "decimals", "effective_price_usd", "min_received", "min_received_base_units", "slippage_bps", "gas", "route"],
+          "properties": {
+            "result": { "$ref": "#/definitions/quote_result" },
+            "reason": { "$ref": "#/definitions/quote_reason" },
+            "source": { "enum": ["aerodrome", "kyberswap", null] },
+            "quoted_at": { "type": ["string", "null"], "format": "date-time" },
+            "age_s": { "type": ["integer", "null"], "minimum": 0 },
+            "valid_for_s": { "type": ["integer", "null"], "minimum": 0 },
+            "cached": { "type": "boolean" },
+            "tokens_out": { "type": ["number", "null"], "exclusiveMinimum": 0 },
+            "tokens_out_base_units": { "type": ["string", "null"], "pattern": "^[0-9]+$" },
+            "decimals": { "type": ["integer", "null"] },
+            "effective_price_usd": { "type": ["number", "null"], "exclusiveMinimum": 0 },
+            "min_received": { "type": ["number", "null"] },
+            "min_received_base_units": { "type": ["string", "null"], "pattern": "^[0-9]+$" },
+            "slippage_bps": { "type": "integer", "minimum": 1, "maximum": 500 },
+            "gas": { "type": "object", "required": ["units", "usd", "basis"], "properties": { "units": { "type": ["number", "null"] }, "usd": { "type": ["number", "null"] }, "basis": { "enum": ["pool_swap_only", "aggregator_estimate", null], "description": "pool_swap_only: the Quoter's estimate of the pool's own swap at the block's base fee, without the router and the L1 data fee, so not the whole cost of a transaction" } } },
+            "route": { "$ref": "#/definitions/route" },
+            "untrusted_text": { "type": "string" }
+          }
+        }
+      ]
+    },
+    "premium": {
+      "oneOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "required": ["reference_usd", "reference_kind", "reference_age_s", "effective_premium", "mid_premium", "mid_age_s", "price_impact"],
+          "properties": {
+            "reference_usd": { "type": ["number", "null"] },
+            "reference_kind": { "type": ["string", "null"] },
+            "reference_age_s": { "type": ["integer", "null"] },
+            "effective_premium": { "type": ["number", "null"] },
+            "premium_refused": { "enum": ["no_reference", "reference_spread_wide", "implausible_vs_reference", "no_quote"] },
+            "mid_premium": { "type": ["number", "null"] },
+            "mid_age_s": { "type": ["integer", "null"] },
+            "price_impact": { "type": ["number", "null"] },
+            "price_impact_refused": { "enum": ["mid_stale", "no_mid", "no_quote"] }
+          }
+        }
+      ]
+    },
+    "premium_check": {
+      "oneOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "required": ["limit", "limit_source", "within"],
+          "properties": {
+            "limit": { "type": "number", "minimum": 0, "maximum": 0.5 },
+            "limit_source": { "enum": ["caller", "default"] },
+            "within": { "type": ["boolean", "null"], "description": "|effective_premium| <= limit" },
+            "within_refused": { "enum": ["reference_age_unknown", "reference_held", "no_premium"] }
+          }
+        }
+      ]
+    },
+    "sell_back": {
+      "oneOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "required": ["result", "source", "quoted_at", "usd_back", "round_trip_cost"],
+          "properties": {
+            "result": { "$ref": "#/definitions/quote_result" },
+            "reason": { "$ref": "#/definitions/quote_reason" },
+            "source": { "enum": ["aerodrome", "kyberswap", null] },
+            "quoted_at": { "type": ["string", "null"], "format": "date-time" },
+            "tokens_in_base_units": { "type": ["string", "null"], "pattern": "^[0-9]+$" },
+            "usd_back": { "type": ["number", "null"] },
+            "round_trip_cost": { "type": ["number", "null"], "description": "1 - usd_back / usd" }
+          }
+        }
+      ]
+    },
+    "venues": {
+      "oneOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "properties": {
+            "aerodrome": { "type": "object", "required": ["link"], "properties": { "link": { "type": ["string", "null"] } } },
+            "kyberswap": {
+              "type": "object",
+              "required": ["result", "tokens_out", "effective_price_usd", "more_than_primary", "same_route"],
+              "properties": {
+                "result": { "$ref": "#/definitions/quote_result" },
+                "reason": { "$ref": "#/definitions/quote_reason" },
+                "quoted_at": { "type": ["string", "null"] },
+                "cached": { "type": "boolean" },
+                "tokens_out": { "type": ["number", "null"] },
+                "tokens_out_base_units": { "type": ["string", "null"] },
+                "effective_price_usd": { "type": ["number", "null"] },
+                "more_than_primary": { "type": ["boolean", "null"] },
+                "same_route": { "type": "boolean" },
+                "gas": { "type": "object" },
+                "route": { "$ref": "#/definitions/route" },
+                "untrusted_text": { "type": "string" }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "simulation": {
+      "type": "object",
+      "required": ["result", "wallet", "head_block", "rpc", "wallet_state", "simulated_with", "amount_out_simulated_base_units", "gas_units", "revert"],
+      "properties": {
+        "result": { "enum": ["would_succeed", "would_revert", "unknown"] },
+        "reason": { "enum": ["no_quote", "build_failed", "router_not_allowed", "rpc_unavailable", "block_unavailable", "rpc_gas_cap", "override_unverified", "override_suspect", "revert_empty", "return_undecodable", "below_min_out", "estimate_disagrees", "revert_unattributed", "no_probe_pool", "build_unverified", "build_mismatch", "aggregator_busy", "timed_out", "debit_unverified", "transfer_mismatch", "deadline_passed"] },
+        "wallet": { "type": "string", "pattern": "^0x[0-9a-f]{40}$" },
+        "head_block": { "type": ["integer", "null"], "description": "the chain's head when it was read, not the quote's block" },
+        "rpc": { "enum": ["public", "custom"] },
+        "wallet_state": { "type": "object", "required": ["stable_balance_enough", "allowance_enough", "gas_balance_enough"], "properties": { "stable_balance_enough": { "type": ["boolean", "null"] }, "allowance_enough": { "type": ["boolean", "null"] }, "gas_balance_enough": { "type": ["boolean", "null"] } } },
+        "simulated_with": { "type": "array", "items": { "enum": ["stable_balance", "stable_allowance", "native_balance"] }, "uniqueItems": true },
+        "amount_out_simulated_base_units": { "type": ["string", "null"], "pattern": "^[0-9]+$" },
+        "gas_units": { "type": ["integer", "null"] },
+        "simulated_block": { "type": ["object", "null"], "description": "the context of the eth_simulateV1 block the verdict comes from: its number and time, and whether it is the read block's child, built on the read block's own post-state (the state eth_call and eth_estimateGas used)", "properties": { "number": { "type": ["integer", "null"] }, "timestamp": { "type": ["integer", "null"] }, "child_of_read_block": { "type": "boolean" } } },
+        "transfers": { "type": "object", "description": "the net change of the wallet's balances across the swap, read inside one eth_simulateV1 block: the stable down by exactly the amount asked, the token up by at least the minimum", "required": ["stable_debit_base_units", "token_credit_base_units"], "properties": { "stable_debit_base_units": { "type": "string", "pattern": "^-?[0-9]+$", "description": "signed: negative when the wallet ended with more of the stable" }, "token_credit_base_units": { "type": "string", "pattern": "^-?[0-9]+$", "description": "signed: negative when the wallet ended with less of the token" } } },
+        "revert": {
+          "oneOf": [
+            { "type": "null" },
+            {
+              "type": "object",
+              "required": ["kind", "probe", "reason", "selector", "data", "untrusted_text"],
+              "properties": {
+                "kind": { "enum": ["token_rule", "stable_blocklist", "min_out", null] },
+                "probe": { "enum": ["stable", "token", null] },
+                "reason": { "type": ["string", "null"] },
+                "selector": { "type": ["string", "null"] },
+                "data": { "type": ["string", "null"] },
+                "untrusted_text": { "type": "string" }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "context": {
+      "type": "object",
+      "required": ["market", "reference", "notes", "liquidity"],
+      "properties": {
+        "market": { "type": "object", "required": ["session"] },
+        "reference": { "type": ["object", "null"] },
+        "notes": { "type": "array", "items": { "enum": ["reference_held_market_closed", "reference_held_market_open", "trading_halted", "multiplier_change_pending", "reference_spread_wide", "minted_unknown"] } },
+        "liquidity": { "type": ["object", "null"] }
+      }
+    },
+    "links": { "type": "object", "required": ["passport", "docs"], "properties": { "passport": { "type": ["string", "null"] }, "docs": { "type": ["string", "null"] } } }
+  },
+  "definitions": {
+    "quote_result": { "enum": ["ok", "no_route", "unknown"] },
+    "quote_reason": { "enum": ["aggregator_unavailable", "aggregator_busy", "quote_mismatch", "quote_empty", "quoter_mismatch", "venue_unconfirmed", "rpc_unavailable", "decimals_unavailable", "no_buy_quote", "timed_out"] },
+    "route": {
+      "oneOf": [
+        { "type": "null" },
+        { "type": "object", "required": ["kind", "pools", "hops"], "properties": { "kind": { "enum": ["single_pool", "aggregator"] }, "pools": { "type": "array", "items": { "type": "string", "pattern": "^[a-z0-9\\-/]{1,32}$" } }, "hops": { "type": "integer", "minimum": 0 }, "tick_spacing": { "type": "integer" }, "pool": { "type": "string" }, "splits": { "type": "integer" } } }
+      ]
+    }
+  }
+}

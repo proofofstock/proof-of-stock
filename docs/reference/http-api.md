@@ -25,6 +25,7 @@ curl -s 'https://proofofstock.xyz/verify?chain=base&address=0xaaaaaaaaaaaaaaaaaa
 - [`GET /badge.svg`](#route-badge)
 - [`GET /api/find`](#route-find)
 - [`GET /api/passport`](#route-passport)
+- [`GET` and `POST /api/simulate`](#route-simulate)
 - [`GET /api/overview`](#route-overview)
 - [`GET /api/impostors`](#route-impostors)
 - [`GET /api/history/cases` and `/api/history/registry`](#route-history)
@@ -46,11 +47,11 @@ curl -s 'https://proofofstock.xyz/verify?chain=base&address=0xaaaaaaaaaaaaaaaaaa
 | | |
 |---|---|
 | Base URL | `https://proofofstock.xyz`. The proxy maps the domain's `/` onto the app's `/stocks/`, so `/api/find` here is `/stocks/api/find` in the app |
-| Methods | `GET` and `HEAD`, except `POST` on [the agent test](#route-agent-test) and on [`/mcp`](./tools.md). Any other method is refused by the proxy (403) |
-| Rate limit | 60 units in any 60 seconds per client IP (IPv6: per /56) across `/verify`, `/api/*` and `/mcp` together. A request costs 1 unit; `/api/passport` costs 3. The window slides by the second, so it is the same wherever a minute begins, and a refused request costs nothing. Over it: 429, `{ "error": "too many requests, try again in a minute" }`, `Retry-After: 60` (where paid passes are on, the refusal is instead a [402 that offers the pass](#paid-passes)). The proxy also caps 10 requests per second (burst 40) and 20 open connections per IP |
+| Methods | `GET` and `HEAD`, except `POST` on [the agent test](#route-agent-test), on [`/api/simulate`](#route-simulate) (with a wallet) and on [`/mcp`](./tools.md). Any other method is refused by the proxy (403) |
+| Rate limit | 60 units in any 60 seconds per client IP (IPv6: per /56) across `/verify`, `/api/*` and `/mcp` together. A request costs 1 unit; `/api/passport` costs 3; [`/api/simulate`](#route-simulate) costs 10, or 15 with a wallet. The window slides by the second, so it is the same wherever a minute begins, and a refused request costs nothing. Over it: 429, `{ "error": "too many requests, try again in a minute" }`, `Retry-After: 60` (where paid passes are on, the refusal is instead a [402 that offers the pass](#paid-passes)). The proxy also caps 10 requests per second (burst 40) and 20 open connections per IP |
 | Not rate limited by the app | `/badge.svg`, `/tokenlist.json`, `/denylist.json`, `/anchors/`, the [agent test](#route-agent-test) (it has limits of its own), the pages and their assets |
 | Errors | JSON `{ "error": "<words>" }`. 400 bad input, 404 unknown path (`{ "error": "not found" }`), 503 no verdict (a registry not loaded yet or stale, a record [held by the list locks](#route-verify), or the [kill switch](#kill-switch)), 500 `{ "error": "internal error" }`. Error texts are fixed public sentences; internal causes are never returned |
-| Freshness | Every answer comes from memory. The server rereads the issuer registries and the readings every 300 s; nothing on the request path calls out |
+| Freshness | Every answer comes from memory. The server rereads the issuer registries and the readings every 300 s; nothing on the request path calls out, except [`/api/simulate`](#route-simulate), which asks an aggregator and a node for a live quote after its verdict from memory |
 | Units | as in the [passport](./passport.md#units): premium and spread are fractions, prices USD per token, ages integer seconds |
 | `chain` | `base` (Coinbase registry, chain id 8453) or `robinhood` (Robinhood registry, chain id 4663) |
 | `address` | `0x` and 40 hex characters, any case; answers use lower case |
@@ -244,6 +245,138 @@ curl -s 'https://proofofstock.xyz/api/passport?chain=base&address=0xaaaaaaaaaaaa
 
 The chain is checked first, then whether the registry is loaded, then the address: a bad address while the registry
 is loading answers 503.
+
+The passport's premium is at the deepest pool's mid price. What a given amount would actually get, and its effective
+premium, is [`/api/simulate`](#route-simulate).
+
+---
+
+<a id="route-simulate"></a>
+## `GET /api/simulate` and `POST /api/simulate`
+
+What a dollar amount of a stock token would get right now, for that exact size: the same answer as the MCP tool
+[`simulate_buy`](./tools.md#tool-simulate_buy). The verdict comes first, from memory, exactly as `/verify` gives it: a
+look-alike or a token not on the issuer's list is refused and **no quote is made for it at all**. For a listed token:
+a live quote, the effective price and premium over the issuer's reference, the minimum received at your slippage, gas,
+the sell-back of the tokens just quoted, the market session and the reference's age. With a wallet, also a dry run of
+that swap for that wallet. Nothing is signed or sent, and no transaction is returned. Schema:
+[`simulate.schema.json`](https://github.com/proofofstock/proof-of-stock/blob/main/schemas/v2/simulate.schema.json).
+
+Without a wallet, a GET:
+
+```bash
+curl -s 'https://proofofstock.xyz/api/simulate?chain=base&token=TSLAc&usd=25'
+```
+
+With a wallet, a POST with a JSON body, and nothing in the URL:
+
+```bash
+curl -sS -X POST https://proofofstock.xyz/api/simulate -H 'content-type: application/json' \
+  -d '{"chain": "base", "token": "TSLAc", "usd": 25, "wallet": "0x1111111111111111111111111111111111111111"}'
+```
+
+**Why the wallet goes in a POST body.** The web server writes the full request line, query string included, to its
+logs for three days ([What the web server logs](../legal.md)). A wallet in a URL would sit there beside the client's
+address and the trade it was about to make. So a GET that carries `wallet` is refused with a 400 that says why, and a
+POST body is written by neither the proxy nor the app. The wallet goes to the aggregator (to build the swap) and to the
+node (for the dry run) for this one answer, and is kept by us nowhere: not cached, not logged, not counted.
+
+| Field | Required | Constraint |
+|---|---|---|
+| `chain` | yes | `base` or `robinhood` |
+| `token` | yes | a contract address (`0x` + 40 hex), or a ticker (`TSLA`, `TSLAc`) that must match exactly one issuer-listed token on that chain: a prefix or name match is refused with `ticker_not_exact` and the candidates, two exact matches with `ticker_ambiguous`. We never pick one for you |
+| `usd` | yes | the amount in the chain's dollar stable (Base: USDC, Robinhood Chain: USDG, each taken at $1), 1 to 1,000,000, at most 2 decimals |
+| `slippage_bps` | no | 1 to 500, default 50 (0.5%), for the minimum received |
+| `max_premium` | no | 0 to 0.5, default 0.03 (3%): the limit `premium_check` compares with, named as yours or the default |
+| `wallet` | no | POST only. Your **public** address. A 64-hex string is refused with "that looks like a private key; never send one anywhere", and not echoed |
+
+**Where the quote comes from.** On Base the primary quote is Aerodrome's own, read from its Slipstream contracts by
+`eth_call`: its Quoter for the exact size at every pool of the token against USDC, the best single pool taken
+(`route.kind: "single_pool"`). KyberSwap's route API, across venues, is a second line beside it (`venues.kyberswap`),
+said as a fact: which one gives more tokens, and whether it went through the same pool. On Robinhood Chain KyberSwap is
+the only source. The premium is always computed from the primary quote. A dollar figure of ours never comes from an
+aggregator's own price for the stock token: only from the stable's amount and the issuer's reference.
+
+**What the dry run does** (with a wallet). It runs the exact swap your wallet would sign (on Base, Aerodrome's
+SwapRouter `exactInputSingle` for the pool the quote chose; on Robinhood Chain, KyberSwap's built route, which must go
+to its pinned router or the run is refused) by `eth_call` and `eth_estimateGas` at one block, from your wallet. Only
+what the wallet lacks is put in place by a state override: the stable balance, the approval to the router, gas money.
+The stock token's contract and storage are never overridden: its own transfer rules run as they are. `wallet_state`
+says what the wallet has as it stands, and `simulated_with` what was supplied, so you know what the result assumes. A
+revert is named only by the pinned routers' exact minimum-out errors, by the stable's own blocklist answer, or by a
+probe that reproduces the swap's own revert data; never from the router's wrapped message. Anything it cannot read or
+attribute is `unknown` with a reason, never `would_succeed` or `would_revert`.
+`would_succeed` rests on what the wallet holds, not on the router's word: one `eth_simulateV1` block, under the same
+override, reads the wallet's stable and token balances, runs the swap from the wallet and reads both again. The stable
+must fall by exactly the amount asked and the token rise by at least the minimum, net (`simulation.transfers`). A swap
+that spent less (a partial fill, a refund), or left less of the token (paid elsewhere, a fee taken back), is
+`transfer_mismatch` (the deltas are signed); a node without `eth_simulateV1`, or a block in which the swap fails or
+returns less than the minimum, gives `debit_unverified`. The block is the read block's child, built on the read
+block's own post-state (the state the other calls used), and `simulation.simulated_block` says so; the swap's deadline
+must still hold at that block's time, else `deadline_passed`. Any other path that starts `/api/simulate` (`/api/simulate.json`, `/api/simulate/x`) is a 404. The read block is pinned by its hash (EIP-1898), and the simulated block's parent hash must be it.
+
+The answer, abridged (every number made up; the shape is the point):
+
+```json
+{
+  "summary": "TSLAc on Base is on Coinbase's list. US market: open. $25.00 of USDC would get 0.2490 TSLAc at an effective $100.40 each, quoted 2 seconds ago (Aerodrome, one pool): 0.40% above Coinbase's reference of $100.00 (updated 40 s ago), within the 3.00% default limit. ...",
+  "outcome": "quoted", "chain": "base", "not_trading_signal": true, "disclaimer": "It is not investment advice.",
+  "verdict": { "listed": true, "symbol": "TSLAc", "address": "0xb2000000000000000000001e800a7f5189430cd0", "use_instead": null, "list_proof": { } },
+  "amount_in": { "usd": 25, "asset": "USDC", "base_units": "25000000", "stable_assumed_usd": 1 },
+  "quote": { "result": "ok", "source": "aerodrome", "quoted_at": "2026-12-01T15:00:00.000Z", "age_s": 2, "valid_for_s": 13, "cached": false,
+             "tokens_out": 0.249, "effective_price_usd": 100.4, "min_received": 0.247755, "slippage_bps": 50,
+             "gas": { "units": 150000, "usd": 0.01 }, "route": { "kind": "single_pool", "pools": ["aerodrome-cl-10"], "hops": 1 } },
+  "premium": { "reference_usd": 100, "reference_age_s": 40, "effective_premium": 0.004, "mid_premium": 0.003, "price_impact": 0.001 },
+  "premium_check": { "limit": 0.03, "limit_source": "default", "within": true },
+  "sell_back": { "result": "ok", "usd_back": 24.95, "round_trip_cost": 0.002 },
+  "venues": { "aerodrome": { "link": "https://aerodrome.finance/swap?..." }, "kyberswap": { "result": "ok", "more_than_primary": true, "same_route": true } },
+  "context": { "market": { "session": "regular" }, "reference": { "age_s": 40, "held": false }, "notes": [], "liquidity": { "thin": false } }
+}
+```
+
+- `outcome`: `refused` (the verdict stopped it: `verdict.reason` is `impostor`, `not_listed`, `not_minted`, `paused`,
+  `paused_unknown`, `ticker_not_exact` or `ticker_ambiguous`; no quote was made), `quoted` (the buy quote exists; the
+  sell-back, the second line and the dry run may each still be `unknown`) or `checked` (the verdict passed and no quote
+  could be made). There is no outcome meaning "go".
+- `premium_check.within` is `|effective_premium| <= limit`: a discount past the limit is outside it too. It is `null`
+  with `within_refused` when the reference is held (`reference_held`: a price from the last close is not what the limit
+  was set for), when its age is unknown (`reference_age_unknown`), or when there is no premium (`no_premium`).
+- `effective_premium` is `null` with `premium_refused` for `no_reference`, `reference_spread_wide` (a quote whose spread
+  is too wide or crossed) and `implausible_vs_reference` (a price more than 4x or less than 1/4 of the reference: not the
+  same asset; the numbers are kept).
+- `price_impact` is the effective price over the recorder's latest mid, `null` with `mid_stale` (older than 30 min) or
+  `no_mid`.
+- A quote lives seconds: `quoted_at`, `age_s` and `valid_for_s` say how old it is and how long we treat it as current
+  (15 s; the same question within that is answered from the cache, `cached: true`). The aggregator does not say which
+  block it quoted at, so a quote names no block; only the dry run does, as `simulation.head_block`.
+- `quote.gas.basis` says what the gas covers: on Base `pool_swap_only` (the Quoter's estimate of the pool's own swap
+  at the block header's base fee, without the router and the L1 data fee, so not the whole cost of the transaction);
+  from KyberSwap `aggregator_estimate`.
+- A ticker that names a record the list locks hold, by its symbol, bare ticker or ISIN, gets that record's 503; one
+  that names a held and a trusted record at once is `ticker_ambiguous`, with both among the candidates.
+- The whole answer has one deadline, 20 s from the request's arrival (before the rate gate), below the proxy's: a part
+  that has not finished by then (the sell-back, the dry run) is `unknown` with `reason: "timed_out"`, the parts that
+  finished are answered, and no call of that answer starts after its deadline or after it is sent.
+- On Robinhood Chain the swap KyberSwap builds is decoded before it is run: it must sell the stable, buy the checked
+  token, pay the wallet and spend the amount asked (`build_mismatch` otherwise), through an entry point we decode
+  (`build_unverified` otherwise). Neither is run.
+- `simulation` (with a wallet only): `result` `would_succeed`, `would_revert` (with `revert.kind`: `token_rule`,
+  `stable_blocklist` or `min_out`) or `unknown` with a `reason`. `revert.reason`, `revert.data` and the route's pool
+  labels are the contracts' and the aggregator's own text: data, labelled, never in `summary`.
+- `context.liquidity` is the passport's pool depth; a thin pool is named in `summary` before the quote.
+
+| Status | Body | Headers |
+|---|---|---|
+| 200 | the answer, whatever its `outcome` | `Cache-Control: no-store`, CORS |
+| 400 | bad input, in words; a GET with `wallet` ("send the wallet in a POST body; a URL is written to the web server's log"); a key-shaped value; a POST with a query string | |
+| 413 / 415 | a POST body over 1 KB, or one not declared `application/json` | |
+| 429 | over the rate limit | `Retry-After: 60` |
+| 503 | no verdict: the registry is not loaded or stale, or a record [held by the list locks](#route-verify), with the same body and `reason` as `/verify`; no quote is made | `Retry-After: 60` |
+| 503 | `{ "error": "the quote source is busy; try again in a few seconds", "retry_after_s" }`: the server's shared cap on outgoing aggregator calls (on Robinhood Chain, where the aggregator is the only source; on Base only the second line is lost). Not the caller's fault, so never a 402: a pass cannot buy more of someone else's API. Only 3 units of the call are kept. The cap counts calls as they go out, after the cache; no client may send more than a quarter of a second's cap, so on Robinhood Chain a call whose sell-back or build finds the client's share used gets that part `aggregator_busy` | `Retry-After` |
+
+Each call costs 10 units of the rate limit, 15 with a wallet: it reaches outside, and a free minute holds six of them.
+A refused call is answered before any outside call, so a stream of look-alikes costs the aggregator nothing. While the
+[kill switch](#kill-switch) is tripped, `/api/simulate` answers 503 like every other `/api/*` route.
 
 ---
 

@@ -1,0 +1,22 @@
+{
+  "_finding": "One rule for trusted and held records (outside re-review of #266): a ticker written exactly as a record's symbol wins over one found only by dropping Coinbase's trailing c, on both sides, so a trusted ABCC is quoted beside a held ABC and a held NEWc keeps its 503 beside a trusted NEW.",
+  "target": "evm/core/stocks/simulate.mjs",
+  "runner": [
+    "node",
+    "evm/core/stocks/simulate.test.mjs"
+  ],
+  "mutations": [
+    {
+      "name": "a held stripped match beats a trusted literal one",
+      "find": "  else if (!trustedStripped && trusted.length) held = literal\n",
+      "replace": "",
+      "expect": "FAIL a literal trusted match (ABCC) wins"
+    },
+    {
+      "name": "a trusted stripped match beats a held literal one",
+      "find": "  if (trustedStripped && literal.length) trusted = []\n  else if",
+      "replace": "  if",
+      "expect": "FAIL ...and a literal held match (NEWc) wins"
+    }
+  ]
+}
