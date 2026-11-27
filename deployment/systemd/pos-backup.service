@@ -21,8 +21,10 @@ EnvironmentFile=/etc/pos/backup.env
 # What goes into the copy, absolute paths separated by ":". The data root first; then /var/lib/stp-anchors, whose
 # OpenTimestamps proofs are the only thing here that cannot be rebuilt from the data (a proof made later attests the
 # day it was made, not the day it covers). A path that is not on the host does not stop the run: it is named in the
-# status file, and stp-health alerts on it (backup:sources).
-Environment=POS_BACKUP_SOURCE=/var/lib/pos:/var/lib/stp-anchors
+# status file, and stp-health alerts on it (backup:sources). Then the two small directories stp-web keeps that nothing
+# else holds (27.11): the published agent tests, whose links and badges people put in their READMEs for 30 days, and the
+# ledger of paid passes (stp-x402), which people paid for. Both are 0700 for user pos, hence the capability below.
+Environment=POS_BACKUP_SOURCE=/var/lib/pos:/var/lib/stp-anchors:/var/lib/stp-agent-test:/var/lib/stp-x402
 Environment=POS_BACKUP_STATUS=/var/lib/pos-backup/status.json
 Environment=RESTIC_CACHE_DIR=/var/cache/pos-backup
 Environment=HOME=/var/lib/pos-backup
@@ -40,9 +42,13 @@ MemoryMax=1G
 CPUQuota=25%
 TimeoutStartSec=2h
 NoNewPrivileges=true
-# It reads /var/lib/pos and /var/lib/stp-anchors (files 0644, directories 0755): no capability needed, and none held.
-CapabilityBoundingSet=
-AmbientCapabilities=
+# /var/lib/pos and /var/lib/stp-anchors are 0644/0755, but /var/lib/stp-agent-test and /var/lib/stp-x402 are 0700 for
+# user pos (stp-web's UMask=0077). So it holds CAP_DAC_READ_SEARCH, as stp-health does: read anything, write nothing
+# beyond its own state and cache. With it, it could read any root-only file, so the owner's secrets and the password
+# files do not exist for it (systemd reads EnvironmentFile= /etc/pos/backup.env before this applies).
+CapabilityBoundingSet=CAP_DAC_READ_SEARCH
+AmbientCapabilities=CAP_DAC_READ_SEARCH
+InaccessiblePaths=-/etc/pos -/etc/stp -/etc/shadow -/etc/gshadow
 ProtectSystem=strict
 ProtectHome=true
 PrivateTmp=true

@@ -4,12 +4,14 @@ POS's own data is backed up with [restic](https://restic.net) every 6 hours. The
 POS's own (not the other project's), through B2's S3 API. restic encrypts everything on the host before it leaves; B2
 sees only encrypted blobs.
 
-Two paths go into the copy, named by `POS_BACKUP_SOURCE` in the unit, absolute and separated by `:`:
+Four paths go into the copy, named by `POS_BACKUP_SOURCE` in the unit, absolute and separated by `:`:
 
 | Path | What, and why it is in the copy |
 |---|---|
 | `/var/lib/pos` | the price readings, run rows, pool book, look-alike files and the append-only `history/`: the archive itself, which nothing else holds |
 | `/var/lib/stp-anchors` | the daily manifests and their OpenTimestamps proofs ([anchor.mjs](../scripts/stocks/anchor.mjs)). A manifest can be rebuilt from the data; a proof cannot. One made later attests the day it was made, not the day it covers, so this directory is the only evidence of **when** the archive existed in this form |
+| `/var/lib/stp-agent-test` | the published agent tests (since 27.11): people link their result page and badge for 30 days, and nothing else holds them |
+| `/var/lib/stp-x402` | the ledger of paid passes (since 27.11): a pass someone paid for must survive the host. Client addresses in it are salted hashes. The settlement key is not here and stays in no backup ([PUBLISHING.md](./PUBLISHING.md)) |
 
 Everything else on the host is somewhere else already: the units and the nginx vhost are in git, the release is a
 commit, the exam reports are on the public repository's `exam` branch. `/etc/pos/backup.env` is deliberately **not**
@@ -19,11 +21,11 @@ The data root is the run. Without it the backup refuses (exit 2) rather than wri
 A path beside it that is not on the host does not hold the data back: it is named in `missing_sources` in the status
 file, and `stp-health` raises `backup:sources` for it.
 
-**A path added here has to be readable by `pos-backup`**, which holds no capability at all: directories 0755 and files
-0644, as `StateDirectory=` leaves them by default. A path that exists but cannot be read is not the same as a missing
-one: restic then exits 3, the run counts as failed and no success is recorded, even though the data itself did get
-copied. `/var/lib/stp-analytics` is the case to watch, because `stp-web` leaves it 0700; adding it needs its mode
-settled first.
+**`pos-backup` reads with `CAP_DAC_READ_SEARCH`** (since 27.11), as `stp-health` does: the agent tests and the pass
+ledger are 0700 for user `pos`, and a path that exists but cannot be read is not the same as a missing one (restic
+exits 3, the run counts as failed). With that capability it could read any root-only file, so `/etc/pos`, `/etc/stp`,
+`/etc/shadow` and `/etc/gshadow` do not exist for it; systemd reads `/etc/pos/backup.env` before that applies.
+`/var/lib/stp-analytics` (visit counts) stays out by choice: nothing in it is worth a restore.
 
 | Piece | What |
 |---|---|
@@ -201,13 +203,20 @@ snapshot when a restore target is not wanted.
 On the new host:
 1. Install restic.
 2. Recreate `/etc/pos/backup.env` with step 2, from the password manager and a new B2 key.
-3. Restore as root:
+3. Restore as root, letting systemd read the file:
 
    ```sh
-   ( set -a; . /etc/pos/backup.env; set +a; restic restore latest --tag pos --target / )
+   systemd-run --quiet --wait --pipe --collect -p EnvironmentFile=/etc/pos/backup.env \
+     /usr/bin/restic restore latest --tag pos --target /
    ```
 
-4. **Check that both paths came back, and do not trust `latest` blindly.** `latest` is one snapshot, and a snapshot
+   **Never load `backup.env` with the shell** (`. /etc/pos/backup.env`, `source`, `set -a`). systemd reads its lines
+   literally, the shell does not: a password with `&`, `?`, `>` or a quote is a syntax error, and bash prints the
+   offending line, password included, to the terminal and to anything capturing it (27.11: it happened in a restore
+   drill). Then `chown -R pos:pos /var/lib/stp-agent-test /var/lib/stp-x402` and `chmod 0700` them before `stp-web`
+   starts.
+
+4. **Check that the paths came back, and do not trust `latest` blindly.** `latest` is one snapshot, and a snapshot
    taken while a path was missing does not hold that path, however many older ones do.
 
    ```sh

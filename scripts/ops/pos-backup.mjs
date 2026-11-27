@@ -34,7 +34,8 @@ export const DEFAULTS = Object.freeze({
   // manifests and their OpenTimestamps proofs (scripts/stocks/anchor.mjs): the manifest can be rebuilt from the data,
   // but a proof cannot. A new proof made later would attest today, not the day it covers, so losing that directory
   // loses the only evidence of WHEN the archive existed in this form (data audit, 13.11).
-  sources: '/var/lib/pos:/var/lib/stp-anchors',
+  // Beside them since 27.11: stp-web's published agent tests and its ledger of paid passes (deployment/BACKUP.md).
+  sources: '/var/lib/pos:/var/lib/stp-anchors:/var/lib/stp-agent-test:/var/lib/stp-x402',
   status: '/var/lib/pos-backup/status.json',
 })
 // restic's documented exit codes, said in words in the status file and the alert.

@@ -80,7 +80,7 @@ console.log('every unit')
     const envRoots = values(text, 'Environment').filter((e) => e.startsWith('STOCKS_ROOT_'))
     check(`${name}: STOCKS_ROOT_* (our data) is under /var/lib/pos`, envRoots.every((e) => /=\/var\/lib\/pos\//.test(e)), envRoots.join(' '))
     const amb = words(text, 'AmbientCapabilities'), bound = words(text, 'CapabilityBoundingSet')
-    if (READERS.has(name)) {
+    if (READERS.has(name) || name === 'pos-backup.service') {
       check(`${name}: holds exactly one capability, to read past permissions`, amb.join() === 'CAP_DAC_READ_SEARCH' && bound.join() === 'CAP_DAC_READ_SEARCH', `${amb} / ${bound}`)
     } else {
       check(`${name}: holds no capability at all`, amb.length === 0 && bound.length === 0 && values(text, 'CapabilityBoundingSet').length === 1, `${amb} / ${bound}`)
@@ -105,10 +105,9 @@ console.log('the units that write our data')
     check(`${name}: refuses to start while either chain's history/ holds no archive`, pre.length === 1 && pre[0].includes('for c in base robinhood') && pre[0].includes('/var/lib/pos/$$c/stock-peg/history/*.jsonl') && /exit 1/.test(pre[0]) && /^OnFailure=stp-alert@%n\.service$/m.test(units[name]), pre.join())
   }
   for (const [name, text] of Object.entries(units)) {
-    if (name === 'pos-backup.service') continue
     const hidden = words(text, 'InaccessiblePaths')
     check(`${name}: the owner's secrets (/etc/pos, /etc/stp) do not exist for it`, hidden.includes('-/etc/pos') && hidden.includes('-/etc/stp'), hidden.join(' '))
-    if (READERS.has(name)) check(`${name}: with its capability, the password files are hidden too`, hidden.includes('-/etc/shadow') && hidden.includes('-/etc/gshadow'))
+    if (READERS.has(name) || name === 'pos-backup.service') check(`${name}: with its capability, the password files are hidden too`, hidden.includes('-/etc/shadow') && hidden.includes('-/etc/gshadow'))
   }
   const imp = units['stp-impostors.service']
   check('stp-impostors: reads each chain\'s token dataset explicitly', /--root=\/var\/lib\/pos\/base --token-dataset=\/var\/lib\/stp\/base /.test(imp) && /--root=\/var\/lib\/pos\/robinhood --token-dataset=\/var\/lib\/stp\/robinhood /.test(imp))
