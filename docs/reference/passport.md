@@ -100,9 +100,15 @@ Timestamps are ISO 8601 in UTC. The examples on this page are shortened to `…:
 <a id="shapes"></a>
 ## Two shapes
 
-`in_registry` decides the shape. The address alone decides `in_registry`: it is `true` only when the exact
-lower-cased address is in the issuer registry the server holds for that chain (Coinbase for `base`, Robinhood for
-`robinhood`). A symbol or a name never makes a token listed.
+`in_registry` decides the shape. It is `true` only when the exact lower-cased address is in the issuer registry the
+server holds for that chain (Coinbase for `base`, Robinhood for `robinhood`) **and** the chain backs that record: the
+issuer's factory created the address, read from finalized blocks, confirmed by a second RPC on Base, where the address
+must also carry Coinbase's pinned prefix `0xb200000000000000000000`. A symbol or a name never makes a token listed.
+
+A record on the issuer's list that the chain does not back yet, or contradicts, is held: its passport is a `503` with a
+`reason` (`issuer_prefix_mismatch`, `factory_check_unavailable`, `factory_conflict` or
+`awaiting_factory_confirmation`) and no `in_registry` at all, never `false`. A new listing therefore gets its passport
+some minutes after its creation. The reasons: [methodology](../explanation/methodology.md#how-issuer-listed-is-decided).
 
 | Field | `in_registry: true` | `in_registry: false` |
 |---|---|---|

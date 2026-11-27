@@ -72,6 +72,24 @@ export const HTTP_ROUTES = Object.freeze([
   { id: 'denylist', path: '/denylist.json', params: '', cost: 0, doc: 'route-denylist',
     ask: 'Every look-alike we flag right now, on both chains, in one file: the address, the issuer token it imitates and its own contract, and the evidence. For a wallet, a DEX or a security API to warn before a swap. Not a token list.',
     example: (o) => `curl -s '${o}/denylist.json'` },
+  { id: 'agent-test-start', method: 'POST', path: '/api/agent-test', params: 'label', cost: 0, doc: 'route-agent-test-start',
+    ask: 'Start the agent test: six buying tasks for your agent, graded against the issuers\' own lists frozen now. Nothing is bought. No body starts a test with no label. Outside the free minute, with limits of its own: six starts an hour.',
+    example: (o) => `curl -sS -X POST ${o}/api/agent-test` },
+  { id: 'agent-test-answers', method: 'POST', path: '/api/agent-test/<id>/answers', params: 'answer_key, answers', cost: 0, doc: 'route-agent-test-answers',
+    ask: 'Your agent\'s six answers, each a contract address or a refusal, graded once: passed or not, one sentence per task and the result page\'s URL.',
+    example: (o) => `curl -sS -X POST ${o}/api/agent-test/<test_id>/answers -H 'content-type: application/json' -d '{"answer_key": "ak_...", "answers": [{"n": 1, "address": "0x..."}, {"n": 2, "refuse": true}]}'` },
+  { id: 'agent-test-hide', method: 'POST', path: '/api/agent-test/<id>/hide', params: 'answer_key', cost: 0, doc: 'route-agent-test-hide',
+    ask: 'Hide a result, for the holder of its answer key only.',
+    example: (o) => `curl -sS -X POST ${o}/api/agent-test/<test_id>/hide -H 'content-type: application/json' -d '{"answer_key": "ak_..."}'` },
+  { id: 'agent-test-read', path: '/api/agent-test/<id>', params: '', cost: 0, doc: 'route-agent-test-read',
+    ask: 'A test\'s record: once graded, the receipt itself, which scripts/agent-test-check.mjs checks against us and replays.',
+    example: (o) => `curl -sS ${o}/api/agent-test/<test_id> -o receipt.json && node scripts/agent-test-check.mjs receipt.json` },
+  { id: 'agent-test-page', path: '/agent-test/<id>', params: '', cost: 0, doc: 'route-agent-test-page',
+    ask: 'A graded test\'s result page: Passed or Not passed, each task with the answer and the right one. Never indexed; we list results nowhere.',
+    example: (o) => `${o}/agent-test/<test_id>` },
+  { id: 'agent-test-badge', path: '/agent-test/<id>/badge.svg', params: '', cost: 0, doc: 'route-agent-test-page',
+    ask: 'The result\'s badge for your README, grey after 30 days. See docs/how-to/test-your-agent.md.',
+    example: (o) => `[![Proof of Stock agent test](${o}/agent-test/<test_id>/badge.svg)](${o}/agent-test/<test_id>)` },
   { id: 'payments', path: '/api/status/payments', params: '', cost: 0, doc: 'route-status',
     ask: 'The state of paid passes, for monitoring: on or off, who settles them, and the latest settlement.',
     example: (o) => `curl -s '${o}/api/status/payments'` },
@@ -125,7 +143,7 @@ export function apiPage ({ origin, version, assets, tools, limits, pass = null }
   }
   const route = (r) => `
       <article class="ap-route" id="r-${esc(r.id)}">
-        <div class="ap-route-head"><span class="ap-m">GET</span><code class="ap-path">${esc(r.path)}</code>${r.variant ? `<span class="ap-variant">${esc(r.variant)}</span>` : ''}<span class="ap-cost ${costClass(r.cost)}">${esc(words(r.cost))}</span></div>
+        <div class="ap-route-head"><span class="ap-m">${esc(r.method || 'GET')}</span><code class="ap-path">${esc(r.path)}</code>${r.variant ? `<span class="ap-variant">${esc(r.variant)}</span>` : ''}<span class="ap-cost ${costClass(r.cost)}">${esc(words(r.cost))}</span></div>
         <p class="ap-ask">${esc(fill(r.ask))}</p>
         ${r.params ? `<p class="ap-params"><span>params</span> ${r.params.split(', ').map((p) => `<code>${esc(p)}</code>`).join(' ')}</p>` : ''}
         ${codeBlock(r.example(origin))}
@@ -210,7 +228,7 @@ export function apiPage ({ origin, version, assets, tools, limits, pass = null }
 
     <section class="ap-sec" id="http" aria-labelledby="http-title">
       <div class="ap-sec-head"><h2 id="http-title">HTTP API</h2><span class="ap-badge free">free</span></div>
-      <p class="ap-sec-lede">Read-only JSON over GET at <code>${esc(origin)}</code>. A refused request costs nothing; over the limit the answer says when to come back.</p>
+      <p class="ap-sec-lede">Read-only JSON over GET at <code>${esc(origin)}</code>; only the agent test takes a POST. A refused request costs nothing; over the limit the answer says when to come back.</p>
       <div class="ap-list">${HTTP_ROUTES.map(route).join('')}
       </div>
     </section>

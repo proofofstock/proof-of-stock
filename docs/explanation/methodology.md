@@ -134,11 +134,34 @@ The site holds the last 72 hours of readings in memory for its own statistics; a
 
 ## How "issuer-listed" is decided
 
-**By the exact contract address in the issuer's registry for that chain. Nothing else.**
+**By the exact contract address in the issuer's registry for that chain, backed by the chain itself.**
 
 ```
-listed = registry.some(r => r.address === address.toLowerCase())
+onList = registry.some(r => r.address === address.toLowerCase())
+listed = onList && trustOf(address).trusted   // the list locks, below
 ```
+
+The issuer's list names the address; the chain must back it before it counts as listed (`trustOf` in
+`evm/core/stocks/verify.mjs`, spec `docs/list-locks-tz.md`):
+
+- **The issuer's factory created it.** Each issuer deploys its tokens from one factory contract that logs every
+  creation. A record counts only when our mirror of those logs, read from finalized blocks only, holds its creation.
+- **On Base, a second RPC confirms it**, run by another operator than the one we read the logs from, and the address
+  carries Coinbase's pinned prefix `0xb200000000000000000000`.
+
+A record on the list that fails is **held**: it gets no verdict, never `listed: true` and never `listed: false`.
+`/verify` answers `503` with a `reason`:
+
+| `reason` | When |
+|---|---|
+| `issuer_prefix_mismatch` | on Base, the address lacks the pinned prefix. Checked first, needs nothing else |
+| `factory_check_unavailable` | no factory mirror we trust, or one that never reached a finalized block |
+| `factory_conflict` | the factory never created it although a completed scan covered the time it was listed (after 30 minutes, `CONFIRM_MS`), or a recorded creation the chain no longer holds |
+| `awaiting_factory_confirmation` | a new listing the mirror has not reached yet, or a creation the second RPC has not confirmed yet |
+
+So a genuine new listing becomes listed some minutes after its creation, not at once: the mirror scans every 15
+minutes and only to finalized blocks. The issuer's list as served is still recorded in `list_proof` and the
+`/api/list` archive.
 
 - A symbol, a name or an address that looks similar never makes a token listed.
 - Case does not matter: addresses are compared in lower case.
@@ -321,12 +344,13 @@ The passport shows `latest.price_evidence` from 12.11. A reading recorded before
 
 ## How we check ourselves
 
-The layers above say where each number comes from. These four say how we find out when one of them is wrong. Each
+The layers above say where each number comes from. These five say how we find out when one of them is wrong. Each
 is public and each can be run without us, which is the point: a check you have to take our word for is not one.
 
 | What | How often | What it is for |
 |---|---|---|
-| **The issuer's factory, mirrored from the chain** (`scripts/stocks/issuer-mirror.mjs`) | every 15 min | Each issuer deploys its tokens from one factory that logs every one. We read those logs and compare that set with the API's list, so a verdict on an address carries `issuer_factory` as a second source. The health check alerts when a listed token was never created by the factory, or when the mirror stops updating. It answers "did the issuer's factory create this contract"; it never turns into "listed" |
+| **The issuer's factory, mirrored from the chain** (`scripts/stocks/issuer-mirror.mjs`) | every 15 min | Each issuer deploys its tokens from one factory that logs every one. We read those logs, from finalized blocks only, and compare that set with the API's list, so a verdict on an address carries `issuer_factory` as a second source. A record on the issuer's list counts as listed only when the factory created it (the list locks, under "How issuer-listed is decided"); one it did not is held with no verdict. The health check alerts when a listed record conflicts with the factory, or when the mirror stops updating. It never makes an address listed on its own: a contract the factory created that the issuer does not list is not listed |
+| **A kill switch off our host** (`deployment/KILLSWITCH.md`) | every minute | A Cloudflare Worker in the owner's own account compares the list our server decides against with each issuer's own list, read straight from the issuer. If our server would call listed something the issuer does not list, it trips, and the verdict routes answer `503` until the owner clears it by hand |
 | **A public exam** (`scripts/exam.mjs`, the `exam` branch) | once a day | Every token on the issuers' lists, the week's look-alikes, strangers and listed tokens asked on the other chain, with the right answers read from the issuers themselves. It scores false "listed", false "not listed", real tokens called fakes, look-alikes missed, refusals, `list_proof` against the issuer's list, price evidence replayed on chain, and latency. The report carries the SHA-256 of the question set, so anyone can rerun it; the latest is at [`/api/exam`](../reference/http-api.md#route-exam) |
 | **An outside check** (`scripts/canary.mjs`, on GitHub's runners) | asks for every 30 min; GitHub runs it a few times a day | It runs off our host: the page, the freshness of lists and prices, a known listed token and a known look-alike, the MCP tool list, each issuer list hashed independently from the issuer's own API against our `list_proof`, and a passport's on-chain price evidence called again at its block for the same bytes |
 | **Daily anchors in Bitcoin** (`scripts/stocks/anchor.mjs`) | once a day, 00:20 UTC | A manifest of the SHA-256 of every data file the previous day produced, chained to the day before and timestamped through two OpenTimestamps calendars. It proves when the files existed in this form, so a recorded reading cannot be changed after the fact. It does not prove the reading is right: the exam is for that. The block a proof names is not taken on the calendar's word either: the merkle root its path ends at is compared daily with what block explorers outside OpenTimestamps report for that height, and until two of them agree the answer says the block is claimed, not confirmed. The same hash also goes to Base and Robinhood Chain once a day as plain text, which is reach rather than proof: those two chains are sequenced by the issuers this service checks, which is why Bitcoin is the root. Public at [`/anchors/`](../reference/http-api.md#route-anchors) |

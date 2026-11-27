@@ -318,6 +318,10 @@ NOT an issuer token: 0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee is not in the is
 `structuredContent` is the [passport](./passport.md), as `GET /api/passport` returns it, plus `summary`, and without
 `series_points` unless `include_series` is `true`.
 
+`latest.liquidity` is the pool depth: `deepest_pool_usd`, the size in US dollars of the deepest eligible pool, and
+`thin: true` below `thin_below_usd` (50,000 USD, a constant we chose). It is the pool's size, not a quote.
+[Fields](./passport.md#field-liquidity).
+
 The lead sentence, in order: `ISSUER-LISTED: <symbol> on <chain> is in the <Issuer> registry.`; `Listed but not minted
 on this chain yet, so it does not trade.` when `issuer.minted` is `false` (Base only); `Issuer reference $<price> per token, <age> old.` when there is
 a price; the deepest on-chain price, the premium as a percent and the reading's age, or `No on-chain price
@@ -329,6 +333,7 @@ fraction (`0.0025`).
 | Kind | When |
 |---|---|
 | `isError` | `the issuer registry is not loaded yet` |
+| `isError` | `no verdict: the issuer list names this address, but the chain does not back it`: the record is held by the list locks (see [`verify_stock_tokens`](#tool-verify_stock_tokens)) |
 | `-32602` | missing `chain` or `address`; an address of the wrong form; `hours` not a number or outside 1 to 24; `include_series` not a boolean; any other argument |
 
 ### Limits
@@ -341,7 +346,11 @@ window `latest` is `null` and `notes` has `reading_stale`.
 <a id="tool-verify_stock_tokens"></a>
 ## `verify_stock_tokens`
 
-Check up to 50 addresses against the issuer's registry before buying. The exact address alone decides `listed`.
+Check up to 50 addresses against the issuer's registry before buying. `listed` is decided by the exact address on
+the issuer's list, and only once the chain backs that record: the issuer's factory created it, read from finalized
+blocks, confirmed by a second RPC on Base, where the address must also carry Coinbase's pinned prefix
+`0xb200000000000000000000`. A record the chain does not back is held, with no verdict
+([methodology](../explanation/methodology.md#how-issuer-listed-is-decided)).
 
 ```bash
 curl -s https://proofofstock.xyz/mcp -H 'content-type: application/json' \
@@ -397,7 +406,7 @@ Each result:
 
 | Field | Type | Null means |
 |---|---|---|
-| `listed` | boolean | never null. `true` only when the exact address is in the registry |
+| `listed` | boolean | never null. `true` only when the exact address is in the registry and the chain backs it |
 | `registries_checked` | string[] | never null. `["coinbase:base"]` or `["robinhood:robinhood"]` |
 | `chain`, `address`, `checked_at` | string | never null |
 | `issuer`, `symbol`, `name`, `isin` | string or null | not listed |
@@ -409,7 +418,7 @@ Each result:
 | `registry_age_s` | integer | seconds since the registry was read |
 | `passport` | string | the page for this token |
 | `case` | object or null | the address never had an impostor case. `{ status, source, first_seen_at, flagged_at, archived_at, closed_at, events }` (`events` is a count); see [history](./http-api.md#route-history) |
-| `issuer_factory` | object or null | our chain mirror has not caught up. The second source beside the list: `created: true` with the `block`, `tx` and `log_index` of the issuer factory's event, or `created: false` with the `checked_to_block` it was checked to. It never turns into "listed". [Fields](./passport.md#field-issuer_factory) |
+| `issuer_factory` | object or null | our chain mirror has not caught up. The second source beside the list: `created: true` with the `block`, `tx` and `log_index` of the issuer factory's event, or `created: false` with the `checked_to_block` it was checked to. A listed result needs the factory's creation; the fact alone never makes an address listed. [Fields](./passport.md#field-issuer_factory) |
 | `list_proof` | object or null | `GET /verify` only (MCP carries it once per answer): the issuer list the verdict was decided against, with a command to check it yourself. [Fields](./passport.md#field-list_proof) |
 | `impostor_list_truncated` | boolean | present and `true` only when the address is not listed, not flagged, and the impostor list was cut at its cap |
 
@@ -420,6 +429,7 @@ Each result:
 | Kind | When |
 |---|---|
 | `isError` | the registry is unavailable: never read, or last read more than 900 s ago. `The Base registry is unavailable right now (registry_age_s: …). No answer is given rather than a wrong one; try again in a minute.` The whole call fails; no partial answer |
+| `isError` | an address in the batch is held by the list locks: `No verdict for <address> on <chain>: the issuer's list names it, but the chain does not back it (<reason>). No answer is given for the batch rather than a wrong one.` The `reason` is `issuer_prefix_mismatch`, `factory_check_unavailable`, `factory_conflict` or `awaiting_factory_confirmation` |
 | `-32602` | missing arguments; an empty list or more than 50 addresses; an address of the wrong form (`addresses[1] has the wrong form`) |
 
 ### Limits

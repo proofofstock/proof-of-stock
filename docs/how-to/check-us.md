@@ -10,7 +10,7 @@ not, and how to check each answer yourself, without trusting us, in a few comman
 | **Yesterday's answers** | No | Every day's data files are hashed into a manifest, timestamped in Bitcoin through OpenTimestamps and mirrored on Base and Robinhood Chain. Changing a past day breaks its hash. Check 2 below. |
 | **The issuer's list behind a verdict** | No | Every verdict names the list it was decided against by the SHA-256 of its sorted addresses, with a command that computes the same digest from the issuer's own API. A list we edited would not match. Check 1 below. |
 | **An on-chain price** | No | An on-chain reading carries its block, the exact call and the bytes the chain returned. Ask the chain again at that block and you get the same bytes. Check 3 below. |
-| **Today's single answer** | In principle, yes | The server could say "listed" for a contract that is not. That is why checks 1 to 3 exist, and why the guard package can refuse on its own. A false "listed" is also the finding we pay for (`SECURITY.md`). |
+| **Today's single answer** | In principle, yes | The server could say "listed" for a contract that is not. That is why checks 1 to 3 exist, and why three locks do not rest on our host alone: the chain must back every listed record, a kill switch off our host compares our list with the issuers', and the guard package (from 0.3.0) reads the issuer's own list itself and pins the Base address prefix, so our answer alone can refuse a buy but cannot make one. A false "listed" is also the finding we pay for (`SECURITY.md`). |
 | **That the server runs the public code** | We cannot prove it | Nobody can without special hardware. What protects you instead is that every answer can be checked against the issuer and the chain directly. |
 
 ## Check 1: the verdict, against the issuer's own list
@@ -31,7 +31,10 @@ curl -s "$(curl -s 'https://proofofstock.xyz/verify?chain=base&address=0xb200000
   | grep -c 0xb20000000000000000000078ee7ce2fe4908108c
 ```
 
-`1` means listed. The digests match only while the issuer's list is unchanged; after it changes, the exact list the
+`1` means the issuer lists it. We say "listed" only when the chain backs that too: the issuer's factory created the
+address, read from finalized blocks, and on Base a second RPC confirms it and the address carries Coinbase's pinned
+prefix `0xb200000000000000000000`. A record on the issuer's list that the chain does not back gets a `503` with a
+`reason`, never a verdict, so a new listing turns listed some minutes after its creation. The digests match only while the issuer's list is unchanged; after it changes, the exact list the
 verdict used is still served by its hash at `list_proof.list_url`. To keep the proof of one check for later, ask for a
 receipt: [Keep a receipt of a check](keep-a-receipt.md).
 
@@ -68,6 +71,16 @@ The output is the reading's `return_data`, byte for byte. Details: [the methodol
 - **An outside check** on GitHub's own runners, not on our host: it hashes each issuer's list straight from the issuer
   against our `list_proof`, and asks the chain again for a passport's on-chain price at its block
   ([`scripts/canary.mjs`](https://github.com/proofofstock/proof-of-stock/blob/main/scripts/canary.mjs)).
+- **A kill switch, every minute, off our host.** A Cloudflare Worker in the owner's own account compares the list our
+  server decides against with each issuer's own list, read straight from the issuer. If our server would call listed
+  something the issuer does not list, it trips, and `/verify`, `/api/*`, `/mcp`, `/badge.svg`, `/tokenlist.json`,
+  `/denylist.json` and `/agent-test/*` answer `503` until the owner clears it by hand
+  ([`deployment/KILLSWITCH.md`](https://github.com/proofofstock/proof-of-stock/blob/main/deployment/KILLSWITCH.md),
+  with what it cannot see).
+- **Agent test results, checked without us.**
+  [`scripts/agent-test-check.mjs`](https://github.com/proofofstock/proof-of-stock/blob/main/scripts/agent-test-check.mjs)
+  fetches a result's receipt from us again, checks each frozen issuer list against its hash, replays the draw from the
+  revealed secret and grades the answers again ([Test your agent](test-your-agent.md)).
 - **The code**, MIT, at [proofofstock/proof-of-stock](https://github.com/proofofstock/proof-of-stock), and
   [the threat model](../explanation/threat-model.md): who we do not trust, and what is not defended against.
 

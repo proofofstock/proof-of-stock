@@ -41,6 +41,7 @@ short. The dated record is [CHANGELOG.md](CHANGELOG.md); in one line per release
 | 2026-11-15 | 0.7.0 | Paid passes over the free rate, paid in USDC on Base over x402 |
 | 2026-11-20 | 0.8.0 | Payment alarms reach Telegram; look-alikes found by symbol search across DEX aggregators |
 | 2026-11-24 | 0.9.0 | Ten MCP tools; a Telegram bot, @ProofofStockBot; `/api`, every call with its price; tabs on every page; a badge to embed from each passport; paid passes over x402 v2 too; a Bankr skill in review |
+| 2026-11-27 | Unreleased | List locks: a listed record needs the issuer's factory on chain; a kill switch off our host; `/tokenlist.json` and `/denylist.json`; the agent test; pool depth on every passport; the Demo Agent at `/demo` |
 
 </details>
 
@@ -64,6 +65,10 @@ short. The dated record is [CHANGELOG.md](CHANGELOG.md); in one line per release
       <a href="https://proofofstock.xyz/status">/status</a> ·
       <a href="https://proofofstock.xyz/anchors">/anchors</a> ·
       <a href="https://proofofstock.xyz/api">/api</a> ·
+      <a href="https://proofofstock.xyz/tokenlist.json">/tokenlist.json</a> ·
+      <a href="https://proofofstock.xyz/denylist.json">/denylist.json</a> ·
+      <a href="https://proofofstock.xyz/agent-test">/agent-test</a> ·
+      <a href="https://proofofstock.xyz/demo">/demo</a> ·
       <a href="https://proofofstock.xyz/docs/">Docs</a><br><br>
       <b>MCP</b> <code>https://proofofstock.xyz/mcp</code><br>
       <b>MCP registry</b> <a href="https://registry.modelcontextprotocol.io/v0/servers?search=xyz.proofofstock"><code>xyz.proofofstock/proof-of-stock</code></a><br><br>
@@ -93,9 +98,13 @@ No key and no sign-up for any of these, within the free limit.
 | | |
 |---|---|
 | **Site** | [proofofstock.xyz](https://proofofstock.xyz): paste an address or type a ticker. |
+| **Demo Agent** | [proofofstock.xyz/demo](https://proofofstock.xyz/demo): an agent searches the market for a stock by name, and Proof of Stock tells the original from the rest, live in the browser. Nothing is signed. |
 | **Telegram bot** | [@ProofofStockBot](https://t.me/ProofofStockBot): send it a contract address for the verdict, or a ticker for the issuer's own contract. |
 | **MCP server** | `https://proofofstock.xyz/mcp` (Streamable HTTP, stateless). Ten tools: `find_stock_token`, `list_stock_tokens`, `stock_passport`, `verify_stock_tokens`, `recent_impostors`, `compare_venues`, `verify_anchor`, `largest_gaps`, `data_freshness`, `address_on_date`. |
 | **JSON API** | `GET /verify`, `GET /badge.svg`, `GET /api/passport` and more. Every route and tool with what it costs: [proofofstock.xyz/api](https://proofofstock.xyz/api). Reference: [HTTP API](docs/reference/http-api.md). |
+| **Token list** | [`/tokenlist.json`](https://proofofstock.xyz/tokenlist.json): the issuer-listed tokens that trade in a pool, as a Uniswap token list for a wallet or DEX front end to import. Never an impostor. [Reference](docs/reference/http-api.md#route-tokenlist). |
+| **Look-alike list** | [`/denylist.json`](https://proofofstock.xyz/denylist.json): every look-alike we flag right now, on both chains, in one file, for a wallet or security API to warn before a swap. Not a token list. [Reference](docs/reference/http-api.md#route-denylist). |
+| **Agent test** | [proofofstock.xyz/agent-test](https://proofofstock.xyz/agent-test): `curl -sS -X POST https://proofofstock.xyz/api/agent-test` gives your agent six buying tasks, graded against the issuers' own lists, with a result page and a badge. Nothing is bought. [Test your agent](docs/how-to/test-your-agent.md). |
 | **Guard** | `@proofofstock/guard`, a pre-trade check for Node agents, with a Coinbase AgentKit action. `npm install @proofofstock/guard`, no dependencies. It lives in [`packages/proofofstock-guard`](packages/proofofstock-guard/). |
 | **Bankr skill** | `proof-of-stock`, the same check for Bankr agents, in review for Bankr's skill catalog ([the submission](https://github.com/BankrBot/skills/pull/860)). It lives in [`packages/bankr-skill`](packages/bankr-skill/). |
 | **Past the free limit** | An agent can pay for itself: a short pass in USDC on Base over x402 (v1 or v2), no account. See [Pay per call](docs/how-to/pay-per-call.md). |
@@ -120,9 +129,19 @@ A checker is worth something only if you do not have to take its word. Each of t
   [`scripts/receipt-check.mjs`](scripts/receipt-check.mjs) can check again months later, after the issuer's list has
   changed. See [Keep a receipt of a check](docs/how-to/keep-a-receipt.md).
 - **The issuer's factory, read from the chain.** Each issuer creates its tokens from a factory that logs every one.
-  We read those logs as a second source (`issuer_factory` in each answer, with the block and the transaction), so a
-  verdict never rests on the issuer's HTTP list alone. The health check alerts if a listed token was never created by
-  that factory. Today's counts are on [the status page](https://proofofstock.xyz/status).
+  We read those logs from finalized blocks (`issuer_factory` in each answer, with the block and the transaction), and
+  a record on the issuer's list counts as listed only when that factory created it; on Base a second RPC must confirm
+  it and the address must carry Coinbase's pinned prefix. A record the chain does not back is held with no verdict, so
+  a verdict never rests on the issuer's HTTP list alone, and a new listing turns listed some minutes after its
+  creation. Today's counts are on [the status page](https://proofofstock.xyz/status).
+- **A kill switch off our host.** A Cloudflare Worker in the owner's own account compares our list with each issuer's
+  own once a minute. If our server would call listed something the issuer does not list, it trips, and every verdict
+  route answers `503` until the owner clears it ([`deployment/KILLSWITCH.md`](deployment/KILLSWITCH.md)).
+- **A guard that checks the issuer itself.** From 0.3.0, `@proofofstock/guard` reads the issuer's own list beside our
+  answer and pins the Base address prefix, so our answer alone can refuse a buy but cannot make one.
+- **The agent test, checked without us.** A result's receipt is rechecked and replayed by
+  [`scripts/agent-test-check.mjs`](scripts/agent-test-check.mjs): the frozen issuer lists against their hashes, the
+  draw from the revealed secret, the grade again.
 - **Prices you can replay.** An on-chain price carries its block and the exact call; `eth_call` at that block returns
   the same bytes.
 - **A public exam, every day.** Every token on the issuers' lists, plus the week's look-alikes, strangers and tokens asked on the wrong chain: questions whose right answer comes from the issuers, not from us. The reports are in the
@@ -151,8 +170,10 @@ curl -s 'https://proofofstock.xyz/verify?chain=base&address=0x35b76a8fbfbac68c44
 }
 ```
 
-`listed` is `true` only when this exact address is in the registry. `impostor.listed_address` is the contract the issuer
-actually lists. A `503` means the registry could not be read: that is no answer, not "not listed". More in
+`listed` is `true` only when this exact address is in the registry and the chain backs it: the issuer's factory
+created it. `impostor.listed_address` is the contract the issuer actually lists. A `503` is no answer, not "not
+listed": the registry could not be read, the chain does not back the record yet (its `reason` says why), or the kill
+switch is tripped. More in
 [Check a contract before listing or buying it](docs/how-to/check-before-listing.md).
 
 ## What it does not do

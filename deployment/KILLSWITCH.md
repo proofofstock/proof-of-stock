@@ -48,6 +48,8 @@ Code: `deployment/cloudflare/killswitch/`. `logic.mjs` holds the rule, `worker.m
 - `/mcp*`
 - `/badge.svg*`
 - `/tokenlist.json*`
+- `/denylist.json*`
+- `/agent-test/*`: the agent test's result pages and badges (its API is under `/api/*` already)
 
 **How a path is matched.** It is matched as the origin will see it: `//verify`, `/%76erify` and `/a/../verify` are all
 `/verify`. Also turn on Cloudflare's URL normalization for the zone (Rules → Settings → Normalize incoming URLs).

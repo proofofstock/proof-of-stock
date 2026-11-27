@@ -33,8 +33,8 @@ const costOf = (c) => unesc((c.match(/<span class="ap-cost [^"]*">([^<]*)<\/span
 console.log('every route the reference documents, and every tool the server offers')
 const onPage = render(PASS), offPage = render(null)
 {
-  // The headings of docs/reference/http-api.md name each route: "## `GET /verify`", "### `GET /api/pass`", and two in one.
-  const documented = [...new Set([...httpDoc.matchAll(/^#{2,3} .*$/gm)].flatMap((m) => [...m[0].matchAll(/`GET (\/[^`]*)`/g)].map((x) => x[1])))]
+  // The headings of docs/reference/http-api.md name each route: "## `GET /verify`", "### `POST /api/agent-test`", and two in one.
+  const documented = [...new Set([...httpDoc.matchAll(/^#{2,3} .*$/gm)].flatMap((m) => [...m[0].matchAll(/`(?:GET|POST) (\/[^`]*)`/g)].map((x) => x[1])))]
   check('the reference documents at least fifteen routes (the parse found them)', documented.length >= 15, documented.join(' '))
   const paths = new Set([...onPage.matchAll(/<code class="ap-path">([^<]*)<\/code>/g)].map((m) => unesc(m[1])))
   const text = unesc(onPage)

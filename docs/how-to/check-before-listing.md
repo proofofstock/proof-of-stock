@@ -35,11 +35,18 @@ Read it in this order:
 1. **The HTTP status.**
    - `200`: an answer.
    - `400`: the chain is not `base` or `robinhood`, or the address is not `0x` and 40 hex characters.
-   - `503`: the registry has not been read in the last 15 minutes. **This is no answer.** Do not treat it as "not
-     listed". Retry after the `Retry-After` delay.
+   - `503`: **no answer.** Do not treat it as "not listed". Retry after the `Retry-After` delay. It comes in three
+     kinds:
+     - the registry has not been read in the last 15 minutes;
+     - the issuer's list names the address, but the chain does not back it yet or contradicts it. The body carries a
+       `reason`: `issuer_prefix_mismatch`, `factory_check_unavailable`, `factory_conflict` or
+       `awaiting_factory_confirmation`. A genuine new listing answers `awaiting_factory_confirmation` for some minutes
+       after its creation; `factory_conflict` and `issuer_prefix_mismatch` mean the chain contradicts the list;
+     - the [kill switch](../reference/http-api.md#kill-switch) is tripped.
    - `429`: over the rate limit. Wait a minute.
-2. **`listed`.** `true` only when the exact address is in the registry. Then `symbol`, `name` and `isin` are the
-   issuer's.
+2. **`listed`.** `true` only when the exact address is in the registry and the chain backs it: the issuer's factory
+   created it, read from finalized blocks; on Base a second RPC confirms it and the address carries Coinbase's pinned
+   prefix `0xb200000000000000000000`. Then `symbol`, `name` and `isin` are the issuer's.
 3. **`impostor`.** Set only when the token is not listed **and** copies a listed symbol (`registry_symbol`), the
    issuer's naming (`issuer_name_suffix`) or a listed company's whole name (`registry_name`). `listed_address` is the issuer-listed contract, when there is one.
 4. **`listed_on_other_chain`.** The address is listed, but on the other chain. Check that you asked about the right
@@ -92,7 +99,8 @@ curl -s https://proofofstock.xyz/mcp \
 ```
 
 - `structuredContent.results` holds one `/verify` answer per address, in the order you sent them.
-- If the registry is unavailable, the whole call fails with `isError: true`. No partial answer is given.
+- If the registry is unavailable, or one address is held because the chain does not back it, the whole call fails with
+  `isError: true`, naming the held address and its reason. No partial answer is given.
 - A batch of n addresses costs ⌈n/10⌉ units of the 60-per-minute limit.
 
 ## Guard a trading agent with `@proofofstock/guard`
@@ -103,7 +111,7 @@ It has no dependencies and needs Node 20.19 or newer.
 ```js
 import { createGuard } from '@proofofstock/guard'
 
-const guard = createGuard()   // { endpoint, fetchImpl, timeoutMs: 8000, failOpen: false }
+const guard = createGuard()   // { endpoint, fetchImpl, timeoutMs: 8000, failOpen: false, crossCheck: true outside a browser }
 
 const d = await guard.beforeBuy({
   chain: 'base',
@@ -118,23 +126,43 @@ if (!d.allow) {
 }
 ```
 
-`beforeBuy` calls `GET /verify` once and returns `{ allow, decision, reason, use_instead, verify }`:
+`beforeBuy` calls `GET /verify` once and returns `{ allow, decision, reason, use_instead, verify }`.
+
+**It does not take our word for "listed"** (from 0.3.0). A listed answer is believed only if:
+
+- on Base, the address has the form every Coinbase stock token has, `0xb2` and twenty zero hex digits, pinned in the
+  package;
+- with `crossCheck` (on by default outside a browser), the issuer's own list, read by the guard itself and kept for a
+  minute, has the address. In a browser the issuers' APIs cannot be read (they send no CORS headers), so there
+  `crossCheck` is off and the prefix check stands alone.
+
+So a proofofstock.xyz that was broken into can still refuse a buy, but cannot make one.
 
 | `decision` | `allow` | When |
 |---|---|---|
-| `listed` | `true` | the address is issuer-listed, and matches `claimedSymbol` if you gave one |
+| `listed` | `true` | the address is issuer-listed, matches `claimedSymbol` if you gave one, and passes the checks above |
 | `wrong_stock` | `false` | the address is issuer-listed, but as a different stock from `claimedSymbol` |
 | `impostor` | `false` | not listed, and copies a listed symbol or the issuer's naming |
 | `not_listed` | `false` | not listed, no mimicry seen |
-| `unknown` | `failOpen` | the check could not be made: a 503, a 429, a timeout or a network error, or a listed answer without its issuer-list proof |
+| `unknown` | `failOpen`, with exceptions below | the check could not be made: a 503, a 429, a timeout or a network error, a listed answer without its issuer-list proof, or an issuer list the guard could not read |
+| `unknown` | `false` | a listed answer that fails the Base prefix, or that names another issuer's list |
 | `invalid_input` | `false` | the chain or the address is not one the guard can check |
+
+Two `unknown` answers are refused whatever `failOpen` says, because they are answers, not outages:
+
+- a listed answer for an address that the issuer's own list, read just now, does not have (from 0.3.0);
+- from 0.3.1 (in this repository), a `503` whose `reason` is `factory_conflict` or `issuer_prefix_mismatch`: the chain
+  contradicts the issuer's list.
+
+Any other `503`, an outage or a listing only `awaiting_factory_confirmation`, is still decided by `failOpen`, and the
+`reason` is named in the decision.
 
 `claimedSymbol` accepts either issuer's form: `NVDA` and `NVDAc` name the same stock. Only a Coinbase-style symbol
 (upper-case letters, digits or dots, then a lower-case `c`) loses its trailing `c`; `sndkc` stays `SNDKC`.
 
 **`failOpen`.** By default the guard fails closed: if it cannot check, it does not allow the buy. Set
 `createGuard({ failOpen: true })` only if a missed check is acceptable to you. The `reason` then says the buy was
-allowed because `failOpen` is set.
+allowed because `failOpen` is set. It never lets through the contradicted answers listed above.
 
 **Bad input is a refusal, not a throw.** A chain other than `base` or `robinhood`, or a malformed address, gives the
 decision `invalid_input`; `beforeBuy` never rejects on it.

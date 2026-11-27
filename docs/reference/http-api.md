@@ -33,8 +33,11 @@ curl -s 'https://proofofstock.xyz/verify?chain=base&address=0xaaaaaaaaaaaaaaaaaa
 - [`GET /api/matrix`](#route-matrix)
 - [`GET /api/status`](#route-status)
 - [`GET /api/exam`](#route-exam)
+- [`GET /anchors/`](#route-anchors)
 - [`GET /tokenlist.json`](#route-tokenlist)
 - [`GET /denylist.json`](#route-denylist)
+- [The agent test](#route-agent-test)
+- [Paid passes (x402)](#paid-passes)
 - [Monitoring](#monitoring)
 
 <a id="basics"></a>
@@ -43,10 +46,10 @@ curl -s 'https://proofofstock.xyz/verify?chain=base&address=0xaaaaaaaaaaaaaaaaaa
 | | |
 |---|---|
 | Base URL | `https://proofofstock.xyz`. The proxy maps the domain's `/` onto the app's `/stocks/`, so `/api/find` here is `/stocks/api/find` in the app |
-| Methods | `GET` and `HEAD`. Any other method is refused by the proxy (403) |
+| Methods | `GET` and `HEAD`, except `POST` on [the agent test](#route-agent-test) and on [`/mcp`](./tools.md). Any other method is refused by the proxy (403) |
 | Rate limit | 60 units in any 60 seconds per client IP (IPv6: per /56) across `/verify`, `/api/*` and `/mcp` together. A request costs 1 unit; `/api/passport` costs 3. The window slides by the second, so it is the same wherever a minute begins, and a refused request costs nothing. Over it: 429, `{ "error": "too many requests, try again in a minute" }`, `Retry-After: 60` (where paid passes are on, the refusal is instead a [402 that offers the pass](#paid-passes)). The proxy also caps 10 requests per second (burst 40) and 20 open connections per IP |
-| Not rate limited by the app | `/badge.svg`, the page and its assets |
-| Errors | JSON `{ "error": "<words>" }`. 400 bad input, 404 unknown path (`{ "error": "not found" }`), 503 a registry not loaded yet, 500 `{ "error": "internal error" }`. Error texts are fixed public sentences; internal causes are never returned |
+| Not rate limited by the app | `/badge.svg`, `/tokenlist.json`, `/denylist.json`, `/anchors/`, the [agent test](#route-agent-test) (it has limits of its own), the pages and their assets |
+| Errors | JSON `{ "error": "<words>" }`. 400 bad input, 404 unknown path (`{ "error": "not found" }`), 503 no verdict (a registry not loaded yet or stale, a record [held by the list locks](#route-verify), or the [kill switch](#kill-switch)), 500 `{ "error": "internal error" }`. Error texts are fixed public sentences; internal causes are never returned |
 | Freshness | Every answer comes from memory. The server rereads the issuer registries and the readings every 300 s; nothing on the request path calls out |
 | Units | as in the [passport](./passport.md#units): premium and spread are fractions, prices USD per token, ages integer seconds |
 | `chain` | `base` (Coinbase registry, chain id 8453) or `robinhood` (Robinhood registry, chain id 4663) |
@@ -55,7 +58,16 @@ curl -s 'https://proofofstock.xyz/verify?chain=base&address=0xaaaaaaaaaaaaaaaaaa
 Every answer carries `Content-Security-Policy`, `X-Content-Type-Options: nosniff`, `Referrer-Policy:
 strict-origin-when-cross-origin` and `X-Frame-Options: DENY`.
 
-Other public paths: `/` (the page; `/?base=NVDAc` and `/?chain=base&address=0x…` open one token), `/docs/`,
+<a id="kill-switch"></a>
+**The kill switch.** A Cloudflare Worker outside our host compares, once a minute, the list our server decides against
+with each issuer's own list. If our server would call listed something the issuer does not list, it trips, and until
+the owner clears it by hand every verdict route answers `503` from the switch: `/verify`, `/api/*`, `/mcp`,
+`/badge.svg`, `/tokenlist.json`, `/denylist.json` and `/agent-test/*`. Treat that `503` like any other: no answer, never
+"not listed". How it works and what trips it: [`deployment/KILLSWITCH.md`](https://github.com/proofofstock/proof-of-stock/blob/main/deployment/KILLSWITCH.md).
+
+Other public paths: `/` (the page; `/?base=NVDAc` and `/?chain=base&address=0x…` open one token), `/demo` (the Demo
+Agent: an agent's search and buy, run live in the browser, with nothing signed), `/agent-test` (the agent test, for
+people), `/docs/`,
 `/docs/changelog.md`, `/llms.txt`, `/llms-full.txt`, and the MCP server at [`/mcp`](./tools.md).
 
 ---
@@ -108,18 +120,26 @@ us. See [`list_proof`](./passport.md#field-list_proof).
 `issuer_factory` is the second source beside the list: whether the issuer's own token factory on the chain created
 this contract, read from our chain mirror. `created: true` carries the `block`, `tx` and `log_index` of the factory's
 event; `created: false` carries the `checked_to_block` it was checked to; the whole field is `null` while the mirror
-is catching up. It never turns into "listed", in either direction: a contract the factory made but the issuer does
-not list is still not listed, and a 503 stays a 503. Fields:
-[`issuer_factory`](./passport.md#field-issuer_factory).
+is catching up. Fields: [`issuer_factory`](./passport.md#field-issuer_factory).
+
+**The list locks.** A record on the issuer's list counts as listed only when the chain backs it: the issuer's factory
+created that address, read from finalized blocks, and on Base a second RPC confirms it and the address carries
+Coinbase's pinned prefix `0xb200000000000000000000`. A record that fails is held: no verdict, a `503` with a `reason`
+(table below), never `listed: true` and never `listed: false`. A genuine new listing therefore becomes listed some
+minutes after its creation, not at once. The other way round, a contract the factory made that the issuer does not list
+is still not listed. With `addresses`, one held address fails the whole batch with its `503`, naming it. The rule:
+[methodology](../explanation/methodology.md#how-issuer-listed-is-decided).
 
 | Status | Body | Headers |
 |---|---|---|
 | 200 | the result | `Cache-Control: public, max-age=300` when listed, `max-age=60` otherwise; `Access-Control-Allow-Origin: *` |
 | 400 | `chain must be one of base, robinhood` or `address must be 0x followed by 40 hex characters` | CORS |
 | 503 | `{ "error": "registry unavailable", "registries_checked", "chain", "address", "registry_age_s", "checked_at" }`: the registry was never read, or was read more than 900 s ago | `Cache-Control: no-store`, `Retry-After: 60`, CORS |
+| 503 | `{ "error": "no verdict: the issuer list names this address, but the chain does not back it", "reason", "held_since", "registries_checked", "chain", "address", "registry_age_s", "checked_at", "issuer_factory" }`: the record is held by the list locks. `reason` is `issuer_prefix_mismatch` (on Base, no pinned prefix), `factory_check_unavailable` (no factory mirror we trust), `factory_conflict` (the factory never created it, or the chain took a creation back) or `awaiting_factory_confirmation` (a new listing not yet seen created, or not yet confirmed by the second RPC). `held_since` is when the address first appeared on the issuer's list, or null | `Cache-Control: no-store`, `Retry-After: 60`, CORS |
+| 503 | from the [kill switch](#kill-switch), while it is tripped | |
 | 429 | rate limit | `Retry-After: 60`, CORS |
 
-A registry the server cannot read is never answered `listed: false`.
+A registry the server cannot read, or a record it holds, is never answered `listed: false`.
 
 ---
 
@@ -220,6 +240,7 @@ curl -s 'https://proofofstock.xyz/api/passport?chain=base&address=0xaaaaaaaaaaaa
 | 200 | the passport | `Cache-Control: public, max-age=60` |
 | 400 | `chain must be one of base, robinhood`, or `address must be 0x followed by 40 hex characters` | |
 | 503 | `{ "error": "the issuer registry is not loaded yet", "detail": "the issuer registry could not be read" or null }` | `Retry-After: 30` |
+| 503 | `{ "error": "no verdict: the issuer list names this address, but the chain does not back it", "reason", "held_since", "chain", "address", "issuer_factory", "registry_age_s" }`: a record held by the [list locks](#route-verify), with the same `reason` values as `/verify`. There is no `in_registry` in it, never `false` | |
 
 The chain is checked first, then whether the registry is loaded, then the address: a bad address while the registry
 is loading answers 503.
@@ -647,39 +668,9 @@ a JSON of warnings that no wallet imports as tokens.
 
 **When an issuer list is stale.** 503, `{ "error": ... }`, `Retry-After: 60`: no list is built from an old copy, the
 same rule every verdict keeps. Before the list is served it is checked against the format's rules; a list that fails
-them is withheld (500) rather than served.
+them is withheld (500) rather than served. While the [kill switch](#kill-switch) is tripped, `503` from the switch.
 
 ---
-
-<a id="paid-passes"></a>
-## Paid passes (x402)
-
-A sporadic reader never pays: the free minute in [Basics](#basics) is the whole product for them. A client that needs
-more than the free minute can buy a **pass**: 0.01 USDC on Base for 10 minutes at 600 units a minute (ten times the
-free rate), bound to its client key on the server. No account and no key: every route above works the same under a pass, and `/mcp` is under the same limit and the same pass. The payment is
-[x402](https://www.x402.org) over HTTP, settled on chain by the server itself; the how-to with client code is
-[how to pay per call](../how-to/pay-per-call.md).
-
-A refused request answers **402** with the offer:
-
-```json
-{
-  "x402Version": 1,
-  "error": "the free minute is used up; pay 0.01 USDC on base for a 10-minute pass at 600 units a minute",
-  "accepts": [ { "scheme": "exact", "network": "base", "maxAmountRequired": "10000",
-    "resource": "https://proofofstock.xyz/api/passport", "payTo": "0x…",
-    "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", "extra": { "name": "USD Coin", "version": "2" } } ]
-}
-```
-
-The same 402 carries the offer as x402 v2 in the `PAYMENT-REQUIRED` header: base64 JSON with `x402Version: 2`, a
-`resource` object (`url`), and `accepts` with `network: "eip155:8453"` and `amount: "10000"`. One offer, two wrappers.
-
-Retrying the same request with the payment settles it: `X-PAYMENT` (v1) or `PAYMENT-SIGNATURE` (v2, the offer echoed
-as `accepted`), each carrying the signed EIP-3009 `transferWithAuthorization`. That request is served, and the
-settlement receipt rides out in the version paid: `X-PAYMENT-RESPONSE` or `PAYMENT-RESPONSE` (base64 JSON: `success`,
-`transaction`, `network`, `payer`). From then until the pass ends the limiter measures that client against 600 units a
-minute and asks for nothing more.
 
 <a id="route-denylist"></a>
 ## `GET /denylist.json`
@@ -716,7 +707,118 @@ its own shape and no `tokens` array.
 **When it is not answered.**
 - `503` with `Retry-After: 60` while either chain's list of flags cannot be read. No half list is ever served.
 - `500` if the file fails its own check: no token fields, no stranger's text, no duplicate.
-- While the [kill switch](../../deployment/KILLSWITCH.md) is tripped, `503` from the switch.
+- While the [kill switch](#kill-switch) is tripped, `503` from the switch.
+
+---
+
+<a id="route-agent-test"></a>
+## The agent test
+
+Six buying tasks for an agent, graded against the issuers' own lists frozen at the start; nothing is bought. The
+walk-through, with PowerShell forms: [Test your agent](../how-to/test-your-agent.md). These routes are outside the
+per-client rate limit in [Basics](#basics) and have their own: six starts an hour from one client, and twenty answer or
+hide requests a minute. A body, where one is sent, must be `application/json` and at most 8 KB: otherwise `415`, `400`
+(not JSON) or `413`. Every answer of the API is `Cache-Control: no-store`. While the [kill switch](#kill-switch) is
+tripped, all of them answer `503` from the switch.
+
+<a id="route-agent-test-start"></a>
+### `POST /api/agent-test`
+
+Starts a test.
+
+```sh
+curl -sS -X POST https://proofofstock.xyz/api/agent-test
+curl -sS -X POST https://proofofstock.xyz/api/agent-test -H 'content-type: application/json' -d '{"label": "My Agent"}'
+```
+
+A POST with no body starts a test with no label, in any shell. `label` is optional: 1 to 40 ASCII letters, digits,
+spaces and `-._&`, naming no issuer, chain or us, and claiming no approval.
+
+| Status | Body |
+|---|---|
+| 201 | `{ test_id, answer_key, expires_at, tasks_sha256, list_proof, tasks, how_to_answer }`. `tasks` is six `{ n, chain, text }`; `list_proof` is the hash of each chain's frozen issuer list; answers are taken for 15 minutes. Keep `answer_key` out of the agent's prompt |
+| 400 | the label is refused, with why |
+| 429 | over six starts in an hour from this client; `Retry-After: 600` |
+| 503 | an issuer list is not fresh, there is not enough material for a fair test, or the test store is full: try again later |
+
+<a id="route-agent-test-answers"></a>
+### `POST /api/agent-test/<id>/answers`
+
+The agent's answers, graded once.
+
+```sh
+curl -sS -X POST https://proofofstock.xyz/api/agent-test/<test_id>/answers -H 'content-type: application/json' -d '{"answer_key": "ak_...", "answers": [{"n": 1, "address": "0x..."}, {"n": 2, "refuse": true}]}'
+```
+
+Exactly six entries, `n` 1 to 6, each with one of `address` or `"refuse": true`.
+
+| Status | Body |
+|---|---|
+| 200 | `{ passed, right, of, sentences, result_url }`. A repeat with the right key returns the first grade unchanged |
+| 400 | the answers are malformed, with why. The test is not used up |
+| 403 | `wrong answer_key` |
+| 404 | `no such test` |
+| 410 | the answer window has closed, or the result is hidden |
+| 429 | too many answers from this client in a minute |
+| 503 | the test store is full; the test is not used up |
+
+<a id="route-agent-test-hide"></a>
+### `POST /api/agent-test/<id>/hide`
+
+Hides a result, for the key's holder only: `{"answer_key": "ak_..."}`. `200` with `{ "hidden": true }`; `403` with a
+wrong key, `404` for no such test, `429` over the per-minute limit. A hidden result answers `410` everywhere after.
+
+<a id="route-agent-test-read"></a>
+### `GET /api/agent-test/<id>`
+
+The test's record. Graded: the receipt itself, byte for byte as stored, which `scripts/agent-test-check.mjs` checks
+against us and replays. Not graded yet: `{ test_id, started_at, expires_at, tasks_sha256, tasks }`. `404` for no such
+test; `410` when it is hidden, or ungraded past its window.
+
+```sh
+curl -sS https://proofofstock.xyz/api/agent-test/<test_id> -o receipt.json
+node scripts/agent-test-check.mjs receipt.json
+```
+
+<a id="route-agent-test-page"></a>
+### `GET /agent-test/<id>` and `GET /agent-test/<id>/badge.svg`
+
+The result page ("Passed" or "Not passed", each task with the answer and the right one) and its badge, an SVG that
+turns grey after 30 days. A graded test only: otherwise `404`, or `410` when hidden, as plain text. Both are
+`X-Robots-Tag: noindex` and `Cache-Control: no-store`; we list results nowhere. `/agent-test` itself is the page for
+people.
+
+---
+
+<a id="paid-passes"></a>
+## Paid passes (x402)
+
+A sporadic reader never pays: the free minute in [Basics](#basics) is the whole product for them. A client that needs
+more than the free minute can buy a **pass**: 0.01 USDC on Base for 10 minutes at 600 units a minute (ten times the
+free rate), bound to its client key on the server. No account and no key: every route above works the same under a pass, and `/mcp` is under the same limit and the same pass. The payment is
+[x402](https://www.x402.org) over HTTP, settled on chain by the server itself; the how-to with client code is
+[how to pay per call](../how-to/pay-per-call.md).
+
+A refused request answers **402** with the offer:
+
+```json
+{
+  "x402Version": 1,
+  "error": "the free minute is used up; pay 0.01 USDC on base for a 10-minute pass at 600 units a minute",
+  "accepts": [ { "scheme": "exact", "network": "base", "maxAmountRequired": "10000",
+    "resource": "https://proofofstock.xyz/api/passport", "payTo": "0x…",
+    "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", "extra": { "name": "USD Coin", "version": "2" } } ]
+}
+```
+
+The same 402 carries the offer as x402 v2 in the `PAYMENT-REQUIRED` header: base64 JSON with `x402Version: 2`, a
+`resource` object (`url`), and `accepts` with `network: "eip155:8453"` and `amount: "10000"`. One offer, two wrappers.
+
+Retrying the same request with the payment settles it: `X-PAYMENT` (v1) or `PAYMENT-SIGNATURE` (v2, the offer echoed
+as `accepted`), each carrying the signed EIP-3009 `transferWithAuthorization`. That request is served, and the
+settlement receipt rides out in the version paid: `X-PAYMENT-RESPONSE` or `PAYMENT-RESPONSE` (base64 JSON: `success`,
+`transaction`, `network`, `payer`). From then until the pass ends the limiter measures that client against 600 units a
+minute and asks for nothing more.
 
 <a id="route-pass"></a>
 ### `GET /api/pass`

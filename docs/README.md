@@ -54,6 +54,10 @@ Every field, tool and route.
 - [The passport](reference/passport.md): every field and note code.
 - [MCP tools](reference/tools.md): inputs and answers of each tool.
 - [HTTP API](reference/http-api.md): routes, status codes, caching and rate limits.
+- [The token list, `/tokenlist.json`](reference/http-api.md#route-tokenlist): the issuer-listed tokens that trade in a
+  pool, as a Uniswap token list for a wallet or DEX front end to import.
+- [The look-alike list, `/denylist.json`](reference/http-api.md#route-denylist): every look-alike flagged right now,
+  in one file, for a wallet or security API to warn before a swap.
 
 ## Explanation
 
@@ -64,6 +68,8 @@ Why it works the way it does.
 
 ## Also
 
+- [The Demo Agent](https://proofofstock.xyz/demo): an agent searches the market for a stock by name and Proof of
+  Stock tells the original from the rest, live in the browser; nothing is signed.
 - [Threat model](explanation/threat-model.md): who this service does not trust and what it does about each of them,
   what it refuses to claim, what it does not defend against, and what a successful attack would look like.
 - [Legal](legal.md): not advice, no affiliation, data as is, licence.
