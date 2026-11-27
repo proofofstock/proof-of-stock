@@ -1,9 +1,9 @@
 {
  "version": 1,
- "day": "2026-11-26",
+ "day": "2026-11-27",
  "site": "https://proofofstock.xyz",
- "started_at": "2026-11-26T17:15:46.692Z",
- "finished_at": "2026-11-26T17:18:09.940Z",
+ "started_at": "2026-11-27T16:56:48.015Z",
+ "finished_at": "2026-11-27T16:59:11.791Z",
  "set": {
   "counts": {
    "A": 640,
@@ -11,7 +11,7 @@
    "C": 26,
    "D": 20
   },
-  "sha256": "4fab39c0a3a95138ca227322d864632bcf300df4b6e88c248f5c21e45e3250d2",
+  "sha256": "b3667d535c45bbfac1f777f12706ccbb64baf5391cf34b1e36f6ca0396896880",
   "issuer_list_sha256": {
    "base": "5e21f25cd9d143828b8d9dcda1cf132a5f8daeb8c120a5be3898930b3e9de211",
    "robinhood": "3726b934cfecef05bc247c7a905e313565c30e55a6d62e5ed102bbe0df32e7f7"
@@ -47,8 +47,8 @@
    "none": 0
   },
   "verify_ms": {
-   "p50": 432,
-   "p95": 460,
+   "p50": 414,
+   "p95": 827,
    "batches": 16
   }
  },

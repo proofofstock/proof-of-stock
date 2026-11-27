@@ -1,6 +1,6 @@
-# Proof of Stock exam, 2026-11-26
+# Proof of Stock exam, 2026-11-27
 
-Asked https://proofofstock.xyz about 746 tokens whose right answer comes from the issuers, not from us. Set SHA-256 `4fab39c0a3a95138ca227322d864632bcf300df4b6e88c248f5c21e45e3250d2`; rerun with `node scripts/exam.mjs`.
+Asked https://proofofstock.xyz about 746 tokens whose right answer comes from the issuers, not from us. Set SHA-256 `b3667d535c45bbfac1f777f12706ccbb64baf5391cf34b1e36f6ca0396896880`; rerun with `node scripts/exam.mjs`.
 
 | Check | Result | Target |
 |---|---|---|
@@ -13,7 +13,7 @@ Asked https://proofofstock.xyz about 746 tokens whose right answer comes from th
 | Base list_proof equals the hash of Coinbase's list | yes | yes |
 | Robinhood list_proof equals the hash of Robinhood's list | yes | yes |
 | Price evidence replayed on chain, same bytes | 5 of 5 on-chain (0 aggregator-only) | all on-chain |
-| /verify batch latency p50 / p95 | 432 / 460 ms | reported as is |
+| /verify batch latency p50 / p95 | 414 / 827 ms | reported as is |
 
 Set: A 640 issuer-listed, B 60 look-alikes flagged this week, C 26 strangers, D 20 asked on the other chain.
 
