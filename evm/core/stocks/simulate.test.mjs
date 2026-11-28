@@ -154,8 +154,8 @@ console.log('the lead sentence')
   check('creator\'s text stays out of our sentence: a look-alike\'s own symbol and name', !imp.summary.includes('TSLAc-FREE') && !imp.summary.includes(evil))
   const okSim = { ...sim, result: 'would_succeed', revert: null, amount_out_simulated_base_units: '24899000', gas_units: 150000 }
   const s1 = build({ extra: { simulation: okSim } }).summary
-  check('never "would go through" when the result rests on an override: what it lacks, then what was supplied', /As 0x1111…1111 stands it lacks the USDC, the approval and the gas; with those supplied, the simulated swap did not revert at block 30000000/.test(s1) && !/go through/.test(s1), s1)
-  check('a wallet that has everything: "the simulated swap from this wallet did not revert"', /The simulated swap from 0x1111…1111 did not revert/.test(build({ extra: { simulation: { ...okSim, simulated_with: [] } } }).summary))
+  check('never "would go through" when the result rests on an override: what it lacks, then what was supplied', /As the wallet stands it lacks the USDC, the approval and the gas; with those supplied, the simulated swap did not revert at block 30000000/.test(s1) && !/go through/.test(s1), s1)
+  check('a wallet that has everything: "the simulated swap from this wallet did not revert"', /The simulated swap from the wallet did not revert/.test(build({ extra: { simulation: { ...okSim, simulated_with: [] } } }).summary))
   const leads = [build(), closed, thin, dirty, imp, build({ extra: { simulation: okSim } }), build({ quote: { result: 'unknown', reason: 'aggregator_unavailable' } }), build({ quote: { result: 'no_route' } }),
     ...['not_listed', 'not_minted', 'paused', 'paused_unknown'].map((r) => ({ summary: leadOf({ outcome: 'refused', chain: 'base', verdict: { reason: r, address: X, symbol: 'TSLAc' } }) })),
     ...['ticker_not_exact', 'ticker_ambiguous'].map((r) => ({ summary: leadOf({ outcome: 'refused', chain: 'robinhood', verdict: { reason: r, candidates: [] } }) }))]
@@ -201,7 +201,7 @@ console.log('the issuer\'s B20 rules in the answer')
   check('...no word of advice there either', !BANNED_WORDS.test(withoutAllowed(venue.summary)))
   const refusedSim = { result: 'would_revert', reason: 'wallet_not_allowed_by_issuer', wallet: W, head_block: 30000000, rpc: 'public', wallet_state: { stable_balance_enough: null, allowance_enough: null, gas_balance_enough: null }, simulated_with: [], amount_out_simulated_base_units: null, gas_units: null, revert: { kind: 'issuer_policy', probe: null, reason: null, selector: null, data: null, untrusted_text: 'x' }, issuer_policy: { receive: false, send: true, head_block: 30000000 } }
   const w = build({ extra: { simulation: refusedSim, transfers: tr('restricted', 'ordinary_wallet_refused') } })
-  check('a wallet the receiver policy refuses: would_revert said as the chain\'s fact, and it validates', /receiver policy on Base refuses 0x1111/.test(w.summary) && valid(w), JSON.stringify(valid.errors))
+  check('a wallet the receiver policy refuses: would_revert said as the chain\'s fact, and it validates', /receiver policy on Base refuses the wallet/.test(w.summary) && valid(w), JSON.stringify(valid.errors))
   check('unknown never refuses: an unknown reading is an answer with the reason said', build({ extra: { transfers: tr('unknown', 'stale') } }).outcome === 'quoted' && /could not be read \(stale\)/.test(build({ extra: { transfers: tr('unknown', 'stale') } }).summary))
   check('no reading (Robinhood Chain): context.transfers null and nothing said', build().context.transfers === null && !/transfer rules/.test(build().summary))
 }

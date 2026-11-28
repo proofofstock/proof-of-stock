@@ -1,5 +1,5 @@
 {
-  "_finding": "health-check tells the owner about each B20 change once (docs/b20-transfers-tz.md §5, outside reviews of #268): each listed change not told, in block order, then the difference with its own kept baseline; never backwards; told only when Telegram took it; written after each alert sent.",
+  "_finding": "health-check tells the B20 outbox exactly as promised (docs/b20-transfers-tz.md §5, the stress reviews): a resumable cursor, batches, stable ids, told only when Telegram took it, a short retry_after waited for, the cursor saved after each message and a failed save stopping the run, an unreadable cursor file stopping and alerting, dropped events said, and a blind reader alerted.",
   "target": "scripts/stocks/health-check.mjs",
   "runner": [
     "node",
@@ -7,52 +7,100 @@
   ],
   "mutations": [
     {
-      "name": "a change told is not kept as told",
-      "find": "      applyChange(prev, c.kind === 'answer' ? { ...c, key: answerKey(c) } : c); prev.block = c.block",
-      "replace": "      prev.block = c.block",
-      "expect": "FAIL a listed answer change is sent and kept under its answers key"
+      "name": "a burst is not batched",
+      "find": "      if (batch.length >= B20_BATCH_EVENTS || ",
+      "replace": "      if (batch.length >= 1 || ",
+      "expect": "FAIL 60 events"
     },
     {
-      "name": "a journal fallback counts as told",
-      "find": "    try { return (await alertImpl({ key: `b20:base:${token}`, text }, { env, everyMs: 0 })) === 'sent' } catch (_) { return false }",
-      "replace": "    try { return (await alertImpl({ key: `b20:base:${token}`, text }, { env, everyMs: 0 })) !== 'failed' } catch (_) { return false }",
-      "expect": "FAIL no bot configured"
+      "name": "a blind reader is not alerted",
+      "find": "    const blind = !Number.isFinite(okAt) || now - okAt > B20_BLIND_S * 1000",
+      "replace": "    const blind = false",
+      "expect": "FAIL no successful cycle since the start"
     },
     {
-      "name": "the kept baseline is written only at the end",
-      "find": "      applyChange(prev, c)\n      save(); dirty = false",
-      "replace": "      applyChange(prev, c)\n      dirty = true",
-      "expect": "FAIL the first change is on disk before the second alert is sent"
+      "name": "the cursor saved is not the one told",
+      "find": "    if (!save({ cursor: skipTo, fail: undefined })) {",
+      "replace": "    if (!save({ fail: undefined })) {",
+      "expect": "FAIL the next run, the same outbox: nothing sent again"
     },
     {
-      "name": "the site's list of changes is not read",
-      "find": "  const listed = Array.isArray(b20.changes) ? b20.changes : []",
-      "replace": "  const listed = []",
-      "expect": "FAIL a pause and an unpause between two runs: two alerts"
+      "name": "a failed save does not stop the run",
+      "find": "    if (!save({ cursor: skipTo, fail: undefined })) {",
+      "replace": "    if (!save({ cursor: skipTo, fail: undefined }) && false) {",
+      "expect": "FAIL a cursor save that fails after a send"
     },
     {
-      "name": "a listed change is sent again",
-      "find": "      if (toldSet.has(id)) continue",
+      "name": "a message Telegram did not take counts as told",
+      "find": "    if (r === TIMEOUT || !r.ok) {",
+      "replace": "    if (false) {",
+      "expect": "FAIL Telegram answered but not ok"
+    },
+    {
+      "name": "a short retry_after is not waited for",
+      "find": "    if (r !== TIMEOUT && !r.ok && Number.isFinite(r.retryAfterS) && r.retryAfterS <= B20_RETRY_WAIT_MAX_S && left() > r.retryAfterS * 1000) { await sleep(r.retryAfterS * 1000); r = await within(send(text)) }",
       "replace": "",
-      "expect": "FAIL two changes in one block, the second alert failed"
+      "expect": "FAIL a 429 with a short retry_after"
     },
     {
-      "name": "a baseline is diffed backwards",
-      "find": "    if (!(snap.block > (Number.isInteger(prev.block) ? prev.block : -1))) continue",
+      "name": "an unreadable cursor file is a first run",
+      "find": "  try { j = JSON.parse(raw) } catch (_) { return { ok: false } }",
+      "replace": "  try { j = JSON.parse(raw) } catch (_) { return { ok: true, state: null } }",
+      "expect": "FAIL a cursor file that cannot be read"
+    },
+    {
+      "name": "dropped events before our cursor are skipped in silence",
+      "find": "      const gap = e.seq > prev + 1 ?",
+      "replace": "      const gap = false ?",
+      "expect": "FAIL the outbox starts after our cursor"
+    },
+    {
+      "name": "a gap inside the outbox is skipped in silence",
+      "find": "      const gap = e.seq > prev + 1 ?",
+      "replace": "      const gap = e.seq > prev + 1 && prev === cursor ?",
+      "expect": "FAIL a gap inside the outbox"
+    },
+    {
+      "name": "an outbox reset is not seen",
+      "find": "    if (otherEpoch || (first && Number.isInteger(page.last) && page.last < cursor)) {",
+      "replace": "    if (otherEpoch) {",
+      "expect": "FAIL an outbox reset below our cursor"
+    },
+    {
+      "name": "a batch Telegram keeps refusing blocks the rest",
+      "find": "      if (fail.runs < B20_SKIP_AFTER_RUNS) { save(); break }",
+      "replace": "      { save(); break }",
+      "expect": "FAIL refused 3 runs"
+    },
+    {
+      "name": "a send is not held to the budget",
+      "find": "    let r = await within(send(text))",
+      "replace": "    let r = await send(text)",
+      "expect": "FAIL a send that does not answer in time"
+    },
+    {
+      "name": "the deployed release's file stops every run",
+      "find": "  return legacy ? { ok: true, state: null, legacy: true } : { ok: false }",
+      "replace": "  return { ok: false }",
+      "expect": "FAIL the deployed release"
+    },
+    {
+      "name": "any object without a cursor is taken as the legacy file",
+      "find": "  return legacy ? { ok: true, state: null, legacy: true } : { ok: false }",
+      "replace": "  return { ok: true, state: null, legacy: true }",
+      "expect": "FAIL an object with no valid cursor that is not the legacy shape"
+    },
+    {
+      "name": "a batch is moved past during an outage",
+      "find": "      if (n === TIMEOUT || !n.ok) { save(); break }",
       "replace": "",
-      "expect": "FAIL a baseline at a block not above the last told"
+      "expect": "FAIL Telegram down for more runs than the skip threshold"
     },
     {
-      "name": "a listed change below the last told is sent",
-      "find": "&& c.block >= last &&",
-      "replace": "&&",
-      "expect": "FAIL a listed change at a block not above the last told"
-    },
-    {
-      "name": "a baseline difference told is not kept as told",
-      "find": "      applyChange(prev, c)\n      save(); dirty = false",
-      "replace": "      save(); dirty = false",
-      "expect": "FAIL a change the site saw while health-check was not running is still sent"
+      "name": "a reset by epoch is not seen",
+      "find": "    const otherEpoch = first && typeof page.epoch === 'string' && epoch && page.epoch !== epoch",
+      "replace": "    const otherEpoch = false",
+      "expect": "FAIL another epoch with a sequence past our cursor"
     }
   ]
 }

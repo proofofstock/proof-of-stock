@@ -13,7 +13,7 @@
 // It prints PASS or FAIL per step and the state category it found. It writes nothing, signs nothing and sends nothing.
 //
 // Run: node scripts/stocks/b20-live-check.mjs [--token 0x...]
-import { createB20Reader, rpcPairOf, pinHead, multicallAt, pinOf, VENUE_ROUTERS } from '../../apps/b20-reader.mjs'
+import { createB20Reader, rpcPairOf, pinHead, pinTag, multicallAt, pinOf, rolesAt, VENUE_ROUTERS } from '../../apps/b20-reader.mjs'
 import { POLICY_REGISTRY, SCOPE_KEYS, ALWAYS_ALLOW, ORDINARY_WALLET, UNISWAP_V4_POOL_MANAGER, STATES, calldata, idOf, boolOf, transfersOf } from '../../evm/core/stocks/b20.mjs'
 
 const NVDAC = '0xb20000000000000000000078ee7ce2fe4908108c'
@@ -57,10 +57,23 @@ for (const [k, url] of urls.entries()) {
   } catch (e) { step(false, `${name}: ${String(e && e.message || e).slice(0, 120)}`) }
 }
 
+// Both RPCs at one common safe block: each one's safe head, the lower one fetched by number on both, the same hash.
+try {
+  const safes = await Promise.all(urls.map((u) => pinTag(fetch, u, 'safe')))
+  step(safes.every((h) => Math.abs(Date.now() - h.time) < 900e3), 'both RPCs answer a safe head, current by its own time')
+  const n = Math.min(...safes.map((h) => h.number))
+  const common = await Promise.all(urls.map((u) => pinTag(fetch, u, n)))
+  step(common.length === 2 && common[0].hash === common[1].hash, 'both RPCs give the same hash for the common safe block')
+} catch (e) { step(false, 'the safe heads: ' + String(e && e.code || 'error')) }
+
+// simulate_buy's head read: the same roles on both RPCs at one common latest block.
+const roles = await rolesAt({ fetchImpl: fetch, urls, token, accounts: [{ address: ORDINARY_WALLET, scopes: ['receiver', 'sender'] }, { address: VENUE_ROUTERS.kyberRouter, scopes: ['executor'] }] })
+step(roles && typeof roles.roles === 'object', 'rolesAt: both RPCs agree at one common latest block')
+
 const reader = createB20Reader({ fetchImpl: fetch, env: process.env, log: (m) => console.log('  ' + m) })
 await reader.refresh([{ address: token, symbol: null, paused: [] }], { poolsOf: () => [] })
 const t = transfersOf(reader.get(token), { now: Date.now(), listPaused: null })
-step(STATES.includes(t.state) && !(t.state === 'unknown' && ['read_failed', 'undecodable', 'not_read'].includes(t.reason)), `the reader gives a state: ${t.state}${t.reason ? ' (' + t.reason + ')' : ''}`)
+step(STATES.includes(t.state) && !(t.state === 'unknown' && ['read_failed', 'undecodable', 'not_read', 'rpc_disagree', 'single_source'].includes(t.reason)) && reader.get(token)?.sources === 2, `the reader, from both RPCs at one safe block, gives a state: ${t.state}${t.reason ? ' (' + t.reason + ')' : ''}`)
 step(t.venues.length === 1 + VENUE_ROUTERS.aerodromeRouters.length + 1 && t.venues.every((v) => v.allowed === true || v.allowed === false || t.state === 'unknown'), 'every venue we name has an answer')
 console.log(bad ? `\n${bad} step(s) failed` : '\nall steps passed')
 process.exit(bad ? 1 : 0)

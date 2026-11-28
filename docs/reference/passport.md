@@ -348,10 +348,14 @@ a held record. `null` on Robinhood Chain, whose tokens are not B20.
 It is at the top level of an issuer-listed passport (`transfers`), whether or not there is a price reading: a token
 listed today has no `latest` yet and may already be paused on chain. `latest.transfers`, when there is a `latest`, is
 the same object. `checked_at` and `age_s` are the time of the block the rules were read at, from the block's own
-header, never the time we asked: a node that lags behind gives a stale reading, not a fresh one. A head below the last
-block read, or one ahead of our clock, is refused; of the two nodes the one with the newest head by its own time is
-read; every read is pinned by block hash with `requireCanonical`, and every Multicall3 answer must be exactly the
-canonical encoding of what it decodes to.
+header, never the time we asked: a node that lags behind gives a stale reading, not a fresh one. One node never
+decides: both RPCs of the pair are read at one common `safe` block (the lower of their two safe heads, which must have
+the same hash and the same header time on both), every read is made on both at that hash with `requireCanonical`, and the two are compared token
+by token. A token they disagree on is `unknown`, `rpc_disagree`; a cycle where one of them gave no usable answer is
+`single_source`. A head must be plausible: its number must have moved, against its time, at a block rate Base can make,
+from the last accepted head and from the other RPC's; one ahead of our clock is refused. Every Multicall3 answer must be
+exactly the canonical encoding of what it decodes to. A cycle that fails keeps the last agreed reading while it is
+current; `current` says whether the block's definite answers may be acted on.
 
 | Field | Type | Null means | Example |
 |---|---|---|---|
@@ -364,12 +368,14 @@ canonical encoding of what it decodes to.
 | `ordinary_wallet` | object | | `{ "send": true, "receive": true }` |
 | `venues` | array | | `[{ "name": "kyberswap_router", "address": "0x6131…37b5", "allowed": true, "scopes": { "executor": true, "receiver": true, "sender": true } }]` |
 | `pause` | object | | see below |
+| `current` | boolean | never null. A reading the two RPCs agreed on, current by its block's time | `true` |
 | `source` | string | never null | `"the token's B20 policies and pause state, read from Base"` |
 
 The state, in this order:
 
-1. `unknown` with `reason` `not_read` (no reading yet), `read_failed` (a read failed), or `stale` (the reading is older
-   than 900 s by its block's time). A stale or failed reading is never `open`.
+1. `unknown` with `reason` `not_read` (no reading yet), `read_failed` (a read failed), `rpc_disagree` (the two RPCs
+   gave different answers, or blocks that do not match), `single_source` (only one RPC answered), or `stale` (the
+   reading is older than 900 s by its block's time). None of them is ever `open`, and nothing in them is acted on.
 2. `paused`: `isPaused(TRANSFER)` on the token is true. Before any other state.
 3. `unknown` with `undecodable` (the pause or a bound id did not decode) or `policy_missing` (a bound policy id does
    not exist in the registry: the registry answers an unknown id as an empty set, so an unknown blocklist would say

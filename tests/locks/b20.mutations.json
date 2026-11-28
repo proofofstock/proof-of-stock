@@ -20,13 +20,13 @@
     },
     {
       "name": "a stale reading is taken as current",
-      "find": "  if (!fresh) return { ...out, reason: 'stale' }",
-      "replace": "  if (false) return { ...out, reason: 'stale' }",
+      "find": "  if (!fresh) return { ...blank(), reason: 'stale' }",
+      "replace": "  if (false) return { ...blank(), reason: 'stale' }",
       "expect": "FAIL a reading older than"
     },
     {
       "name": "a failed read is not named",
-      "find": "  if (reading.error) return { ...out, reason: 'read_failed' }",
+      "find": "  if (reading.error) return { ...blank(), reason: 'read_failed' }",
       "replace": "",
       "expect": "FAIL a failed read: unknown, read_failed"
     },
@@ -101,6 +101,30 @@
       "find": "answers[(a.name === 'ordinary_wallet' ? 'ordinary_wallet' : a.name + ':' + a.address) + '|' + s] = v",
       "replace": "answers[(a.name + ':' + a.address) + '|' + s] = v",
       "expect": "FAIL the snapshot for health-check: no probe address"
+    },
+    {
+      "name": "freshness is judged on a rounded age",
+      "find": "&& ageMs != null && ageMs <= STALE_S * 1000 && monoOk)",
+      "replace": "&& ageS != null && ageS <= STALE_S && monoOk)",
+      "expect": "FAIL a pause read 900.499 s ago is no longer actionable"
+    },
+    {
+      "name": "the monotonic expiry is ignored",
+      "find": "  const monoOk = !(reading && Number.isFinite(reading.expires_mono) && Number.isFinite(mono)) || mono <= reading.expires_mono",
+      "replace": "  const monoOk = true",
+      "expect": "FAIL a wall clock moved back cannot revive"
+    },
+    {
+      "name": "a stale block keeps its actionable fields",
+      "find": "  if (!fresh) return { ...blank(), reason: 'stale' }",
+      "replace": "  if (!fresh) return { ...out, reason: 'stale' }",
+      "expect": "FAIL a stale block clears every actionable field"
+    },
+    {
+      "name": "a one-source or disputed reading is published",
+      "find": "  if (reading.source_state === 'rpc_disagree' || reading.source_state === 'single_source') return { ...blank(), reason: reading.source_state }",
+      "replace": "",
+      "expect": "FAIL a reading the two RPCs disagreed on"
     }
   ]
 }

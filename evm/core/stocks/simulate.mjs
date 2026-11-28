@@ -41,7 +41,7 @@ export const OUTCOMES = Object.freeze(['quoted', 'checked', 'refused'])
 export const REFUSALS = Object.freeze(['impostor', 'not_listed', 'not_minted', 'paused', 'paused_unknown', 'ticker_not_exact', 'ticker_ambiguous', 'transfers_paused'])
 export const QUOTE_RESULTS = Object.freeze(['ok', 'no_route', 'unknown'])
 export const QUOTE_SOURCES = Object.freeze(['aerodrome', 'kyberswap'])
-export const QUOTE_REASONS = Object.freeze(['aggregator_unavailable', 'aggregator_busy', 'quote_mismatch', 'quote_empty', 'quoter_mismatch', 'venue_unconfirmed', 'rpc_unavailable', 'decimals_unavailable', 'no_buy_quote', 'timed_out', 'venue_not_allowed_by_issuer', 'wallet_not_allowed_by_issuer'])
+export const QUOTE_REASONS = Object.freeze(['aggregator_unavailable', 'aggregator_busy', 'quote_mismatch', 'quote_empty', 'quoter_mismatch', 'venue_unconfirmed', 'rpc_unavailable', 'decimals_unavailable', 'no_buy_quote', 'timed_out', 'venue_not_allowed_by_issuer', 'wallet_not_allowed_by_issuer', 'venue_unchecked'])
 /** What `quote.gas` covers: the Quoter's estimate of the pool's own swap (not the router, not the L1 data fee), or the
  * aggregator's own estimate of its route. */
 export const GAS_BASES = Object.freeze(['pool_swap_only', 'aggregator_estimate'])
@@ -232,7 +232,9 @@ export function premiumCheckOf (premium, { limit, limitSource }, notes, exact = 
 }
 
 /** The token's B20 transfer rules as the context carries them (docs/b20-transfers-tz.md §4): the state, why, and when. */
-export const transfersContext = (t) => (t ? { state: t.state, reason: t.reason ?? null, checked_at: t.checked_at ?? null, age_s: t.age_s ?? null, block: t.block ?? null, source: t.source ?? null } : null)
+export const transfersContext = (t) => (t ? { state: t.state, reason: t.reason ?? null, checked_at: t.checked_at ?? null, age_s: t.age_s ?? null, block: t.block ?? null, source: t.source ?? null,
+  // The pause as the chain says it and as the issuer's list says it, when they disagree: a swap meets the chain's.
+  pause_chain: t.pause ? t.pause.chain ?? null : null, pause_issuer_list: t.pause ? t.pause.issuer_list ?? null : null, pause_sources_agree: t.pause ? t.pause.agree ?? null : null } : null)
 
 /** The context block (§5.8). */
 export function contextOf (passport, now, { mintedUnknown = false, transfers = null } = {}) {
@@ -279,7 +281,9 @@ function sellBackBlock (s, { stableDecimals, usd, now, buyOk }) {
   return { ...head, usd_back: back, round_trip_cost: 1 - back / usd }
 }
 
-const short = (a) => (ADDRESS.test(String(a)) ? `${a.slice(0, 6)}…${a.slice(-4)}` : 'the wallet')
+// The wallet is never written into the sentence, not even shortened: it is the caller's, and the answer's JSON already
+// holds what they sent.
+const short = () => 'the wallet'
 const usdWords = (x) => (x == null ? null : x >= 1 ? '$' + x.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '$' + x.toPrecision(4))
 const usd0 = (x) => '$' + Math.round(x).toLocaleString('en-US')
 const tokWords = (x) => (x >= 0.0001 ? x.toLocaleString('en-US', { minimumFractionDigits: 4, maximumFractionDigits: 4 }) : x.toPrecision(4))
@@ -328,6 +332,7 @@ export function leadOf (a) {
   if (ctx.reference?.held) parts.push(`${who}'s reference is held from an earlier price (updated ${ageWords(ctx.reference.age_s)}), so the limit is not compared.`)
   if (ctx.notes?.includes('trading_halted')) parts.push('The issuer reports trading in the share as halted.')
   const tr = ctx.transfers
+  if (tr && tr.pause_sources_agree === false) parts.push(`On ${C.name} the chain says transfers are ${tr.pause_chain ? 'paused' : 'not paused'} and ${who}'s list says ${tr.pause_issuer_list ? 'paused' : 'not paused'}; a swap meets the chain's.`)
   if (tr && tr.state === 'restricted') parts.push(`The issuer's B20 rules on ${C.name} restrict this token's transfers (${tr.reason}, read ${ageWords(tr.age_s)}).`)
   else if (tr && tr.state === 'unknown') parts.push(`The token's on-chain transfer rules could not be read (${tr.reason}).`)
   if (ctx.liquidity?.thin) parts.push(`The deepest pool we recorded is thin (${ctx.liquidity.deepest_pool_usd == null ? 'no depth read' : 'about ' + usd0(ctx.liquidity.deepest_pool_usd)}, below the ${usd0(ctx.liquidity.thin_below_usd)} we call thin), so the size moves the price.`)

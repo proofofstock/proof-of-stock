@@ -49,7 +49,9 @@ export const UNISWAP_V4_POOL_MANAGER = '0x498581ff718922c3f8e6a244956af099b2652b
 
 // ── The enums, held equal to docs/reference/passport.schema.json by evm/core/stocks/b20.test.mjs ──────────────────────
 export const STATES = Object.freeze(['open', 'restricted', 'paused', 'unknown'])
-export const REASONS = Object.freeze(['not_read', 'read_failed', 'stale', 'undecodable', 'policy_missing', 'ordinary_wallet_refused', 'venue_refused'])
+export const REASONS = Object.freeze(['not_read', 'read_failed', 'stale', 'rpc_disagree', 'single_source', 'undecodable', 'policy_missing', 'ordinary_wallet_refused', 'venue_refused'])
+/** The reasons a block carries no current, two-source reading: nothing in it may be acted on. */
+export const NOT_CURRENT = Object.freeze(['not_read', 'read_failed', 'stale', 'rpc_disagree', 'single_source'])
 export const VENUE_NAMES = Object.freeze(['kyberswap_router', 'aerodrome_router', 'pool', 'uniswap_v4'])
 export const SOURCE = 'the token\'s B20 policies and pause state, read from Base'
 const PAUSE_LIST_SOURCE = 'the issuer\'s list (paused_features)'
@@ -127,10 +129,14 @@ export function pauseOf (reading, listPaused, fresh) {
  * there is none. `listPaused` is the issuer's own paused features for the token, said beside the chain's.
  * @param {object|null} reading  { token, block, block_hash, read_at, error, paused, policies, exists, auth, accounts }
  */
-export function transfersOf (reading, { now, listPaused = null } = {}) {
+export function transfersOf (reading, { now, listPaused = null, mono = null } = {}) {
   const checkedAt = reading && Number.isFinite(reading.read_at) ? reading.read_at : null
-  const ageS = checkedAt == null ? null : Math.max(0, Math.round((now - checkedAt) / 1000))
-  const fresh = Boolean(reading && !reading.error && ageS != null && ageS <= STALE_S)
+  const ageMs = checkedAt == null ? null : now - checkedAt
+  const ageS = ageMs == null ? null : Math.max(0, Math.round(ageMs / 1000))
+  // Fresh by exact milliseconds, never a rounded age; and, where the reader stamped one, by a monotonic expiry too, so a
+  // wall clock moved back cannot make an expired reading current again.
+  const monoOk = !(reading && Number.isFinite(reading.expires_mono) && Number.isFinite(mono)) || mono <= reading.expires_mono
+  const fresh = Boolean(reading && !reading.error && !reading.source_state && ageMs != null && ageMs <= STALE_S * 1000 && monoOk)
   const out = {
     state: 'unknown', reason: null, checked_at: checkedAt == null ? null : new Date(checkedAt).toISOString(), age_s: ageS,
     block: reading && Number.isInteger(reading.block) ? reading.block : null,
@@ -138,6 +144,9 @@ export function transfersOf (reading, { now, listPaused = null } = {}) {
     ordinary_wallet: { send: null, receive: null },
     venues: [],
     pause: pauseOf(reading, listPaused, fresh),
+    // A current reading the two RPCs agreed on: its definite answers may be acted on, even when another of its
+    // sub-calls failed and the state is unknown.
+    current: fresh,
     source: SOURCE,
   }
   const accounts = Array.isArray(reading?.accounts) ? reading.accounts : []
@@ -152,9 +161,13 @@ export function transfersOf (reading, { now, listPaused = null } = {}) {
   // `allowed` is every scope we check for that venue; `scopes` says each one, so a caller can ask the role it needs.
   out.venues = venues.map((x) => ({ name: x.name, address: x.address, allowed: asBool(x.v), scopes: x.scopes }))
 
+  // Nothing actionable from a reading that is not current: its venues and probe answers are cleared.
+  const blank = () => ({ ...out, ordinary_wallet: { send: null, receive: null }, venues: out.venues.map((v) => ({ ...v, allowed: null, scopes: Object.fromEntries(Object.keys(v.scopes).map((k) => [k, null])) })) })
   if (!reading) return { ...out, reason: 'not_read' }
-  if (reading.error) return { ...out, reason: 'read_failed' }
-  if (!fresh) return { ...out, reason: 'stale' }
+  if (reading.error) return { ...blank(), reason: 'read_failed' }
+  // One node must not decide: the two RPCs disagreed, or only one answered.
+  if (reading.source_state === 'rpc_disagree' || reading.source_state === 'single_source') return { ...blank(), reason: reading.source_state }
+  if (!fresh) return { ...blank(), reason: 'stale' }
   // Paused comes before any other state; a pause that could not be read is no "not paused".
   if (reading.paused === true) return { ...out, state: 'paused', reason: null }
   if (reading.paused !== false) return { ...out, reason: 'undecodable' }
@@ -176,8 +189,32 @@ export const noteOf = (t) => (t && t.state === 'restricted' ? 'transfers_restric
  * check for it, or, with `scopes`, in one of those (the role it plays in a given transfer).
  */
 export function venueRefused (t, address, scopes = null) {
-  if (!t || (t.state !== 'open' && t.state !== 'restricted')) return false
+  // A confirmed denial from a current, two-source reading holds even when another sub-call of that reading failed
+  // (the state is then `unknown`); nothing from a reading that is not current is acted on.
+  if (!t || t.current !== true) return false
   return (t.venues || []).some((v) => v.address === low(address) && (scopes ? scopes.some((s) => v.scopes && v.scopes[s] === false) : v.allowed === false))
+}
+
+/**
+ * Whether a current reading says, for the venue at `address`, a definite answer for every one of `scopes`: true when
+ * all allow, false when one refuses, null when the reading cannot say (the venue was not checked, or a value is
+ * missing). A caller reads a venue that is null at the chain's head before it counts it as checked.
+ */
+export function venueChecked (t, address, scopes) {
+  if (!t || t.current !== true) return null
+  const v = (t.venues || []).find((x) => x.address === low(address))
+  if (!v || !v.scopes) return null
+  const xs = scopes.map((s) => v.scopes[s])
+  if (xs.includes(false)) return false
+  return xs.every((x) => x === true) ? true : null
+}
+
+/** A baseline after a snapshot: each value the snapshot holds replaces the old one; one it lacks keeps the old one. */
+export function mergeSnapshot (prev, snap) {
+  if (!prev) return snap
+  if (!snap) return prev
+  const policies = Object.fromEntries(SCOPE_KEYS.map((s) => [s, snap.policies?.[s] ?? prev.policies?.[s] ?? null]))
+  return { ...prev, block: snap.block ?? prev.block, block_hash: snap.block_hash ?? prev.block_hash ?? null, policies, paused: snap.paused === true || snap.paused === false ? snap.paused : prev.paused ?? null, answers: { ...(prev.answers || {}), ...(snap.answers || {}) } }
 }
 
 /**
@@ -217,7 +254,7 @@ export function snapshotOf (reading) {
     const v = allowedIn(reading, s, a.address)
     if (v === true || v === false) answers[(a.name === 'ordinary_wallet' ? 'ordinary_wallet' : a.name + ':' + a.address) + '|' + s] = v
   }
-  return { block: reading.block, policies: { ...reading.policies }, paused: reading.paused === true || reading.paused === false ? reading.paused : null, answers }
+  return { block: reading.block, block_hash: reading.block_hash ?? null, policies: { ...reading.policies }, paused: reading.paused === true || reading.paused === false ? reading.paused : null, answers }
 }
 
 /** What changed between two snapshots: the same change kinds as changesOf, from snapshotOf's shape. */

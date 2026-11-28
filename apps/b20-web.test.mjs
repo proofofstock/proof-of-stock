@@ -127,6 +127,9 @@ console.log('the status path for health-check')
   check('after a change the baseline on /api/status follows it, with its block', st2.json.base.b20.tokens[PAU]?.paused === false && st2.json.base.b20.tokens[PAU]?.block === node.head)
   const lst = st2.json.base.b20.changes || []
   check('...and the change itself is listed, with its block and time, for the polls that would miss it', lst.some((c) => c.token === PAU && c.kind === 'paused' && c.from === true && c.to === false && c.block === node.head && typeof c.at === 'string'), JSON.stringify(lst))
+  const evs = await get('/api/status/b20/events?after=0')
+  check('/api/status/b20/events gives the outbox after a cursor, with the oldest and last sequence', evs.status === 200 && evs.json.events.some((e) => e.token === PAU && e.kind === 'paused' && /^b20-\d+-[0-9a-f]{12}$/.test(e.id)) && evs.json.last >= 1 && (await get('/api/status/b20/events?after=' + evs.json.last)).json.events.length === 0)
+  check('/api/status says when the reader last read both RPCs, and its outbox is in memory here', typeof st2.json.base.b20.last_ok_at === 'string' && st2.json.base.b20.durable === false)
   const raw = JSON.stringify(st2.json)
   check('the public status never carries the probe wallet\'s address', !raw.includes(ORDINARY_WALLET.slice(2)))
   chain.tokens[PAU].paused = true
@@ -144,16 +147,19 @@ console.log('the lead and the token page')
   const rh1 = await get(`/api/passport?chain=robinhood&address=${R}`)
   check('Robinhood Chain: transfers null where there is a latest, and no note', rh1.status === 200 && (rh1.json.latest === null || rh1.json.latest.transfers === null) && !rh1.json.notes.some((n) => n.startsWith('transfers_')))
   const js = fs.readFileSync(new URL('./stocks-web/app.js', import.meta.url), 'utf8')
-  check('the token page has words for both notes, and draws the line from the top-level block, not the price row', /transfers_restricted:/.test(js) && /transfers_paused:/.test(js) && /p\.chain === 'base' \? transfersField\(p\.transfers\) : null/.test(js))
+  check('the page ages the line from the server\'s exact times (generated_at less checked_at), not a rounded age', /const transfersOfPassport = \(p\) => \{[\s\S]*?Date\.parse\(p\.generated_at\) - Date\.parse\(p\.transfers\.checked_at\)/.test(js))
+  check('the token page has words for both notes, and draws the line from the top-level block, not the price row', /transfers_restricted:/.test(js) && /transfers_paused:/.test(js) && /p\.chain === 'base' \? transfersField\(transfersOfPassport\(p\),/.test(js))
   // The page's own view of the line, lifted out of app.js and run here: what a reader sees, now and later.
-  const src = (js.match(/\n  function transfersView \(t, nowMs\) \{[\s\S]*?\n  \}\n/) || [''])[0]
+  const src = (js.match(/\n  function transfersView \(t, elapsedMs\) \{[\s\S]*?\n  \}\n/) || [''])[0]
   const transfersView = src ? new Function(src + '\nreturn transfersView')() : null
   const fresh = (await get(`/api/passport?chain=base&address=${FRESH}`)).json.transfers
-  const v0 = transfersView && transfersView(fresh, NOW)
+  const v0 = transfersView && transfersView(fresh, 0)
   check('rendered: a fresh pause with no price row shows paused, read from Base', v0 && v0.state === 'paused' && /read from Base/.test(v0.small), JSON.stringify(v0))
   const open = (await get(`/api/passport?chain=base&address=${OK}`)).json.transfers
   const opened = { ...open, state: 'open', reason: null }
-  const v1 = transfersView && transfersView(opened, NOW + 60e3), v2 = transfersView && transfersView(opened, NOW + 3600e3)
+  const v1 = transfersView && transfersView(opened, 60e3), v2 = transfersView && transfersView(opened, 3600e3)
+  // The visitor's clock is not read at all: only the server's age and the time elapsed on the page.
+  check('the page reads no wall clock for the line: performance.now() and the server age only', !/Date\.(now|parse)/.test(src))
   check('rendered: open a minute later is open; an hour later the same line is unknown, stale, with its last read', v1 && v1.state === 'open' && v2 && v2.state === 'unknown' && /too old/.test(v2.small) && /last read/.test(v2.small), JSON.stringify([v1, v2]))
   check('the ordinary wallet is the pinned one', chain.calls.some((c) => c.kind === 'isAuthorized' && c.account === ORDINARY_WALLET))
 }
@@ -166,7 +172,7 @@ console.log('the token page, rendered')
   const part = (re) => (js.match(re) || [''])[0]
   const src = [
     part(/\n  const h = \(tag, attrs, \.\.\.kids\) => \{[\s\S]*?\n  \}\n/), part(/\n  const NOTES = \{[\s\S]*?\n  \}\n/),
-    part(/\n  function transfersView \(t, nowMs\) \{[\s\S]*?\n  \}\n/), part(/\n  function transfersField \(t\) \{[\s\S]*?\n  \}\n/), part(/\n  function notesOf \(p\) \{[\s\S]*?\n  \}\n/),
+    part(/\n  function transfersView \(t, elapsedMs\) \{[\s\S]*?\n  \}\n/), part(/\n  const transfersOfPassport = \(p\) => \{[\s\S]*?\n  \}\n/), part(/\n  function transfersField \(t, receivedAt = performance\.now\(\)\) \{[\s\S]*?\n  \}\n/), part(/\n  function notesOf \(p\) \{[\s\S]*?\n  \}\n/),
   ]
   class FakeNode {
     constructor (tag) { this.tag = tag; this.kids = []; this.className = ''; this.attrs = {}; this.parent = null; this.root = false }
@@ -180,17 +186,20 @@ console.log('the token page, rendered')
   }
   let t = NOW
   const timers = []
-  const fakeDate = { now: () => t, parse: (x) => Date.parse(x) }
-  const page = src.every(Boolean) ? new Function('document', 'Node', 'setInterval', 'clearInterval', 'Date', src.join('') + '\nreturn { transfersField, notesOf }')({ createElement: (tag) => new FakeNode(tag) }, FakeNode, (f) => { timers.push(f); return timers.length }, () => {}, fakeDate) : null
+  // The page's monotonic clock, which we hold; its wall clock is set an hour behind to show it is not read.
+  const fakePerf = { now: () => t - NOW }
+  const fakeDate = { now: () => t - 3600e3, parse: (x) => Date.parse(x) }
+  const page = src.every(Boolean) ? new Function('document', 'Node', 'setInterval', 'clearInterval', 'Date', 'performance', src.join('') + '\nreturn { transfersField, notesOf }')({ createElement: (tag) => new FakeNode(tag) }, FakeNode, (f) => { timers.push(f); return timers.length }, () => {}, fakeDate, fakePerf) : null
   check('the render code is found in app.js', Boolean(page), src.map((x) => x.length).join(','))
   const p = (await get(`/api/passport?chain=base&address=${FRESH}`)).json
   const root = new FakeNode('main'); root.root = true
-  const line = page.transfersField(p.transfers), notes = page.notesOf(p)
+  p._at = 0
+  const line = page.transfersField(p.transfers, 0), notes = page.notesOf(p)
   root.append(line, notes)
   check('rendered now: the line says paused, read from Base, and the pause note is shown', /paused/.test(line.textContent) && /read from Base/.test(line.textContent) && notes && /paused transfers/.test(notes.textContent))
   t = NOW + 3600e3
   const later = page.notesOf(p)
-  check('rendered an hour later: no pause note at all, and the line says unknown', (later === null || !/paused transfers/.test(later.textContent)) && /^transfers.*unknown/.test(page.transfersField(p.transfers).textContent))
+  check('rendered an hour later: no pause note at all, and the line says unknown', (later === null || !/paused transfers/.test(later.textContent)) && /^transfers.*unknown/.test(page.transfersField(p.transfers, 0).textContent))
   for (const f of timers) f()
   check('the page left open an hour: the line turns unknown, stale, and the pause note is taken off', /unknown/.test(line.textContent) && /too old/.test(line.textContent) && !/paused transfers/.test(root.textContent))
 }

@@ -8,10 +8,11 @@
 //   - the age of the newest token-static day file in each chain's token dataset, the input the look-alike list is built
 //     from, which another project produces (tokenStreamChecks below; scripts/stocks/data-roots.mjs);
 //   - the status file the backup of /var/lib/pos writes, when POS_BACKUP_STATUS names it (backupChecks below);
-//   - the B20 transfer-rule changes the site saw and its current baselines (`base.b20.changes` and `.tokens` in
-//     /api/status, docs/b20-transfers-tz.md §5): one alert per change not told before, and the difference with the
-//     baseline this job last told the owner about, kept in a small file beside the alert state (sendB20Changes below).
-//     The site holds no bot token; this job does.
+//   - the B20 transfer-rule changes in the site's outbox (/api/status/b20/events, docs/b20-transfers-tz.md §5), read
+//     with a cursor kept beside the alert state and told in batches (sendB20Events below); and whether the B20 reader is
+//     blind (evaluate). The site holds no bot token; this job does.
+// And, over the network, what lives outside the repository (outsideChecks below): the guard's latest version on npm, the
+// server's on the official MCP registry, and whether a release was cut, against this release's own files.
 // The thresholds are THRESHOLDS and the constants beside each check; the rules are pure, so the tests hold every one.
 //
 // Usage: node scripts/stocks/health-check.mjs [--site=http://127.0.0.1:3005/stocks] (roots from STOCKS_ROOT_BASE and
@@ -20,10 +21,10 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { isEntryPoint } from '../lib/invoked-directly.mjs'
-import { alert } from '../lib/alert.mjs'
+import { alert, sendTelegram } from '../lib/alert.mjs'
 import { dataRoot, tokenDataset } from './data-roots.mjs'
 import { readStatus } from '../ops/pos-backup.mjs'
-import { changeText, snapshotChanges } from '../../evm/core/stocks/b20.mjs'
+import { changeText } from '../../evm/core/stocks/b20.mjs'
 
 export const THRESHOLDS = Object.freeze({
   registry_age_s: 900, // the site answers 503 for the chain past this (evm/core/stocks/verify.mjs REGISTRY_FRESH_S)
@@ -48,6 +49,14 @@ export function evaluate ({ status, siteError = null, runs = {}, prevRuns = {}, 
   const out = []
   const put = (key, bad, text) => out.push({ key, bad: Boolean(bad), text })
   put('site:down', !status, status ? 'the site answers again.' : `the site does not answer on the host (${siteError || 'no answer'}). Every verdict is unavailable until it does.`)
+  // The B20 reader (docs/b20-transfers-tz.md): blind when its last successful cycle is older than B20_BLIND_S, or it has
+  // never had one. It clears when a cycle succeeds.
+  const b20 = status?.base?.b20
+  if (b20 && b20.reader === 'on') {
+    const okAt = b20.last_ok_at ? Date.parse(b20.last_ok_at) : NaN
+    const blind = !Number.isFinite(okAt) || now - okAt > B20_BLIND_S * 1000
+    put('b20:base:blind', blind, blind ? `Base: the B20 transfer rules have not been read from both RPCs ${Number.isFinite(okAt) ? 'for ' + Math.round((now - okAt) / 60000) + ' min' : 'since the site started'}${b20.last_error ? ' (' + String(b20.last_error).slice(0, 40) + ')' : ''}. Passports say unknown and no change is seen until a read succeeds.` : 'Base: the B20 transfer rules are read again.')
+  }
   for (const c of Object.keys(CHAIN_NAME)) {
     const n = CHAIN_NAME[c], s = status?.[c], run = runs[c]
     if (s) {
@@ -200,90 +209,132 @@ export function lastRuns (root, now, n = 2) {
 // sees a new token. Measured on the host on 12.11 over 30 days of observed_at: quiet stretches of up to 5.1 h on an
 // ordinary day, and one real outage of about 30 h on both chains (1 to 2 Nov). 8 h is past every ordinary quiet stretch
 // and catches an outage within a third of a day. STP_TOKEN_STREAM_MAX_AGE_H overrides it.
-/**
- * Where health-check keeps the B20 baseline it last told the owner about: STP_B20_SENT, else beside the alert state, in
- * the unit's state directory.
- */
+/** Where health-check keeps its B20 cursor: STP_B20_SENT, else beside the alert state, in the unit's state directory. */
 export const b20SentFile = (env = process.env) => env.STP_B20_SENT || path.join(path.dirname(env.STP_ALERT_STATE || '/var/lib/stp-alerts/state.json'), 'b20-sent.json')
+/** At most this many events in one Telegram message, and this many characters (Telegram takes 4,096). */
+export const B20_BATCH_EVENTS = 25
+export const B20_MESSAGE_CHARS = 3_800
+/** A Telegram retry_after up to this long is waited for in the run; a longer one leaves the rest for the next run. */
+export const B20_RETRY_WAIT_MAX_S = 30
+/** The run's own budget for B20 messages, inside the unit's two minutes. */
+export const B20_RUN_BUDGET_MS = 60_000
+/** A reader whose last successful cycle is older than this is blind: four refresh cycles. */
+export const B20_BLIND_S = 20 * 60
 
-/** One change applied to a kept snapshot: what the owner has now been told. */
-function applyChange (snap, c) {
-  if (c.kind === 'policy_id') snap.policies = { ...snap.policies, [c.scope]: c.to }
-  else if (c.kind === 'paused') snap.paused = c.to
-  else if (c.kind === 'answer') snap.answers = { ...snap.answers, [c.key]: c.to }
-}
-
-/** How many told changes are remembered by id: far more than the site lists (apps/b20-reader.mjs CHANGES_KEPT). */
-export const B20_TOLD_KEPT = 2000
-/** A listed change's id: its token, kind, scope, account and block. The same change seen in two runs has the same id. */
-export const b20ChangeKey = (token, c) => [token, c.kind, c.scope ?? '', c.account ?? '', c.address ?? '', c.block].join('|')
-/** The answers key of a listed change, as snapshotOf names it. */
-const answerKey = (c) => (c.account === 'ordinary_wallet' ? 'ordinary_wallet' : c.account + ':' + c.address) + '|' + c.scope
+/** Runs a batch may fail to reach Telegram before it is moved past, and said as undelivered. */
+export const B20_SKIP_AFTER_RUNS = 3
 
 /**
- * One alert per B20 change (docs/b20-transfers-tz.md §5). Two sources from /api/status, `base.b20`:
- *   - `changes`, the site's recent changes with their block and time: each one not told before is sent, in block order,
- *     so a pause and an unpause between two runs of this job are two alerts;
- *   - `tokens`, the site's current baselines: after a restart of the site (whose list starts empty) the difference with
- *     the baseline this job last told the owner about is sent, so nothing is lost.
- * Never backwards: a change or a baseline at a block not above the one last told for that token is not compared. A
- * change counts as told only when Telegram took it ('sent'); 'logged' or 'failed' is tried again next run, and a token
- * whose change could not be sent waits whole, so the order holds. The kept file is written after each alert sent. A
- * token seen for the first time is kept without an alert. Never throws.
- * @returns {Promise<string[]>} one line per alert sent this run
+ * The cursor file: { ok, state, legacy }. A missing file is { ok: true, state: null }. The file the deployed release
+ * before this one kept here, `{ tokens, told }` (a baseline and the ids it told), is { ok: true, state: null, legacy:
+ * true }: its outbox did not exist, so everything the new outbox holds is still to be told. Anything else without a valid
+ * cursor, or a file that cannot be read or parsed, is { ok: false }, and stops the run with a health alert.
  */
-export async function sendB20Changes ({ status, file, alertImpl = alert, env = process.env }) {
-  const b20 = status && status.base && status.base.b20
-  const cur = b20 && b20.tokens && typeof b20.tokens === 'object' ? b20.tokens : null
-  if (!cur) return []
-  const listed = Array.isArray(b20.changes) ? b20.changes : []
-  let kept = {}, told = []
-  try { const j = JSON.parse(fs.readFileSync(file, 'utf8')); if (j && j.tokens && typeof j.tokens === 'object') kept = j.tokens; if (j && Array.isArray(j.told)) told = j.told.filter((x) => typeof x === 'string') } catch (_) { /* nothing kept yet */ }
-  const toldSet = new Set(told)
-  const save = () => { try { fs.mkdirSync(path.dirname(file), { recursive: true }); const tmp = file + '.tmp'; fs.writeFileSync(tmp, JSON.stringify({ tokens: kept, told: told.slice(-B20_TOLD_KEPT) }), { mode: 0o600 }); fs.renameSync(tmp, file) } catch (_) { /* tried again next run */ } }
-  const send = async (token, symbol, block, c) => {
-    const text = changeText({ symbol: typeof symbol === 'string' ? symbol.slice(0, 16) : null, token, block }, [c])
-    try { return (await alertImpl({ key: `b20:base:${token}`, text }, { env, everyMs: 0 })) === 'sent' } catch (_) { return false }
-  }
-  const out = []
-  let dirty = false
-  for (const [token, snap] of Object.entries(cur)) {
-    if (!/^0x[0-9a-f]{40}$/.test(token) || !snap || typeof snap !== 'object' || !snap.policies || !Number.isInteger(snap.block)) continue
-    const prev = kept[token]
-    if (!prev) { kept[token] = { policies: { ...snap.policies }, paused: snap.paused ?? null, answers: { ...(snap.answers || {}) }, block: snap.block }; dirty = true; continue }
-    const last = Number.isInteger(prev.block) ? prev.block : -1
-    let waiting = false
-    // 1. The site's list, in block order: each change at or above the last block told (two changes can share a block,
-    // and one of them may still wait), not told before.
-    const mine = listed.filter((c) => c && c.token === token && Number.isInteger(c.block) && c.block >= last && ['policy_id', 'paused', 'answer'].includes(c.kind)).sort((a, b) => a.block - b.block)
-    for (const c of mine) {
-      const id = b20ChangeKey(token, c)
-      if (toldSet.has(id)) continue
-      if (!(await send(token, snap.symbol, c.block, c))) { waiting = true; break }
-      applyChange(prev, c.kind === 'answer' ? { ...c, key: answerKey(c) } : c); prev.block = c.block
-      told.push(id); toldSet.add(id); save(); dirty = false
-      out.push(`${token} ${c.kind} ${c.scope ?? ''} ${c.block}`.trim())
+export function readB20State (file) {
+  let raw
+  try { raw = fs.readFileSync(file, 'utf8') } catch (e) { return e && e.code === 'ENOENT' ? { ok: true, state: null } : { ok: false } }
+  let j
+  try { j = JSON.parse(raw) } catch (_) { return { ok: false } }
+  if (!j || typeof j !== 'object' || Array.isArray(j)) return { ok: false }
+  if (Number.isInteger(j.cursor) && j.cursor >= 0) return { ok: true, state: j }
+  const legacy = !('cursor' in j) && Object.keys(j).length > 0 && Object.keys(j).every((k) => k === 'tokens' || k === 'told') && (j.tokens == null || (typeof j.tokens === 'object' && !Array.isArray(j.tokens))) && (j.told == null || Array.isArray(j.told))
+  return legacy ? { ok: true, state: null, legacy: true } : { ok: false }
+}
+/** Write the cursor file, atomically: true when it landed. */
+export function writeB20State (file, state) {
+  try { fs.mkdirSync(path.dirname(file), { recursive: true }); const tmp = file + '.tmp'; fs.writeFileSync(tmp, JSON.stringify(state), { mode: 0o600 }); fs.renameSync(tmp, file); return true } catch (_) { return false }
+}
+/** One event as a line of the message: its stable id first, then what changed. */
+export const b20EventLine = (e) => `[${e.id}] ` + changeText({ symbol: typeof e.symbol === 'string' ? e.symbol.slice(0, 16) : null, token: e.token, block: e.block }, [e]).replace(/ The issuer's own rule, not a verdict change\.$/, '')
+
+/**
+ * The B20 changes the site's outbox holds (docs/b20-transfers-tz.md §5), told to the owner exactly as promised: read with
+ * a resumable cursor (`fetchEvents(after)` gives { events, oldest, last }, `last` the outbox's high-water mark), a burst
+ * batched into few messages, each line with its event's stable id. An event counts as told only when Telegram took the
+ * message (HTTP 200, ok and a message id); a short 429 retry_after is waited for. The cursor is saved after each
+ * message, and a save that fails stops the run. A batch Telegram keeps refusing is tried again for B20_SKIP_AFTER_RUNS
+ * runs, then moved past and said as undelivered, so it never blocks the ones after it. A missing cursor file is a first
+ * run, which tells every event the site still holds; the release before this one's file (no cursor) starts the cursor at
+ * the outbox's high-water mark, telling nothing twice; a file that cannot be read stops and is a health alert. Events
+ * the site no longer holds, gaps inside the outbox, and an outbox that was reset are said, never skipped in silence.
+ * Every fetch and send is held to the run's budget. At-least-once: a message Telegram took whose answer was lost is
+ * sent again, with the same ids.
+ * @returns {Promise<{ sent: string[], checks: object[] }>}
+ */
+export async function sendB20Events ({ fetchEvents, file, send = (text) => sendTelegram(text, { env: process.env }), sleep = (ms) => new Promise((r) => setTimeout(r, ms)), clock = () => Date.now(), budgetMs = B20_RUN_BUDGET_MS, write = writeB20State }) {
+  const st = readB20State(file)
+  const stateCheck = (bad, text) => ({ key: 'b20:state', bad, text })
+  if (!st.ok) return { sent: [], checks: [stateCheck(true, 'The B20 alert cursor file cannot be read, so B20 changes are not being told. Fix or remove it (removing it tells again every change the site still holds).')] }
+  const start = clock()
+  const left = () => budgetMs - (clock() - start)
+  const within = (p) => { let tm; return Promise.race([p, new Promise((r) => { tm = setTimeout(() => r(TIMEOUT), Math.max(0, left())) })]).finally(() => clearTimeout(tm)) }
+  const TIMEOUT = Symbol('timeout')
+  const sent = [], checks = []
+  // The deployed release before this one kept a baseline here, and had no outbox: the outbox is new, so everything it
+  // holds is still to be told. The cursor starts at 0, like a first run.
+  let cursor = st.state ? st.state.cursor : 0
+  let epoch = st.state && typeof st.state.epoch === 'string' ? st.state.epoch : null
+  let fail = st.state && st.state.fail && Number.isInteger(st.state.fail.first) ? st.state.fail : null
+  const save = (extra = {}) => write(file, { cursor, ...(epoch ? { epoch } : {}), ...(fail ? { fail } : {}), ...extra })
+  let first = true
+  for (;;) {
+    if (left() <= 0) break
+    let page
+    try { page = await within(fetchEvents(cursor)) } catch (_) { break }
+    if (page === TIMEOUT || !page || !Array.isArray(page.events)) break
+    const lines = []
+    // The outbox was reset: another epoch than the one our cursor counts in, or a high-water mark below our cursor.
+    // Said, and read from its new start.
+    const otherEpoch = first && typeof page.epoch === 'string' && epoch && page.epoch !== epoch
+    if (first && typeof page.epoch === 'string' && !epoch) epoch = page.epoch
+    if (otherEpoch || (first && Number.isInteger(page.last) && page.last < cursor)) {
+      lines.push(`B20: the site's outbox was reset (a new outbox${Number.isInteger(page.last) ? ', its last change ' + page.last : ''}, ours was ${cursor}); its changes are told from the start.`)
+      epoch = typeof page.epoch === 'string' ? page.epoch : epoch
+      cursor = 0
+      try { page = await within(fetchEvents(0)) } catch (_) { break }
+      if (page === TIMEOUT || !page || !Array.isArray(page.events)) break
     }
-    if (waiting) continue
-    // 2. The baseline, never backwards: only a reading above the last block told is compared.
-    if (!(snap.block > (Number.isInteger(prev.block) ? prev.block : -1))) continue
-    let sentAll = true
-    for (const c of snapshotChanges(prev, snap)) {
-      if (!(await send(token, snap.symbol, snap.block, c))) { sentAll = false; break }
-      applyChange(prev, c)
-      save(); dirty = false
-      out.push(`${token} ${c.kind} ${c.scope ?? ''} ${snap.block}`.trim())
+    first = false
+    const batch = []
+    let prev = cursor
+    for (const e of page.events) {
+      if (!e || !Number.isInteger(e.seq) || e.seq <= prev || typeof e.id !== 'string') continue
+      const line = b20EventLine(e)
+      const gap = e.seq > prev + 1 ? `B20: changes ${prev + 1} to ${e.seq - 1} are not in the site's outbox; they were dropped before they were told (its journal, [b20] lines, holds them).` : null
+      if (batch.length >= B20_BATCH_EVENTS || lines.join('\n').length + line.length + (gap ? gap.length : 0) > B20_MESSAGE_CHARS) break
+      if (gap) lines.push(gap)
+      batch.push(e); lines.push(line); prev = e.seq
     }
-    if (!sentAll) continue
-    // Values the kept baseline has not seen yet (a new venue, a pause that was unreadable) are taken without an alert,
-    // and the baseline is now as of this block.
-    if (prev.paused == null && (snap.paused === true || snap.paused === false)) prev.paused = snap.paused
-    for (const [k, v] of Object.entries(snap.answers || {})) if (!(k in (prev.answers || {}))) prev.answers = { ...(prev.answers || {}), [k]: v }
-    for (const sc of Object.keys(snap.policies)) if (prev.policies?.[sc] == null && snap.policies[sc] != null) prev.policies = { ...prev.policies, [sc]: snap.policies[sc] }
-    prev.block = snap.block; dirty = true
+    // Everything after our cursor is gone from the outbox (only its high-water mark is left): said, and moved past.
+    let skipTo = batch.length ? batch[batch.length - 1].seq : cursor
+    if (!batch.length && Number.isInteger(page.last) && page.last > cursor && !page.events.some((e) => e && e.seq > cursor)) {
+      lines.push(`B20: changes ${cursor + 1} to ${page.last} are not in the site's outbox; they were dropped before they were told.`)
+      skipTo = page.last
+    }
+    if (!lines.length) break
+    const text = `Proof of Stock: B20 transfer rules changed on Base (the issuer's own rules, not a verdict change):\n` + lines.join('\n')
+    let r = await within(send(text))
+    if (r !== TIMEOUT && !r.ok && Number.isFinite(r.retryAfterS) && r.retryAfterS <= B20_RETRY_WAIT_MAX_S && left() > r.retryAfterS * 1000) { await sleep(r.retryAfterS * 1000); r = await within(send(text)) }
+    if (r === TIMEOUT || !r.ok) {
+      // Not taken. Counted per batch across runs. Past B20_SKIP_AFTER_RUNS it is moved past only when Telegram is shown
+      // to work: a short loss notice naming its ids is sent, and only if that one is taken is the batch moved past. In
+      // an outage (the notice fails too) everything stays pending.
+      const head = batch.length ? batch[0].seq : skipTo
+      fail = fail && fail.first === head ? { first: head, runs: fail.runs + 1 } : { first: head, runs: 1 }
+      if (fail.runs < B20_SKIP_AFTER_RUNS) { save(); break }
+      const notice = `B20: ${batch.length} change(s) could not be delivered after ${fail.runs} runs and were moved past so the ones after them are told: ${batch.map((e) => e.id).join(', ').slice(0, 900)}. The site's journal ([b20] lines) holds them.`
+      const n = await within(send('Proof of Stock: ' + notice))
+      if (n === TIMEOUT || !n.ok) { save(); break }
+      checks.push({ key: `b20:undelivered:${head}`, bad: true, text: notice })
+      fail = null
+    }
+    if (!save({ cursor: skipTo, fail: undefined })) { checks.push(stateCheck(true, 'The B20 alert cursor file cannot be written; the last message was sent and may be sent again. B20 alerts are stopped until it is fixed.')); return { sent: [...sent, ...(r !== TIMEOUT && r.ok ? batch.map((e) => e.id) : [])], checks } }
+    if (r !== TIMEOUT && r.ok) sent.push(...batch.map((e) => e.id))
+    cursor = skipTo
+    fail = null
   }
-  if (dirty) save()
-  return out
+  checks.push(stateCheck(false, 'The B20 alert cursor file is readable and written again.'))
+  return { sent, checks }
 }
 
 export const TOKEN_STREAM_MAX_AGE_S = 8 * 3600
@@ -390,6 +441,130 @@ export function standaloneChecks (now, { env = process.env } = {}) {
   return out
 }
 
+// What lives outside the repository (owner, 27.11): the guard on npm, the server on the official MCP registry, and a
+// release cut at all. Each went stale silently, because every merge is deployed but publishing is the owner's own step
+// (deployment/PUBLISHING.md) and no test looks outside the repository. These compare the deployed release's own files
+// (this script's release, /opt/stp/current on the host) with what the registries say now.
+export const STALE_PUBLISH_DAYS = 3
+export const STALE_RELEASE_DAYS = 7
+export const NPM_GUARD_URL = 'https://registry.npmjs.org/@proofofstock%2fguard/latest'
+/** The official MCP registry's latest version of a server, by its name: `{ server: { name, version }, _meta }`. */
+export const mcpRegistryUrl = (name) => `https://registry.modelcontextprotocol.io/v0/servers/${encodeURIComponent(name)}/versions/latest`
+/** Where the first-seen times live: a key of their own in the alert state file (scripts/lib/alert.mjs). */
+export const STALE_SINCE_KEY = 'stale-since'
+const RELEASE_ROOT = path.join(path.dirname(new URL(import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1')), '..', '..')
+
+const SEMVER = /^(\d+)\.(\d+)\.(\d+)$/
+/** a < b for two plain x.y.z versions; null when either is not one (a pre-release is not compared). */
+export function versionBelow (a, b) {
+  const x = SEMVER.exec(String(a ?? '')), y = SEMVER.exec(String(b ?? ''))
+  if (!x || !y) return null
+  for (let i = 1; i <= 3; i++) if (Number(x[i]) !== Number(y[i])) return Number(x[i]) < Number(y[i])
+  return false
+}
+
+/**
+ * The changelog's state: how many entries `[Unreleased]` holds (lines that start with "- " before the next "## "), and
+ * the newest dated release, `## [x.y.z] - YYYY-MM-DD`. Null fields when the file does not say.
+ */
+export function changelogState (text) {
+  const lines = String(text ?? '').split('\n')
+  const at = lines.findIndex((l) => /^## \[Unreleased\]\s*$/.test(l))
+  let entries = 0
+  if (at >= 0) for (let i = at + 1; i < lines.length && !/^## /.test(lines[i]); i++) if (/^- /.test(lines[i])) entries++
+  const dates = lines.map((l) => (/^## \[\d+\.\d+\.\d+\] - (\d{4}-\d{2}-\d{2})\s*$/.exec(l) || [])[1]).filter(Boolean).sort()
+  return { unreleased: at >= 0 ? entries : null, newest: dates.length ? dates[dates.length - 1] : null }
+}
+
+/** The release's own versions and changelog, read from its files. A file that cannot be read gives null, never a throw. */
+export function releaseState (root = RELEASE_ROOT) {
+  const json = (p) => { try { return JSON.parse(fs.readFileSync(path.join(root, p), 'utf8')) } catch (_) { return null } }
+  let changelog = null
+  try { changelog = fs.readFileSync(path.join(root, 'CHANGELOG.md'), 'utf8') } catch (_) { /* said below */ }
+  const server = json('server.json')
+  return { guard: json('packages/proofofstock-guard/package.json')?.version ?? null, server: server?.version ?? null, serverName: server?.name ?? null, changelog: changelog == null ? null : changelogState(changelog) }
+}
+
+/**
+ * The latest published versions, each `{ version }` or `{ error }`. A registry that does not answer, or answers in a
+ * shape this code does not know, is an error here: unknown, never "behind".
+ */
+export async function readPublished ({ serverName, fetchImpl = fetch } = {}) {
+  const get = async (url, pick) => {
+    try {
+      const r = await fetchImpl(url, { headers: { accept: 'application/json' }, signal: AbortSignal.timeout(10_000) })
+      if (!r.ok) return { error: `HTTP ${r.status}` }
+      const v = pick(await r.json())
+      return SEMVER.test(String(v ?? '')) ? { version: v } : { error: 'no version in the answer' }
+    } catch (e) { return { error: String((e && e.name) || e).slice(0, 60) } }
+  }
+  const npm = await get(NPM_GUARD_URL, (j) => j && j.name === '@proofofstock/guard' ? j.version : null)
+  const mcp = serverName ? await get(mcpRegistryUrl(serverName), (j) => j && j.server && j.server.name === serverName ? j.server.version : null) : { error: 'server.json names no server' }
+  return { npm, mcp }
+}
+
+/**
+ * The three staleness checks. `since` is the first-seen time of each condition, as kept; the new one is returned.
+ *   stale:npm-guard    npm's latest @proofofstock/guard below the release's packages/proofofstock-guard for > 3 days
+ *   stale:mcp-registry the MCP registry's latest version below the release's server.json for > 3 days
+ *   stale:release      [Unreleased] has entries and the newest dated release is > 7 days old
+ * A registry that could not be read gives no check (no alert, no clear) and keeps its first-seen time; `notes` says so,
+ * for the journal. A condition that clears drops its first-seen time.
+ * @returns {{ checks: { key: string, bad: boolean, text: string }[], since: object, notes: string[] }}
+ */
+export function staleChecks ({ release, published, since = {}, now, publishDays = STALE_PUBLISH_DAYS, releaseDays = STALE_RELEASE_DAYS }) {
+  const checks = [], notes = [], next = {}
+  const days = (ms) => Math.floor(ms / 864e5)
+  const behind = (key, what, mine, got, where) => {
+    if (!got || got.error) { notes.push(`${key}: ${where} could not be read (${got ? got.error : 'not asked'}); not compared this run`); if (Number.isFinite(since[key])) next[key] = since[key]; return }
+    const below = versionBelow(got.version, mine)
+    if (below == null) { notes.push(`${key}: cannot compare ${where}'s ${got.version} with the release's ${mine}`); if (Number.isFinite(since[key])) next[key] = since[key]; return }
+    if (!below) { checks.push({ key, bad: false, text: `${what} on ${where} has caught up with the release (${got.version}).` }); return }
+    const first = Number.isFinite(since[key]) ? since[key] : now
+    next[key] = first
+    // Within the grace the condition is neither an alert nor a clear: a lost first-seen time must never send RESOLVED
+    // for something still behind.
+    if (!(now - first > publishDays * 864e5)) { notes.push(`${key}: ${where} is behind the release, for less than ${publishDays} days`); return }
+    checks.push({ key, bad: true, text: `${what} on ${where} is ${got.version}, below the release's ${mine}, for ${days(now - first)} days. Publishing it is the owner's step (deployment/PUBLISHING.md).` })
+  }
+  if (release.guard) behind('stale:npm-guard', '@proofofstock/guard', release.guard, published.npm, 'npm')
+  else notes.push('stale:npm-guard: the release has no readable packages/proofofstock-guard/package.json')
+  if (release.server) behind('stale:mcp-registry', 'The MCP server', release.server, published.mcp, 'the official MCP registry')
+  else notes.push('stale:mcp-registry: the release has no readable server.json')
+  const cl = release.changelog
+  if (cl && cl.unreleased != null) {
+    // By UTC days: a release dated the 20th is 7 days old on the 27th, all day, and stale from the 28th.
+    const ageDays = cl.newest ? days(now - Date.parse(cl.newest + 'T00:00:00Z')) : Infinity
+    const old = cl.unreleased > 0 && ageDays > releaseDays
+    checks.push({ key: 'stale:release', bad: old, text: old
+      ? `CHANGELOG.md holds ${cl.unreleased} unreleased entries and the newest release${cl.newest ? ` is from ${cl.newest}, ${ageDays} days ago` : ' has no date'}. Cut a release (CHANGELOG.md, package.json, server.json).`
+      : 'a release is cut again: nothing waits in [Unreleased] past a week.' })
+  } else notes.push('stale:release: the release has no readable CHANGELOG.md with an [Unreleased] section')
+  return { checks, since: next, notes }
+}
+
+/** The first-seen times, kept under their own key in the alert state file; never throws. */
+export function readStaleSince (file) {
+  try { const s = JSON.parse(fs.readFileSync(file, 'utf8'))[STALE_SINCE_KEY]; return s && typeof s === 'object' ? s : {} } catch (_) { return {} }
+}
+export function writeStaleSince (file, since) {
+  let s = {}
+  try { s = JSON.parse(fs.readFileSync(file, 'utf8')) || {} } catch (_) { /* a new file */ }
+  s[STALE_SINCE_KEY] = since
+  try { fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 }); const tmp = file + '.tmp'; fs.writeFileSync(tmp, JSON.stringify(s), { mode: 0o600 }); fs.renameSync(tmp, file) } catch (_) { /* tried again next run */ }
+}
+
+/** One run of the three: read the release, ask the two registries, keep the first-seen times. Never throws. */
+export async function outsideChecks ({ now, env = process.env, fetchImpl = fetch, root = RELEASE_ROOT, log = (m) => console.log(m) } = {}) {
+  const file = env.STP_ALERT_STATE || '/var/lib/stp-alerts/state.json'
+  const release = releaseState(root)
+  const published = await readPublished({ serverName: release.serverName, fetchImpl })
+  const { checks, since, notes } = staleChecks({ release, published, since: readStaleSince(file), now })
+  writeStaleSince(file, since)
+  for (const n of notes) log('[stp-health] ' + n)
+  return checks
+}
+
 if (isEntryPoint(import.meta.url)) {
   const arg = (k) => (process.argv.find((a) => a.startsWith(`--${k}=`)) || '').slice(k.length + 3) || null
   const site = (arg('site') || 'http://127.0.0.1:3005/stocks').replace(/\/+$/, '')
@@ -407,6 +582,7 @@ if (isEntryPoint(import.meta.url)) {
   const mirrors = Object.fromEntries(Object.entries(roots).map(([c, root]) => [c, readMirror(path.join(root, 'stock-peg'), c)]))
   const checks = evaluate({ status, siteError, runs, prevRuns, mirrors, now })
   checks.push(...standaloneChecks(now))
+  checks.push(...await outsideChecks({ now }))
   let payments = null
   try { const r = await fetch(site + '/api/status/payments', { signal: AbortSignal.timeout(10_000) }); if (r.ok) payments = await r.json() } catch (_) { /* the site check above already says the site is down */ }
   if (payments && payments.enabled) {
@@ -416,7 +592,10 @@ if (isEntryPoint(import.meta.url)) {
   }
   const sent = []
   for (const ch of checks) sent.push([ch.key, await alert({ key: ch.key, text: ch.text, ok: !ch.bad })])
-  for (const line of await sendB20Changes({ status, file: b20SentFile() })) sent.push(['b20:' + line, 'sent'])
+  // The B20 outbox: its events after our cursor, read page by page from the site (docs/b20-transfers-tz.md §5).
+  const b20 = await sendB20Events({ file: b20SentFile(), fetchEvents: async (after) => { const r = await fetch(site + '/api/status/b20/events?after=' + after, { signal: AbortSignal.timeout(10_000) }); if (!r.ok) throw new Error('b20 events'); return r.json() } })
+  for (const id of b20.sent) sent.push(['b20:' + id, 'sent'])
+  for (const ch of b20.checks) sent.push([ch.key, await alert({ key: ch.key, text: ch.text, ok: !ch.bad })])
   const bad = checks.filter((c) => c.bad).map((c) => c.key)
   console.log('[stp-health] ' + JSON.stringify({ bad, sent: sent.filter(([, s]) => s === 'sent').map(([k]) => k) }))
 }

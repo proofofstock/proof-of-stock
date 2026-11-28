@@ -197,7 +197,7 @@
           "type": ["object", "null"],
           "description": "Base only: the token's B20 transfer rules from the site's last reading (docs/b20-transfers-tz.md); null on Robinhood Chain. unknown never refuses",
           "required": ["state", "reason", "checked_at", "age_s", "block", "source"],
-          "properties": { "state": { "enum": ["open", "restricted", "paused", "unknown"] }, "reason": { "type": ["string", "null"] }, "checked_at": { "type": ["string", "null"] }, "age_s": { "type": ["integer", "null"] }, "block": { "type": ["integer", "null"] }, "source": { "type": ["string", "null"] } }
+          "properties": { "state": { "enum": ["open", "restricted", "paused", "unknown"] }, "reason": { "type": ["string", "null"] }, "checked_at": { "type": ["string", "null"] }, "age_s": { "type": ["integer", "null"] }, "block": { "type": ["integer", "null"] }, "source": { "type": ["string", "null"] }, "pause_chain": { "type": ["boolean", "null"] }, "pause_issuer_list": { "type": ["boolean", "null"] }, "pause_sources_agree": { "type": ["boolean", "null"], "description": "false when the chain and the issuer's list disagree on the pause; a swap meets the chain's" } }
         }
       }
     },
@@ -205,7 +205,7 @@
   },
   "definitions": {
     "quote_result": { "enum": ["ok", "no_route", "unknown"] },
-    "quote_reason": { "enum": ["aggregator_unavailable", "aggregator_busy", "quote_mismatch", "quote_empty", "quoter_mismatch", "venue_unconfirmed", "rpc_unavailable", "decimals_unavailable", "no_buy_quote", "timed_out", "venue_not_allowed_by_issuer", "wallet_not_allowed_by_issuer"] },
+    "quote_reason": { "enum": ["aggregator_unavailable", "aggregator_busy", "quote_mismatch", "quote_empty", "quoter_mismatch", "venue_unconfirmed", "rpc_unavailable", "decimals_unavailable", "no_buy_quote", "timed_out", "venue_not_allowed_by_issuer", "wallet_not_allowed_by_issuer", "venue_unchecked"] },
     "route": {
       "oneOf": [
         { "type": "null" },

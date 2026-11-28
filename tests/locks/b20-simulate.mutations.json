@@ -1,5 +1,5 @@
 {
-  "_finding": "simulate_buy reads the B20 rules from memory first (docs/b20-transfers-tz.md §4, outside review of #268): on Base a current chain pause decides over the issuer's list, which is the fallback only when the chain gave none; a stale reading never refuses; a venue is checked in the role it plays in the stock token's transfer (the pool that pays, the KyberSwap router and delivering pool, the router that pulls the sell-back); a wallet the receiver policy refuses gets would_revert without a swap, one the sender policy refuses no sell-back; and nothing is attributed to the issuer from the ordinary wallet.",
+  "_finding": "simulate_buy and the B20 rules after the stress reviews (docs/b20-transfers-tz.md §4): the chain's pause decides on Base; every actor that moves the stock token is checked in its role, from the current reading or read at the head, else the line is venue_unchecked; a confirmed denial holds through an unrelated failure; the wallet read stands on its own; a wallet refused gets would_revert without a swap, one refused as sender no sell-back; the pause disagreement is said; the wallet is in no sentence and redacted from revert text.",
   "target": "apps/stocks-simulate.mjs",
   "runner": [
     "node",
@@ -11,12 +11,6 @@
       "find": "    if (chainPause === true) return",
       "replace": "    if (false) return",
       "expect": "FAIL transfers paused on chain: refused"
-    },
-    {
-      "name": "a stale reading refuses",
-      "find": "    if (chainPause === true) return",
-      "replace": "    if (chainPause === true || (transfers && transfers.state === 'unknown')) return",
-      "expect": "FAIL a stale reading never refuses"
     },
     {
       "name": "the issuer's list overrides the chain",
@@ -32,33 +26,33 @@
     },
     {
       "name": "a refused KyberSwap router is asked anyway",
-      "find": "        refusedVenue(KYBER_ROUTER) ? Promise.resolve(notAllowed('kyberswap')) :",
+      "find": "        venueIs(KYBER_ROUTER, ['executor', 'receiver', 'sender']) === false ? Promise.resolve(notAllowed('kyberswap')) :",
       "replace": "        false ? null :",
       "expect": "FAIL the KyberSwap router refused as executor"
     },
     {
-      "name": "the Aerodrome router is checked as if it moved the token on a buy",
-      "find": "        inTime(aeroQ(stable, address, amountIn, true), lateQuote('aerodrome')),",
-      "replace": "        C.routers.some(refusedVenue) ? Promise.resolve(notAllowed('aerodrome')) : inTime(aeroQ(stable, address, amountIn, true), lateQuote('aerodrome')),",
-      "expect": "FAIL the Aerodrome router refused as executor: the single-pool buy is still quoted"
+      "name": "an actor that could not be read counts as allowed",
+      "find": "      if (!r) return unchecked(source)",
+      "replace": "      if (!r) return line",
+      "expect": "FAIL ...and one that could not be read there"
     },
     {
-      "name": "a refused pool is quoted anyway",
-      "find": "      if (quote.result === 'ok' && refusedVenue(quote.pool, SENDS)) quote = notAllowed('aerodrome')",
-      "replace": "",
-      "expect": "FAIL the pool the quote chose"
+      "name": "a refusal read at the head is ignored",
+      "find": "      return vs.includes(false) ? notAllowed(source) : vs.includes(null) ? unchecked(source) : line",
+      "replace": "      return vs.includes(null) ? unchecked(source) : line",
+      "expect": "FAIL a quoted pool outside the checked ones"
     },
     {
-      "name": "the KyberSwap delivering pool is not checked",
-      "find": "      if (second.result === 'ok' && (Array.isArray(second.deliveringPools) ? second.deliveringPools : [second.deliveringPool]).some((p) => refusedVenue(p, SENDS))) second = notAllowed('kyberswap')",
-      "replace": "",
-      "expect": "FAIL ...and the KyberSwap route that delivers from the same pool"
+      "name": "only the first delivering pool of a split route is checked",
+      "find": "(Array.isArray(q.deliveringPools) ? q.deliveringPools : [q.deliveringPool])",
+      "replace": "[q.deliveringPool]",
+      "expect": "FAIL a split KyberSwap route whose second delivering pool is refused"
     },
     {
-      "name": "the sell-back router is not checked",
-      "find": "C.primary === 'aerodrome' && C.routers.some((r) => refusedVenue(r, ['executor'])) ? Promise.resolve(notAllowed('aerodrome'))",
-      "replace": "false ? null",
-      "expect": "FAIL ...but the sell-back, which that router pulls"
+      "name": "the v4 PoolManager is not checked",
+      "find": "        ...(q.deliveringV4 ? [{ address: UNISWAP_V4_POOL_MANAGER, scopes: SENDS }] : [])]",
+      "replace": "        ]",
+      "expect": "FAIL a KyberSwap route through a v4 pool"
     },
     {
       "name": "a wallet refused as sender still gets a sell-back",
@@ -67,34 +61,58 @@
       "expect": "FAIL a wallet the sender policy refuses"
     },
     {
+      "name": "the sell-back checks the buy pool",
+      "find": "{ address: sb.pool, scopes: ['receiver'] }",
+      "replace": "{ address: quote.pool, scopes: ['receiver'] }",
+      "expect": "FAIL the sell-back through another pool, that pool refused as a receiver"
+    },
+    {
       "name": "a refused wallet still runs the swap",
       "find": "      !input.wallet ? Promise.resolve(null) : walletRefused ? Promise.resolve(walletRefused) : inTime(dryRun(quote), lateSim),",
       "replace": "      !input.wallet ? Promise.resolve(null) : inTime(dryRun(quote), lateSim),",
       "expect": "FAIL a wallet the receiver policy refuses: would_revert"
     },
     {
-      "name": "the ordinary wallet is taken as the caller",
-      "find": "    const sim = sim0 && !walletRefused ? attributeIssuer(sim0, issuerPolicy) : sim0",
-      "replace": "    const sim = sim0 && !walletRefused ? attributeIssuer(sim0, transfers && transfers.ordinary_wallet && transfers.ordinary_wallet.receive === false ? { ...(issuerPolicy || {}), receive: false } : issuerPolicy) : sim0",
-      "expect": "FAIL ...and a token revert there stays token_rule"
+      "name": "the wallet read waits on the public reading",
+      "find": "    const policyOfWallet = input.wallet && tr\n",
+      "replace": "    const policyOfWallet = input.wallet && tr && transfers && transfers.reason !== 'read_failed'\n",
+      "expect": "FAIL a failed reading never refuses either, and the wallet check stands on its own read"
     },
     {
-      "name": "only the first delivering pool of a split route is checked",
-      "find": "(Array.isArray(second.deliveringPools) ? second.deliveringPools : [second.deliveringPool])",
-      "replace": "[second.deliveringPool]",
-      "expect": "FAIL a split KyberSwap route whose second delivering pool is refused"
+      "name": "the wallet stays in the revert text",
+      "find": "      if (has(rest.revert.reason) || has(rest.revert.data)) rest.revert =",
+      "replace": "      if (false) rest.revert =",
+      "expect": "FAIL a revert text that carries the wallet is redacted"
     },
     {
-      "name": "the sell-back checks the buy pool",
-      "find": "refusedVenue(sb.pool, ['receiver'])",
-      "replace": "refusedVenue(quote.pool, ['receiver'])",
-      "expect": "FAIL the sell-back through another pool, that pool refused as a receiver"
+      "name": "a confirmed refusal from the reading is ignored",
+      "find": "      if (cached.every((v) => v === true || v === false)) return cached.includes(false) ? notAllowed(source) : line",
+      "replace": "      if (cached.every((v) => v === true || v === false) && !cached.includes(false)) return line",
+      "expect": "FAIL a confirmed pool denial while another sub-call failed"
     },
     {
-      "name": "the sell-back pool is not checked",
-      "find": ".then((sb) => (sb && sb.result === 'ok' && refusedVenue(sb.pool, ['receiver']) ? notAllowed('aerodrome') : sb))",
-      "replace": "",
-      "expect": "FAIL the Aerodrome pool refused as a receiver"
+      "name": "only the uncovered actors are read again",
+      "find": "      const r = await inTime(rolesAt({ fetchImpl: f, urls: b20Urls, token: address, accounts: actors, now }), null)",
+      "replace": "      const r = await inTime(rolesAt({ fetchImpl: f, urls: b20Urls, token: address, accounts: actors.filter((a, i) => cached[i] !== true), now }), null)",
+      "expect": "FAIL one actor of the line uncovered"
+    },
+    {
+      "name": "an opaque delivering hop is not checked",
+      "find": "      const kyberActors = (q) => (q.deliveringOpaque ? null : [",
+      "replace": "      const kyberActors = (q) => (false ? null : [",
+      "expect": "FAIL a delivering hop with an opaque pool id"
+    },
+    {
+      "name": "the wallet read is not checked again at use",
+      "find": "    const walletCurrent = walletRule && Number.isFinite(walletRule.head_time) && now() - walletRule.head_time <= STALE_S * 1000",
+      "replace": "    const walletCurrent = Boolean(walletRule)",
+      "expect": "FAIL a wallet refusal read before quotes that took past its freshness"
+    },
+    {
+      "name": "the request's gate is shadowed again",
+      "find": "    const unchecked = (source) => ({ result: 'unknown', reason: 'venue_unchecked', source, quotedAt: null })",
+      "replace": "    const unchecked = (source) => ({ result: 'unknown', reason: 'venue_unchecked', source, quotedAt: null })\n    async function gate () {}",
+      "expect": "FAIL after the answer has returned, no further call goes out"
     }
   ]
 }

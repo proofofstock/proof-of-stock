@@ -918,6 +918,16 @@ console.log('verify and badge')
   check('verify: an address outside the registry is not listed and names the registry checked', out.listed === false && out.registries_checked[0] === 'coinbase:base' && /address=0x(ee){20}/.test(out.passport))
   check('verify: the /api/ path answers the same', (await (await get('/stocks/api/verify?chain=base&address=' + A)).json()).listed === true)
   check('verify: a bad chain and a bad address are 400', (await get('/stocks/verify?chain=sol&address=' + A)).status === 400 && (await get('/stocks/verify?chain=base&address=nvda')).status === 400)
+  {
+    // A bare /verify is mostly a person who clicked a link: a 400 that shows one request that works and where the docs are.
+    const own = { headers: { 'x-real-ip': '198.51.100.88' } }
+    const bare = await get('/stocks/verify', own), bb = await bare.json()
+    const ex = 'https://proofofstock.xyz/verify?chain=base&address=0xb200000000000000000000397293cb8cda9a10c5'
+    const doc = 'https://proofofstock.xyz/docs/reference/http-api.md#route-verify'
+    check('verify: with no address at all, a 400 whose error shows one working example and the docs', bare.status === 400 && bb.example === ex && bb.docs === doc && bb.error.includes(ex) && bb.error.includes(doc) && bare.headers.get('access-control-allow-origin') === '*', JSON.stringify(bb))
+    const noAddr = await (await get('/stocks/api/verify?chain=base', own)).json()
+    check('...the same with a chain but no address, and an empty address is still the address error', noAddr.example === ex && !('example' in await (await get('/stocks/verify?chain=base&address=', own)).json()))
+  }
   const badge = await get('/stocks/badge.svg?chain=base&address=' + A)
   const svg = await badge.text()
   check('badge: an SVG naming the listed token and printing its address', badge.status === 200 && /image\/svg\+xml/.test(badge.headers.get('content-type')) && svg.includes('Issuer-listed · NVDAc · Coinbase') && svg.includes('0xaaaa…aaaa'))
@@ -1677,7 +1687,9 @@ console.log('simulate_buy over HTTP and MCP (docs/simulate-buy-tz.md)')
   const { KEY_WARNING, WALLET_IN_URL } = await import('../evm/core/stocks/simulate.mjs')
   const said = []
   const adir = fs.mkdtempSync(path.join(os.tmpdir(), 'sim-analytics-'))
-  const mk = (wd, extra = {}) => createStocksWeb({ listLocks: false, roots: { base: baseRoot, robinhood: rhRoot }, fetchImpl, now: () => NOW, log: (m) => said.push(String(m)), analytics: { dir: adir, interfaces: () => ({}) }, exam: { url: null }, glama: { url: null }, x402Module: null, simulate: { fetchImpl: wd.fetchImpl }, ...extra })
+  // The B20 checks have their own suites (apps/b20-web.test.mjs, apps/stocks-simulate.test.mjs): off here, so the fake
+  // world's old block times do not make every Base line venue_unchecked.
+  const mk = (wd, extra = {}) => createStocksWeb({ listLocks: false, roots: { base: baseRoot, robinhood: rhRoot }, fetchImpl, now: () => NOW, log: (m) => said.push(String(m)), analytics: { dir: adir, interfaces: () => ({}) }, exam: { url: null }, glama: { url: null }, x402Module: null, simulate: { fetchImpl: wd.fetchImpl }, b20: { enabled: false }, ...extra })
   const serve = async (app) => { const { port: p } = await app.start(0, '127.0.0.1'); return p }
   const wdH = world('base', { token: A }), wdM = world('base', { token: A })
   const appH = mk(wdH), appM = mk(wdM)

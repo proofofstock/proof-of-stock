@@ -187,7 +187,7 @@ export function world (chain = 'base', o = {}) {
     const { method, params } = body
     if (wd.rpcDown && wd.rpcDown(method, params)) throw new Error('timeout')
     if (method === 'eth_blockNumber') { wd.readHead = wd.head; return { result: '0x' + (wd.head++).toString(16) } }
-    if (method === 'eth_getBlockByNumber') { const n = params[0] === 'latest' ? BigInt(wd.head) : BigInt(params[0]); return { result: { number: '0x' + n.toString(16), timestamp: '0x' + (wd.blockTime ? BigInt(wd.blockTime(n)) : 1764600000n + n * 2n).toString(16), hash: hashOf(n), ...(wd.baseFee != null ? { baseFeePerGas: wd.baseFee } : {}) } } }
+    if (method === 'eth_getBlockByNumber') { const n = params[0] === 'latest' || params[0] === 'safe' ? BigInt(wd.head) : BigInt(params[0]); return { result: { number: '0x' + n.toString(16), timestamp: '0x' + (wd.blockTime ? BigInt(wd.blockTime(n)) : 1764600000n + n * 2n).toString(16), hash: hashOf(n), ...(wd.baseFee != null ? { baseFeePerGas: wd.baseFee } : {}) } } }
     const tag = params[1]
     if (tag && typeof tag === 'object') { if (!tag.blockHash || !byHash.has(String(tag.blockHash).toLowerCase())) return { error: { code: -32000, message: 'header for hash not found' } }; wd.hashTags++ }
     const pinned = tag !== 'latest'

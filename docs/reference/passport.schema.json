@@ -24,11 +24,11 @@
     "transfers": {
       "description": "Base only (null on Robinhood Chain): what the token's own B20 transfer rules allow, read from Base at one block (docs/b20-transfers-tz.md, evm/core/stocks/b20.mjs). The issuer's own rule, never a verdict: it does not change in_registry. unknown when a read failed, a bound policy id does not exist, an answer did not decode, or the reading is older than 15 minutes.",
       "type": ["object", "null"],
-      "required": ["state", "reason", "checked_at", "age_s", "block", "policies", "ordinary_wallet", "venues", "pause", "source"],
+      "required": ["state", "reason", "checked_at", "age_s", "block", "policies", "ordinary_wallet", "venues", "pause", "current", "source"],
       "additionalProperties": false,
       "properties": {
         "state": { "enum": ["open", "restricted", "paused", "unknown"] },
-        "reason": { "enum": ["not_read", "read_failed", "stale", "undecodable", "policy_missing", "ordinary_wallet_refused", "venue_refused", null] },
+        "reason": { "enum": ["not_read", "read_failed", "stale", "rpc_disagree", "single_source", "undecodable", "policy_missing", "ordinary_wallet_refused", "venue_refused", null] },
         "checked_at": { "$ref": "#/definitions/iso_time_or_null" },
         "age_s": { "type": ["integer", "null"], "minimum": 0 },
         "block": { "type": ["integer", "null"] },
@@ -51,6 +51,7 @@
           "description": "the pause as the chain says it and as the issuer's list says it, labelled by source; the chain is what a swap meets",
           "properties": { "chain": { "type": ["boolean", "null"] }, "chain_source": { "type": "string" }, "issuer_list": { "type": ["boolean", "null"] }, "issuer_list_features": { "type": ["array", "null"], "items": { "type": "string" } }, "issuer_list_source": { "type": "string" }, "agree": { "type": ["boolean", "null"] } }
         },
+        "current": { "type": "boolean", "description": "a reading the two RPCs agreed on, at a block current by its own time: its definite answers stand even when another sub-call failed" },
         "source": { "type": "string" }
       }
     },

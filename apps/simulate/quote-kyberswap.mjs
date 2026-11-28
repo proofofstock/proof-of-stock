@@ -94,12 +94,19 @@ export async function kyberQuote ({ fetchImpl, chain, tokenIn, tokenOut, amountI
   const delivering = swaps.find((s) => low(s.tokenOut) === low(tokenOut) && ADDRESS.test(low(s.pool)))
   // Every pool that hands the stock token over, on every split of the route: each one sends it (the B20 sender scope).
   const deliveringPools = [...new Set(swaps.filter((s) => low(s.tokenOut) === low(tokenOut) && ADDRESS.test(low(s.pool))).map((s) => low(s.pool)))]
+  // A delivering hop through a pool the route itself names as Uniswap v4 (a 32-byte id, an exchange called v4): the
+  // PoolManager holds and sends the token. Any other delivering hop without a 20-byte address is opaque: we cannot say
+  // who sends the token, and the caller treats that line as unchecked.
+  const delivering_ = swaps.filter((s) => low(s.tokenOut) === low(tokenOut))
+  const isV4 = (s) => /^0x[0-9a-f]{64}$/.test(low(s.pool)) && /v4/i.test(String(s.exchange || ''))
+  const deliveringV4 = delivering_.some(isV4)
+  const deliveringOpaque = delivering_.some((s) => !ADDRESS.test(low(s.pool)) && !isV4(s))
   const gas = numOrNull(rs.gas), gasUsd = numOrNull(rs.gasUsd)
   return {
     result: 'ok', source: 'kyberswap', amountIn: rs.amountIn, amountOut: rs.amountOut, quotedAt: at,
     gasUnits: gas != null && gas > 0 ? gas : null, gasUsd, gasBasis: 'aggregator_estimate',
     route: { kind: 'aggregator', pools, hops: Math.max(...rs.route.map((x) => x.length)), splits: rs.route.length },
-    poolAddresses, deliveringPool: delivering ? low(delivering.pool) : null, deliveringPools, routeSummary: rs,
+    poolAddresses, deliveringPool: delivering ? low(delivering.pool) : null, deliveringPools, deliveringV4, deliveringOpaque, routeSummary: rs,
   }
 }
 

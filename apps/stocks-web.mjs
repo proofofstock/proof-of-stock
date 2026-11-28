@@ -130,6 +130,8 @@ export const MATRIX_MCP_TOP = 20
  * any other method. 500 was the first idea; its 21 KB URL never reached the app (a 431 from Node itself, measured).
  */
 export const PAID_VERIFY_BATCH = 150
+/** The address a bare /verify shows in its example: SNDKc on Base, the token the docs' own examples use. */
+export const VERIFY_EXAMPLE_ADDRESS = '0xb200000000000000000000397293cb8cda9a10c5'
 /** Failed purchases a client may make on passGate in PASS_FAIL_WINDOW_MS before it is refused with a 429. */
 export const PASS_FAIL_MAX = 5
 export const PASS_FAIL_WINDOW_MS = 10 * 60e3
@@ -225,10 +227,11 @@ export function llmsTxt (docs, origin, version, passLine = null) {
     'Contact: hello@proofofstock.xyz. Read-only: nothing here trades or signs for you. Not investment advice.', '']
   // Where an agent starts: the endpoints and the one-file copy of every page, before the page index.
   const start = [
-    `- [MCP server](${origin}/mcp): Streamable HTTP, POST one JSON-RPC message, no key or account` + (docs.has('reference/tools.md') ? `; tools: ${origin}/docs/reference/tools.md` : ''),
+    `- [MCP server](${origin}/mcp): Streamable HTTP, POST one JSON-RPC message, no key or account` + (docs.has('reference/tools.md') ? `; tools: ${origin}/docs/reference/tools.md` : '') + `. Its tools: ${toolsFor(24).map((x) => x.name).join(', ')}`,
     docs.has('reference/http-api.md') ? `- [HTTP API](${origin}/docs/reference/http-api.md): read-only JSON routes, e.g. ${origin}/verify?chain=base&address=0x…` : null,
     docs.has('reference/passport.schema.json') ? `- [Passport JSON Schema](${origin}/docs/reference/passport.schema.json): the shape of one passport answer` : null,
     docs.has('how-to/check-before-listing.md') ? `- [Pre-trade guard for agents](${origin}/docs/how-to/check-before-listing.md): npm install @proofofstock/guard, beforeBuy() refuses a token the issuer did not list (fails closed, no dependencies)` : null,
+    docs.has('reference/passport.md') ? `- [Issuer transfer rules (B20)](${origin}/docs/reference/passport.md#field-transfers): on Base, each listed token's transfer rules as the chain holds them, open, restricted or paused, on the passport and in simulate_buy` : null,
     `- [Token list](${origin}/tokenlist.json): the issuer-listed tokens that trade in a pool, as a Uniswap token list to import; never an impostor`,
     `- [Look-alike list](${origin}/denylist.json): every look-alike flagged right now, on both chains, in one file, to warn before a swap; not a token list`,
     `- [Agent test](${origin}/agent-test): POST ${origin}/api/agent-test (no body needed) for six buying tasks graded against the issuers' own lists, with a result page and a badge; nothing is bought` + (docs.has('how-to/test-your-agent.md') ? `; how: ${origin}/docs/how-to/test-your-agent.md` : ''),
@@ -557,7 +560,10 @@ export function createStocksWeb ({
   // ── The B20 transfer rules (docs/b20-transfers-tz.md) ────────────────────────────────────────────────────────────
   // Read for the trusted Base records only: a held record or an impostor is never read, and nothing here is read by the
   // verdict. What the reader keeps is turned into the passport block and simulate_buy's check on request, from memory.
-  const b20 = b20Opts.enabled === false ? null : createB20Reader({ fetchImpl: b20Opts.fetchImpl || fetchImpl, env: b20Opts.env || process.env, now, log })
+  // Its outbox and baseline live in STP_B20_DIR (deployment/systemd/stp-web.service, StateDirectory=stp-b20); without
+  // one they are held in memory, and a restart forgets them.
+  const b20 = b20Opts.enabled === false ? null : createB20Reader({ fetchImpl: b20Opts.fetchImpl || fetchImpl, env: b20Opts.env || process.env, now, log, dir: b20Opts.dir ?? (process.env.STP_B20_DIR || null), ...(b20Opts.mono ? { mono: b20Opts.mono } : {}) })
+  const b20Mono = b20Opts.mono || (() => performance.now())
   /** A token's pools for the B20 check, deepest first: the latest reading's pools by depth, then the recorder's book. */
   function b20PoolsOf (addr) {
     const latest = windows.base.get().window?.byToken.get(addr)?.latest
@@ -573,7 +579,7 @@ export function createStocksWeb ({
   /** The passport's `latest.transfers` for a trusted Base record: the reader's last reading with its age, never a guess. */
   function transfersBlock (addr) {
     const rec = (freshRecords('base') || []).find((r) => r.address === addr)
-    return transfersOf(b20 ? b20.get(addr) : null, { now: now(), listPaused: rec ? rec.paused : null })
+    return transfersOf(b20 ? b20.get(addr) : null, { now: now(), listPaused: rec ? rec.paused : null, mono: b20Mono() })
   }
 
   // The wall of findings, written into the page so a reader that runs no script sees the board, not "Loading" (22.11).
@@ -900,7 +906,7 @@ export function createStocksWeb ({
         // (docs/b20-transfers-tz.md §5), for scripts/stocks/health-check.mjs, which keeps its own copy and alerts on each
         // change not told: per token the bound ids, the pause and each answer by account name and scope. The probe wallet
         // is named, never given by its address; no caller's wallet is in them.
-        ...(c === 'base' ? { b20: b20 ? { reader: 'on', cycles: b20.counters.cycles, failed_cycles: b20.counters.failed, tokens: b20.snapshots(new Map((freshRecords('base') || []).map((x) => [x.address, x.symbol ?? null]))), changes: b20.changes() } : { reader: 'off', cycles: 0, failed_cycles: 0, tokens: {}, changes: [] } } : {}) }]
+        ...(c === 'base' ? { b20: b20 ? { reader: 'on', durable: b20.durable, cycles: b20.counters.cycles, failed_cycles: b20.counters.failed, last_ok_at: b20.counters.last_ok_at, last_error: b20.counters.last_error, last_event: b20.events(0, 0).last, tokens: b20.snapshots(), changes: b20.changes() } : { reader: 'off', durable: false, cycles: 0, failed_cycles: 0, last_ok_at: null, last_error: null, last_event: 0, tokens: {}, changes: [] } } : {}) }]
     }))
   }
 
@@ -1531,6 +1537,13 @@ export function createStocksWeb ({
         return send(res, 200, body, undefined, { ...cors, 'cache-control': big ? 'private, no-store' : proof?.stale ? 'no-store' : 'public, max-age=60' })
       }
       if (await limitGate(req, res, { cors })) return
+      // A bare /verify, with no address at all, is mostly a person who clicked a link: still a 400, but one that shows
+      // a working request and where the route is described (owner, 27.11). Every other request is answered as before.
+      if (url.searchParams.get('address') == null) {
+        const example = `${publicOrigin + publicPath}/verify?chain=base&address=${VERIFY_EXAMPLE_ADDRESS}`
+        const docsUrl = `${publicOrigin + publicPath}/docs/reference/http-api.md#route-verify`
+        return send(res, 400, { error: `give chain and address, for example ${example} (the route is described at ${docsUrl})`, example, docs: docsUrl }, undefined, cors)
+      }
       const c = url.searchParams.get('chain')
       if (!CHAINS[c]) return send(res, 400, { error: `chain must be one of ${Object.keys(CHAINS).join(', ')}` }, undefined, { 'access-control-allow-origin': '*' })
       const reg = registries.get(c)
@@ -1619,6 +1632,13 @@ export function createStocksWeb ({
     // The payment state is for monitoring: stp-health reads it every 15 minutes, and a monitor that met the free
     // minute's 402 instead of the state would miss the very alert it is for (pentest, 22.11). It costs no unit;
     // it is one small object in memory, and nginx's own per-client limit still stands in front of it.
+    // The B20 outbox, for scripts/stocks/health-check.mjs: the events after its cursor, at most 200 a page, with the
+    // oldest and the last sequence held (docs/b20-transfers-tz.md §5). For monitoring, like the payment state: no unit.
+    if (sub === '/api/status/b20/events') {
+      const after = Math.max(0, Math.floor(Number(url.searchParams.get('after')) || 0))
+      const limit = Math.min(200, Math.max(1, Math.floor(Number(url.searchParams.get('limit')) || 200)))
+      return send(res, 200, b20 ? { reader: 'on', durable: b20.durable, ...b20.events(after, limit) } : { reader: 'off', durable: false, events: [], oldest: null, last: 0 }, undefined, { 'cache-control': 'no-store' })
+    }
     if (sub === '/api/status/payments') {
       return send(res, 200, paymentsStatus(), undefined, { 'cache-control': 'no-store' })
     }

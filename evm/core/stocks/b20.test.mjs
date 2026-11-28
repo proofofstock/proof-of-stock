@@ -146,6 +146,19 @@ console.log('a change, for the alert')
   check('the alert names the token, the scope and what changed, and says it is not a verdict change', text.includes('TSLAc') && text.includes(T) && text.includes('TRANSFER_RECEIVER_POLICY') && text.includes('allowed -> refused') && /not a verdict change/.test(text))
 }
 
+console.log('freshness by the millisecond, and by a monotonic expiry')
+{
+  const r = reading({ paused: true, readAt: NOW - 900499 })
+  check('a pause read 900.499 s ago is no longer actionable: stale, not paused', at(r).state === 'unknown' && at(r).reason === 'stale')
+  check('...one read exactly 900 s ago still is', at(reading({ paused: true, readAt: NOW - 900000 })).state === 'paused')
+  const m = { ...reading({ paused: true, readAt: NOW - 1000 }), expires_mono: 5000 }
+  check('a wall clock moved back cannot revive a reading the monotonic clock has expired', transfersOf(m, { now: NOW, mono: 5001 }).reason === 'stale' && transfersOf(m, { now: NOW, mono: 4999 }).state === 'paused')
+  const st = at(reading({ policies: { sender: '4', receiver: '0', executor: '0' }, kinds: { 4: { type: 'block', members: [P1] } }, readAt: NOW - 3600e3 }))
+  check('a stale block clears every actionable field: no venue answer, no probe answer', st.venues.every((v) => v.allowed === null && Object.values(v.scopes).every((x) => x === null)) && st.ordinary_wallet.send === null && !venueRefused(st, P1))
+  const dis = at({ ...reading(), source_state: 'rpc_disagree' })
+  check('a reading the two RPCs disagreed on: unknown, rpc_disagree, nothing actionable', dis.state === 'unknown' && dis.reason === 'rpc_disagree' && dis.venues.every((v) => v.allowed === null))
+}
+
 console.log('a venue by its role, and the probe wallet by its name')
 {
   const r = reading({ policies: { sender: '0', receiver: '7', executor: '0' }, kinds: { 7: { type: 'block', members: [P1] } } })

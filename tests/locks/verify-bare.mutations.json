@@ -1,0 +1,22 @@
+{
+  "_finding": "Owner, 27.11: a bare /verify, the link a person clicks, answered a 400 that said only which chain to give. Without any address it now shows one working request and the route's docs; every other request is answered as before.",
+  "target": "apps/stocks-web.mjs",
+  "runner": [
+    "node",
+    "apps/stocks-web.test.mjs"
+  ],
+  "mutations": [
+    {
+      "name": "the bare 400 shows no example",
+      "find": "        return send(res, 400, { error: `give chain and address, for example ${example} (the route is described at ${docsUrl})`, example, docs: docsUrl }, undefined, cors)\n",
+      "replace": "        return send(res, 400, { error: 'give chain and address' }, undefined, cors)\n",
+      "expect": "FAIL verify: with no address at all, a 400 whose error shows one working example and the docs"
+    },
+    {
+      "name": "an empty address is taken for a bare request",
+      "find": "      if (url.searchParams.get('address') == null) {\n",
+      "replace": "      if (!url.searchParams.get('address')) {\n",
+      "expect": "FAIL ...the same with a chain but no address, and an empty address is still the address error"
+    }
+  ]
+}

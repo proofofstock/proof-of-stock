@@ -41,7 +41,7 @@ short. The dated record is [CHANGELOG.md](CHANGELOG.md); in one line per release
 | 2026-11-15 | 0.7.0 | Paid passes over the free rate, paid in USDC on Base over x402 |
 | 2026-11-20 | 0.8.0 | Payment alarms reach Telegram; look-alikes found by symbol search across DEX aggregators |
 | 2026-11-24 | 0.9.0 | Ten MCP tools; a Telegram bot, @ProofofStockBot; `/api`, every call with its price; tabs on every page; a badge to embed from each passport; paid passes over x402 v2 too; a Bankr skill in review |
-| 2026-11-27 | Unreleased | List locks: a listed record needs the issuer's factory on chain; a kill switch off our host; `/tokenlist.json` and `/denylist.json`; the agent test; pool depth on every passport; the Demo Agent at `/demo` |
+| 2026-11-28 | 0.10.0 | `simulate_buy`, a dry run of a buy before spending; the issuer's B20 transfer rules on Base; list locks: a listed record needs the issuer's factory on chain; a kill switch off our host; `/tokenlist.json` and `/denylist.json`; the agent test; pool depth on every passport; the Demo Agent at `/demo`; alerts when npm or the MCP registry lag behind |
 
 </details>
 

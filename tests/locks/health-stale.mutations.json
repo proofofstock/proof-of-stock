@@ -1,0 +1,58 @@
+{
+  "_finding": "Owner, 27.11: what lives outside the repository went stale silently. The guard on npm and the server on the official MCP registry stayed below the repository's versions, and a week of changes waited unreleased, because publishing is the owner's step and no test looked outside. The health check now alerts on each, after a grace counted from the first run that saw it; a registry that cannot be read is neither an alert nor a clear.",
+  "target": "scripts/stocks/health-check.mjs",
+  "runner": [
+    "node",
+    "scripts/stocks/health-stale.test.mjs"
+  ],
+  "mutations": [
+    {
+      "name": "versions compared as text",
+      "find": "  for (let i = 1; i <= 3; i++) if (Number(x[i]) !== Number(y[i])) return Number(x[i]) < Number(y[i])\n",
+      "replace": "  if (a !== b) return String(a) < String(b)\n",
+      "expect": "FAIL versions compare by number, not as text"
+    },
+    {
+      "name": "no grace: behind is an alert at once",
+      "find": "if (!(now - first > publishDays * 864e5))",
+      "replace": "if (false)",
+      "expect": "FAIL behind, first seen now: neither an alert nor a clear, and the time is kept"
+    },
+    {
+      "name": "the first-seen time restarts every run",
+      "find": "    const first = Number.isFinite(since[key]) ? since[key] : now\n",
+      "replace": "    const first = now\n",
+      "expect": "FAIL past 3 days: stale:npm-guard and stale:mcp-registry"
+    },
+    {
+      "name": "an unreadable registry counts as behind",
+      "find": "    if (!got || got.error) {",
+      "replace": "    if (!got || got.error) got = { version: '0.0.0' }\n    if (false) {",
+      "expect": "FAIL is neither an alert nor a clear"
+    },
+    {
+      "name": "an unreadable registry drops the clock",
+      "find": "not compared this run`); if (Number.isFinite(since[key])) next[key] = since[key]; return }",
+      "replace": "not compared this run`); return }",
+      "expect": "FAIL ...keeps the first-seen time, so the clock does not restart"
+    },
+    {
+      "name": "an answer about another package is taken",
+      "find": "(j) => j && j.name === '@proofofstock/guard' ? j.version : null",
+      "replace": "(j) => j && j.version",
+      "expect": "FAIL an answer about another package or server is not a version"
+    },
+    {
+      "name": "an empty [Unreleased] is stale",
+      "find": "    const old = cl.unreleased > 0 && ageDays > releaseDays\n",
+      "replace": "    const old = ageDays > releaseDays\n",
+      "expect": "FAIL ...an empty [Unreleased] is never stale, however old the release"
+    },
+    {
+      "name": "the first-seen times overwrite the alert state",
+      "find": "  try { s = JSON.parse(fs.readFileSync(file, 'utf8')) || {} } catch (_) { /* a new file */ }\n",
+      "replace": "",
+      "expect": "FAIL the first-seen time is kept under its own key in the alert state file, beside the alerts"
+    }
+  ]
+}

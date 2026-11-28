@@ -944,7 +944,7 @@ curl -s https://proofofstock.xyz/mcp -H 'content-type: application/json' \
 The lead, for the three outcomes (every number made up, a $100 share for easy reading):
 
 ```
-TSLAc on Base is on Coinbase's list. US market: open. $25.00 of USDC would get 0.2490 TSLAc at an effective $100.40 each, quoted 2 seconds ago (Aerodrome, one pool): 0.40% above Coinbase's reference of $100.00 (updated 40 s ago), within the 3.00% default limit. The sell-back of those tokens, quoted now, returns $24.95. KyberSwap, across venues, quotes 0.2495 TSLAc for the same amount, through the same pool. As 0x1111…1111 stands it lacks the USDC, the approval and the gas; with those supplied, the simulated swap did not revert at block 30000000. Facts with their time and source, not advice.
+TSLAc on Base is on Coinbase's list. US market: open. $25.00 of USDC would get 0.2490 TSLAc at an effective $100.40 each, quoted 2 seconds ago (Aerodrome, one pool): 0.40% above Coinbase's reference of $100.00 (updated 40 s ago), within the 3.00% default limit. The sell-back of those tokens, quoted now, returns $24.95. KyberSwap, across venues, quotes 0.2495 TSLAc for the same amount, through the same pool. As the wallet stands it lacks the USDC, the approval and the gas; with those supplied, the simulated swap did not revert at block 30000000. Facts with their time and source, not advice.
 0x5a5a…5a5a is not on Coinbase's list on Base and copies TSLAc; the listed contract is 0xb200…0cd0. No quote was made.
 TSLAc on Base is on Coinbase's list. US market: open. No quote could be read from Aerodrome's quoter right now (rpc_unavailable), so there is no price for $25.00. Facts with their time and source, not advice.
 ```
@@ -1011,16 +1011,22 @@ on an Aerodrome single-pool buy the pool pays the wallet, so the pool (as sender
 pool makes the line `unknown`, `reason: "venue_not_allowed_by_issuer"`; the Aerodrome router pulls the token only on
 the sell-back and the pool receives it there, so a router refused as the caller, or the pool the reverse quote uses refused as the
 receiver, makes the sell-back that reason; for KyberSwap the router and every pool its route delivers from, on every split, are
-checked. A venue the issuer refuses is not asked. With a wallet, one more read at the chain's head,
-pinned by its hash with `requireCanonical` and current by its own header time, asks the token's receiver and sender
-policies about that wallet (`simulation.issuer_policy`). A wallet the receiver policy refuses gets
+checked, and the v4 PoolManager when a delivering hop is a v4 pool. A venue the issuer refuses is not asked. When the
+site's current reading does not cover every actor of a line (a pool outside the ones it checks), all of that line's
+actors are read again at one head on both RPCs, which must agree; a line they could not read, or disagree on, or with
+a delivering hop whose pool cannot be named, is `unknown`, `reason: "venue_unchecked"`, never a price. With a wallet, one more read
+at the chain's head on both RPCs, pinned by its hash with `requireCanonical`, current by its own header time (checked
+again after the reads and when it is used), reads the token's current receiver and sender bindings and asks those policies about that wallet
+(`simulation.issuer_policy`), whatever the site's own reading says. A wallet the receiver policy refuses gets
 `simulation.result: "would_revert"` with `reason: "wallet_not_allowed_by_issuer"` and `revert.kind: "issuer_policy"`
 without the swap being run: the one case where `would_revert` is said without a dry run, because the chain gave it as a
 fact. A wallet the sender policy refuses gets no sell-back: `sell_back.result: "unknown"`, `reason:
 "wallet_not_allowed_by_issuer"`. Nothing is attributed to the issuer's policy from our own probe of an ordinary wallet:
 without the caller's own read, a revert stays `token_rule` or `revert_unattributed`. A reading that is `unknown`
-(stale, failed, a policy that does not exist) never refuses: the answer goes on, and `context.transfers` says the state
-and why. On Robinhood Chain `context.transfers` is `null`.
+(stale, failed, disputed between the two RPCs, a policy that does not exist) never refuses: the answer goes on, and
+`context.transfers` says the state and why. When the chain and the issuer's list disagree on the pause,
+`context.transfers.pause_sources_agree` is `false` and the lead says both, the chain first. The wallet is never in the
+lead sentence, and a revert text that carries it is redacted. On Robinhood Chain `context.transfers` is `null`.
 
 ### Limits
 

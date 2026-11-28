@@ -37,7 +37,10 @@ EnvironmentFile=-/etc/pos/analytics.env
 # STP_GLAMA_CLAIM, the claim proving the MCP connector at /mcp is ours (deployment/PUBLISHING.md). The leading dash
 # means an absent file is normal. systemd reads it before InaccessiblePaths=-/etc/pos applies, as with the others.
 EnvironmentFile=-/etc/pos/web.env
-StateDirectory=stp-analytics stp-agent-test
+# The B20 outbox and baseline (apps/b20-reader.mjs): the changes seen, kept until stp-health has told them, and the
+# rules as last read, so a restart loses nothing. systemd creates /var/lib/stp-b20 for the unit.
+Environment=STP_B20_DIR=/var/lib/stp-b20
+StateDirectory=stp-analytics stp-agent-test stp-b20
 StateDirectoryMode=0700
 ExecStart=/usr/bin/node apps/stocks-web.mjs
 Restart=on-failure
@@ -48,14 +51,14 @@ MemoryMax=384M
 CPUQuota=50%
 NoNewPrivileges=true
 # No capability: everything it reads under /var/lib/pos is world-readable, and it binds an unprivileged port. The file
-# system is read-only except its own counter directory and the agent test's store.
+# system is read-only except its own counter directory, the agent test's store and the B20 outbox.
 CapabilityBoundingSet=
 AmbientCapabilities=
 # It sees only its own user's processes in /proc, and what it writes (the counter files) is readable by pos alone.
 ProtectProc=invisible
 UMask=0077
 ProtectSystem=strict
-ReadWritePaths=/var/lib/stp-analytics /var/lib/stp-agent-test
+ReadWritePaths=/var/lib/stp-analytics /var/lib/stp-agent-test /var/lib/stp-b20
 # The recorder's private copies of third-party answers are not the site's to read: the path does not exist for it.
 InaccessiblePaths=-/var/lib/stp-raw
 # The owner's secrets do not exist for it (systemd itself reads EnvironmentFile= before this applies).

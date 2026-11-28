@@ -1,5 +1,5 @@
 {
-  "_finding": "The B20 reads (docs/b20-transfers-tz.md §1, §5, outside review of #268): pinned by block hash with requireCanonical, stamped with the block's own time and never with ours, a head below the last one used or ahead of the clock refused, every aggregate3 answer decoded strictly, policyExists before isAuthorized and once per id, the second RPC when the first fails, a baseline that keeps the last value read so a failed sub-call never hides a change, and the wallet read refused when its head is old, behind the reading, or the policy moved. The bounds and success-word checks of the decoder are held by its canonical re-encoding, which is locked.",
+  "_finding": "The B20 reads after the stress reviews (docs/b20-transfers-tz.md §1, §5): one node must not decide (both RPCs at one common safe block, the same hash, compared token by token); heads plausible against time and the last accepted, with a loud reset after a lock-out; the block's own time and a monotonic expiry; strict, canonical aggregate3 answers; a failed chunk retried; a cycle deadline; a failed cycle keeps what is current; a per-scope baseline; a durable outbox; reconcile; rolesAt reads the current bindings first and rechecks freshness after the reads.",
   "target": "apps/b20-reader.mjs",
   "runner": [
     "node",
@@ -8,105 +8,153 @@
   "mutations": [
     {
       "name": "isAuthorized is asked of an id that does not exist",
-      "find": "    if (id != null && id !== ALWAYS_ALLOW && exists[id] === true) pairs.set",
+      "find": "    if (id != null && id !== ALWAYS_ALLOW && exists.get(id) === true) pairs.set",
       "replace": "    if (id != null && id !== ALWAYS_ALLOW) pairs.set",
-      "expect": "FAIL an unknown id is never asked isAuthorized"
-    },
-    {
-      "name": "the pin does not ask requireCanonical",
-      "find": "export const pinOf = (hash) => ({ blockHash: hash, requireCanonical: true })",
-      "replace": "export const pinOf = (hash) => ({ blockHash: hash })",
-      "expect": "FAIL every eth_call is aggregate3 at the pinned block hash, canonical only"
-    },
-    {
-      "name": "a reading is stamped with our clock",
-      "find": "      token: p.t.address, block: head.number, block_hash: head.hash, read_at: head.time,",
-      "replace": "      token: p.t.address, block: head.number, block_hash: head.hash, read_at: now(),",
-      "expect": "FAIL a node whose head is an hour old"
-    },
-    {
-      "name": "a head ahead of the clock is taken",
-      "find": "      try { const head = await pinHead(fetchImpl, url); if (head.time <= now() + FUTURE_SKEW_MS) heads.push({ url, head });",
-      "replace": "      try { const head = await pinHead(fetchImpl, url); if (true) heads.push({ url, head });",
-      "expect": "FAIL a node whose head is an hour ahead of our clock"
-    },
-    {
-      "name": "a head below the last one used is taken",
-      "find": "  if (head.number < minBlock) throw new Error('rpc: head below the last block read')",
-      "replace": "",
-      "expect": "FAIL the first node down, the second behind the last block used"
-    },
-    {
-      "name": "an id shared by tokens is read once per token",
-      "find": "  const ids = [...new Set(per.flatMap((p) => Object.values(p.policies)).filter((id) => id != null && id !== ALWAYS_ALLOW))]",
-      "replace": "  const ids = per.flatMap((p) => Object.values(p.policies)).filter((id) => id != null && id !== ALWAYS_ALLOW)",
-      "expect": "FAIL once per id"
-    },
-    {
-      "name": "the second RPC is never tried",
-      "find": "    for (const url of rpcPairOf(env)) {",
-      "replace": "    for (const url of rpcPairOf(env).slice(0, 1)) {",
-      "expect": "FAIL the first RPC down: the second answers"
-    },
-    {
-      "name": "the baseline is never moved on",
-      "find": "      good.set(addr, next)",
-      "replace": "      if (!good.has(addr)) good.set(addr, next)",
-      "expect": "FAIL the next cycle, the same rules: no new change"
-    },
-    {
-      "name": "a failed sub-call resets the baseline",
-      "find": "  const pick = (a, b) => (b === true || b === false ? b : a)",
-      "replace": "  const pick = (a, b) => b",
-      "expect": "FAIL the cycle whose sub-call failed"
-    },
-    {
-      "name": "the pause disagreement is journaled every cycle",
-      "find": "      if (p.agree !== pauseAgree.get(addr)) {",
-      "replace": "      if (true) {",
-      "expect": "FAIL ...not again next cycle"
-    },
-    {
-      "name": "the wallet read takes an old head",
-      "find": "  if (now() - head.time > STALE_S * 1000) return null",
-      "replace": "",
-      "expect": "FAIL a head an hour old by its header time"
-    },
-    {
-      "name": "the wallet read takes a head behind the reading",
-      "find": "  if (Number.isInteger(reading.block) && head.number < reading.block) return null",
-      "replace": "",
-      "expect": "FAIL a head below the reading"
-    },
-    {
-      "name": "the wallet read is built on an id that moved",
-      "find": "  if (idOf(r[0]) !== ids.receiver || idOf(r[1]) !== ids.sender) return { head_block: head.number, receive: null, send: null }",
-      "replace": "",
-      "expect": "FAIL the bound id changed since the reading"
+      "expect": "FAIL policyExists before isAuthorized"
     },
     {
       "name": "the answer is not held to its canonical encoding",
-      "find": "  if (encodeAggregate3Result(out).toLowerCase() !== hex.toLowerCase()) throw new Error('aggregate3: not the canonical encoding of its own results')",
+      "find": "  if (encodeAggregate3Result(out).toLowerCase() !== hex.toLowerCase()) throw fail('bad_answer')",
       "replace": "",
       "expect": "FAIL a tuple offset pointing back at another tuple"
     },
     {
-      "name": "the first node is read whatever its age",
-      "find": "    heads.sort((a, b) => b.head.time - a.head.time || b.head.number - a.head.number)",
+      "name": "two hashes for one height are taken",
+      "find": "      if (ca.hash !== cb.hash || ca.number !== n || cb.number !== n) return failCycle(tokens, 'hash_mismatch', 'rpc_disagree')",
       "replace": "",
-      "expect": "FAIL the first node an hour behind, the second current"
+      "expect": "FAIL two RPCs giving one height two hashes"
     },
     {
-      "name": "an old head moves the baseline",
-      "find": "      if (!current) continue",
-      "replace": "",
-      "expect": "FAIL every node an hour behind"
+      "name": "the two RPCs are not compared",
+      "find": "      if (!x || !y || agreeKey(x) !== agreeKey(y)) {",
+      "replace": "      if (!x || !y) {",
+      "expect": "FAIL one RPC answers paused, the other not"
     },
     {
-      "name": "the wallet read takes a head ahead of the clock",
-      "find": "  if (head.time > now() + FUTURE_SKEW_MS) return null",
+      "name": "one RPC decides alone",
+      "find": "    if (okHeads.length < 2) return failCycle(tokens, heads.find((x) => x.problem)?.problem || 'single_source', 'single_source')",
+      "replace": "    if (okHeads.length < 2) okHeads.push(okHeads[0])",
+      "expect": "FAIL the second RPC down: the cycle is single_source"
+    },
+    {
+      "name": "a head far ahead of its time is taken",
+      "find": "      if (!plausibleStep(h, last)) return 'head_implausible'",
       "replace": "",
-      "expect": "FAIL the wallet read refuses a head an hour ahead of the clock"
+      "expect": "FAIL both heads far ahead of their time together"
+    },
+    {
+      "name": "a head ahead of the clock is taken",
+      "find": "    if (h.time > t + FUTURE_SKEW_MS) return 'head_ahead'",
+      "replace": "",
+      "expect": "FAIL every head an hour ahead of our clock"
+    },
+    {
+      "name": "a failed cycle forgets what is current",
+      "find": "      if (current) continue",
+      "replace": "",
+      "expect": "FAIL the second RPC down: the cycle is single_source, and the last agreed reading"
+    },
+    {
+      "name": "a failed chunk is not tried again",
+      "find": "      for (let attempt = 0; attempt <= CHUNK_RETRIES; attempt++) {",
+      "replace": "      for (let attempt = 0; attempt <= 0; attempt++) {",
+      "expect": "FAIL a chunk that fails once is tried again"
+    },
+    {
+      "name": "a cycle past its deadline is published",
+      "find": "    if (now() > deadline) return failCycle(tokens, 'deadline')",
+      "replace": "",
+      "expect": "FAIL a cycle past its deadline"
+    },
+    {
+      "name": "the baseline merges a failed binding with a new answer",
+      "find": "      const snap = snapshotOf(reading)",
+      "replace": "      const snap = snapshotOf({ ...reading, policies: Object.fromEntries(SCOPE_KEYS.map((s) => [s, reading.policies[s] ?? prev?.policies?.[s] ?? null])) })",
+      "expect": "FAIL only the receiver"
+    },
+    {
+      "name": "the reading has no monotonic expiry",
+      "find": "      const reading = { ...x, sources: 2, expires_mono: expires }",
+      "replace": "      const reading = { ...x, sources: 2 }",
+      "expect": "FAIL a wall clock moved back cannot make an expired reading current"
+    },
+    {
+      "name": "the wallet read uses a remembered binding",
+      "find": "  const policies = Object.fromEntries(scopes.map((s, k) => [s, idOf(r1[k])]))",
+      "replace": "  const policies = Object.fromEntries(scopes.map((s, k) => [s, '9']))",
+      "expect": "FAIL the wallet read reads the current bindings first"
+    },
+    {
+      "name": "the lock-out never resets",
+      "find": "      if (n >= LOCKOUT_CYCLES) {",
+      "replace": "      if (false) {",
+      "expect": "FAIL every head below the watermark for two cycles"
+    },
+    {
+      "name": "a lock-out by implausible heads is not counted",
+      "find": "    const behind = heads.every((x) => x.problem === 'head_behind'), odd = heads.every((x) => x.problem === 'head_implausible')",
+      "replace": "    const behind = heads.every((x) => x.problem === 'head_behind'), odd = false",
+      "expect": "FAIL every head implausible for two cycles"
+    },
+    {
+      "name": "one RPC sets the time",
+      "find": "      if (ca.time !== cb.time) return failCycle(tokens, 'time_mismatch', 'rpc_disagree')",
+      "replace": "",
+      "expect": "FAIL the same hash with two header times"
+    },
+    {
+      "name": "the events are not committed",
+      "find": "    const c = outbox.commit(events, Object.fromEntries(next))",
+      "replace": "    const c = outbox.commit([], Object.fromEntries(next))",
+      "expect": "FAIL a change is an event with a sequence"
+    },
+    {
+      "name": "a failed write still moves the baseline",
+      "find": "    if (!c.ok) { counters.failed++; counters.last_error = 'outbox_write_failed'; return }",
+      "replace": "",
+      "expect": "FAIL the outbox write failed"
+    },
+    {
+      "name": "the high-water mark follows the rows",
+      "find": "      hw = Math.max(Number.isInteger(j && j.hw) ? j.hw : 0, events.length ? events[events.length - 1].seq : 0)",
+      "replace": "      hw = events.length ? events[events.length - 1].seq : 0",
+      "expect": "FAIL a high-water mark held with no rows left"
+    },
+    {
+      "name": "total disagreement passes for a good cycle",
+      "find": "    if (!agreed) { counters.failed++; counters.last_error = 'rpc_disagree'; log('[b20] read failed: rpc_disagree'); return }",
+      "replace": "",
+      "expect": "FAIL total disagreement"
+    },
+    {
+      "name": "a token no longer trusted stays in the baseline",
+      "find": "      for (const a of gone) next.delete(a)",
+      "replace": "",
+      "expect": "FAIL an empty trusted list"
+    },
+    {
+      "name": "rolesAt does not check the head again after the reads",
+      "find": "    // Checked again after the reads: a head that went stale while they ran says nothing.\n    if (!fresh(ca)) return null",
+      "replace": "",
+      "expect": "FAIL a head that goes stale while the reads run"
+    },
+    {
+      "name": "rolesAt trusts one RPC",
+      "find": "    if (JSON.stringify(ra) !== JSON.stringify(rb)) return null",
+      "replace": "",
+      "expect": "FAIL rolesAt on two RPCs that disagree"
+    },
+    {
+      "name": "two undecodable readings pass for a good cycle",
+      "find": "    if (!decoded) { counters.failed++; counters.last_error = 'bad_answer'; log('[b20] read failed: bad_answer'); return }",
+      "replace": "",
+      "expect": "FAIL every agreed reading undecodable"
+    },
+    {
+      "name": "the epoch is not kept",
+      "find": "      if (j && typeof j.epoch === 'string' && /^[0-9a-f]{16}$/.test(j.epoch)) epoch = j.epoch",
+      "replace": "",
+      "expect": "FAIL the epoch is kept across a restart"
     }
   ]
 }

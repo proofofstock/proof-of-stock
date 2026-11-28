@@ -1,0 +1,40 @@
+{
+  "_finding": "Owner, 27.11: the B20 transfer rules shipped and the landing did not say so, and most MCP tools, the token list, the look-alike list and the agent test were not on it either; nothing in the tests looked. Every public capability must now be on the landing and in server.json's description or llms.txt.",
+  "target": "apps/stocks-web/index.html",
+  "runner": [
+    "node",
+    "apps/capabilities-coverage.test.mjs"
+  ],
+  "mutations": [
+    {
+      "name": "the landing drops the token list",
+      "find": "        <a class=\"foot-link\" href=\"tokenlist.json\">Token list</a>\n",
+      "replace": "",
+      "expect": "FAIL /tokenlist.json: linked from the landing and named in llms.txt"
+    },
+    {
+      "name": "the landing drops the agent test",
+      "find": "        <a class=\"foot-link\" href=\"agent-test\">Agent test</a>\n",
+      "replace": "",
+      "expect": "FAIL the agent test: linked from the landing and named in llms.txt"
+    },
+    {
+      "name": "the landing forgets a tool",
+      "find": "<code>address_on_date</code>, ",
+      "replace": "",
+      "expect": "FAIL each tool is named on the landing page"
+    },
+    {
+      "name": "what we check says nothing of the transfer rules",
+      "find": " On Base we also read the issuer's transfer rules (B20) from the chain: open, restricted or paused.",
+      "replace": "",
+      "expect": "FAIL the B20 transfer rules: in what the landing checks, with what the chain can say (open, restricted or paused)"
+    },
+    {
+      "name": "the simulated buy only on a wide screen",
+      "find": "</span>, and simulate a buy before you spend.</p>",
+      "replace": ", and simulate a buy before you spend</span>.</p>",
+      "expect": "FAIL the lede names the check against the issuer's list and the simulated buy"
+    }
+  ]
+}

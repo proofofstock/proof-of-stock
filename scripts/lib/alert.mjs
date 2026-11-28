@@ -18,7 +18,32 @@ const HOUR = 3600e3
 
 function readState (file) { try { return JSON.parse(fs.readFileSync(file, 'utf8')) } catch (_) { return {} } }
 function writeState (file, s) {
-  try { fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 }); const tmp = file + '.tmp'; fs.writeFileSync(tmp, JSON.stringify(s), { mode: 0o600 }); fs.renameSync(tmp, file) } catch (_) {}
+  // A temporary file of this writer's own: two writers never share one.
+  try { fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 }); const tmp = `${file}.${process.pid}.${Math.random().toString(36).slice(2)}.tmp`; fs.writeFileSync(tmp, JSON.stringify(s), { mode: 0o600 }); fs.renameSync(tmp, file) } catch (_) {}
+}
+/** A lock older than this is taken as left by a process that died. */
+export const LOCK_STALE_MS = 30_000
+/** How long a writer waits for the lock before it writes anyway (an alert is never held back by a stuck lock). */
+export const LOCK_WAIT_MS = 5_000
+/**
+ * `fn()` with `<file>.lock` held: a file created exclusively (O_EXCL), the same on every host process, so stp-health and
+ * the systemd failure notifier never interleave a read-modify-write of the shared state. A lock older than
+ * LOCK_STALE_MS is broken. Returns fn's result.
+ */
+export async function withStateLock (file, fn, { sleep = (ms) => new Promise((r) => setTimeout(r, ms)) } = {}) {
+  const lock = file + '.lock'
+  try { fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 }) } catch (_) {}
+  const start = Date.now()
+  let held = false
+  while (!held) {
+    try { fs.closeSync(fs.openSync(lock, 'wx', 0o600)); held = true } catch (e) {
+      if (!e || e.code !== 'EEXIST') break
+      try { if (Date.now() - fs.statSync(lock).mtimeMs > LOCK_STALE_MS) { fs.unlinkSync(lock); continue } } catch (_) { continue }
+      if (Date.now() - start > LOCK_WAIT_MS) break
+      await sleep(10)
+    }
+  }
+  try { return fn() } finally { if (held) { try { fs.unlinkSync(lock) } catch (_) {} } }
 }
 
 /**
@@ -34,25 +59,39 @@ export async function alert ({ key, text, ok = false }, { env = process.env, fet
   const last = state[key]
   if (ok) {
     if (!last || last.resolved) return 'none'
-    state[key] = { at: now(), resolved: true }
-  } else {
-    if (last && !last.resolved && now() - last.at < everyMs) return 'suppressed'
-    state[key] = { at: now(), resolved: false }
-  }
-  writeState(file, state)
+  } else if (last && !last.resolved && now() - last.at < everyMs) return 'suppressed'
+  // The throttle and the resolution are recorded only once the message is out (or, with no bot, once it is in the
+  // journal): an alert that failed to reach Telegram is tried again next run, never taken as said.
+  // Read again under the lock and change this key only: another writer's newer entry for another key (or this one) is
+  // never overwritten with a stale copy.
+  const record = () => withStateLock(file, () => { const fresh = readState(file); fresh[key] = { at: now(), resolved: Boolean(ok) }; writeState(file, fresh) })
   const body = (ok ? 'RESOLVED ' : 'ALERT ') + text
   const token = env.STP_ALERT_TELEGRAM_TOKEN, chat = env.STP_ALERT_TELEGRAM_CHAT
-  if (!token || !chat || typeof fetchImpl !== 'function') { log(`[alert] ${key}: ${body}`); return 'logged' }
+  if (!token || !chat || typeof fetchImpl !== 'function') { log(`[alert] ${key}: ${body}`); await record(); return 'logged' }
+  const r = await sendTelegram(`Proof of Stock: ${body}`, { env, fetchImpl })
+  if (r.ok) { await record(); return 'sent' }
+  log(`[alert] ${key}: telegram ${r.why}${r.retryAfterS ? ' (retry after ' + r.retryAfterS + ' s)' : ''}; ${body}`)
+  return 'failed'
+}
+
+/**
+ * One Telegram message: { ok, messageId, retryAfterS, why }. Delivered only on HTTP 200 with `ok: true` and a
+ * message_id in the answer; a 429 carries Telegram's retry_after. Never throws; the token is never in `why`.
+ */
+export async function sendTelegram (text, { env = process.env, fetchImpl = globalThis.fetch, timeoutMs = 10_000 } = {}) {
+  const token = env.STP_ALERT_TELEGRAM_TOKEN, chat = env.STP_ALERT_TELEGRAM_CHAT
+  if (!token || !chat || typeof fetchImpl !== 'function') return { ok: false, why: 'not_configured' }
+  let r
   try {
-    const r = await fetchImpl(`https://api.telegram.org/bot${token}/sendMessage`, {
+    r = await fetchImpl(`https://api.telegram.org/bot${token}/sendMessage`, {
       method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ chat_id: chat, text: `Proof of Stock: ${body}`, disable_web_page_preview: true }),
-      signal: AbortSignal.timeout(10_000),
+      body: JSON.stringify({ chat_id: chat, text, disable_web_page_preview: true }),
+      signal: AbortSignal.timeout(timeoutMs),
     })
-    if (!r.ok) { log(`[alert] ${key}: telegram answered ${r.status}; ${body}`); return 'failed' }
-    return 'sent'
-  } catch (e) {
-    log(`[alert] ${key}: telegram unreachable (${String(e && e.name || 'error')}); ${body}`)
-    return 'failed'
-  }
+  } catch (e) { return { ok: false, why: 'unreachable (' + String(e && e.name || 'error') + ')' } }
+  let j = null
+  try { j = await r.json() } catch (_) { /* no body */ }
+  const retry = j && j.parameters && Number.isFinite(Number(j.parameters.retry_after)) ? Number(j.parameters.retry_after) : null
+  if (r.status === 200 && j && j.ok === true && j.result && Number.isInteger(j.result.message_id)) return { ok: true, messageId: j.result.message_id }
+  return { ok: false, why: 'answered ' + r.status + (j && j.ok === false ? ' not ok' : ''), retryAfterS: r.status === 429 ? retry : null }
 }

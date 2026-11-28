@@ -73,16 +73,18 @@
     transfers_restricted: ['The issuer\'s on-chain transfer rules (B20) refuse an ordinary wallet, or a router or pool we name. This is the issuer\'s own rule, read from Base; it does not change whether the token is the issuer\'s.', 'warn'],
     transfers_paused: ['The issuer has paused transfers of this token on chain (B20). Read from Base; it does not change whether the token is the issuer\'s.', 'warn'],
   }
-  // What the line says at `nowMs`, from the block's own time (checked_at): an `open`, `restricted` or `paused` older
-  // than 15 minutes is no longer said; it is `unknown`, stale, as the server would say it. Self-contained: a test lifts
-  // it out of this file (apps/b20-web.test.mjs).
-  function transfersView (t, nowMs) {
+  // What the line says `elapsedMs` after the answer arrived: the server's own age of the reading (age_s, from the
+  // block's time) plus the time elapsed here by performance.now(), never the visitor's wall clock. An `open`,
+  // `restricted` or `paused` older than 15 minutes is no longer said; it is `unknown`, stale, as the server would say
+  // it. Self-contained: a test lifts it out of this file (apps/b20-web.test.mjs).
+  function transfersView (t, elapsedMs) {
     if (!t) return null
     const WHY = { not_read: 'not read yet', read_failed: 'the read failed', stale: 'the last reading is too old', undecodable: 'an answer did not decode', policy_missing: 'a bound policy does not exist', ordinary_wallet_refused: 'an ordinary wallet is refused', venue_refused: 'a router or pool we name is refused' }
-    const at = Date.parse(t.checked_at)
-    const ageS = Number.isFinite(at) ? Math.max(0, Math.round((nowMs - at) / 1000)) : null
+    const base = Number.isFinite(t.age_ms) ? t.age_ms : Number.isFinite(t.age_s) ? t.age_s * 1000 : null
+    const ageMs = base == null ? null : base + Math.max(0, elapsedMs || 0)
+    const ageS = ageMs == null ? null : Math.round(ageMs / 1000)
     const known = ['open', 'restricted', 'paused'].includes(t.state)
-    const expired = known && (ageS == null || ageS > 900)
+    const expired = known && (ageMs == null || ageMs > 900e3)
     const state = known && !expired ? t.state : 'unknown'
     const reason = expired ? 'stale' : known ? t.reason : t.reason || 'not_read'
     const ago = ageS == null ? null : ageS < 90 ? ageS + ' s ago' : ageS < 5400 ? Math.round(ageS / 60) + ' min ago' : ageS < 172800 ? Math.round(ageS / 3600) + ' h ago' : Math.round(ageS / 86400) + ' days ago'
@@ -90,15 +92,22 @@
       !expired && known && t.pause && t.pause.agree === false ? 'the issuer\'s list says ' + (t.pause.issuer_list ? 'paused' : 'not paused') : null]
     return { state, small: parts.filter(Boolean).join(' \u00b7 ') }
   }
-  // The B20 transfer rules line under the price (docs/b20-transfers-tz.md §9), repainted every 30 s from its timestamp,
+  // The block's exact age when the server answered, in ms: its generated_at less the reading's checked_at, two times of
+  // the server's own (no visitor clock is read). Falls back to age_s.
+  const transfersOfPassport = (p) => {
+    if (!p || !p.transfers) return null
+    const ms = Date.parse(p.generated_at) - Date.parse(p.transfers.checked_at)
+    return Number.isFinite(ms) && ms >= 0 ? { ...p.transfers, age_ms: ms } : p.transfers
+  }
+  // The B20 transfer rules line under the price (docs/b20-transfers-tz.md §9), repainted every 5 s from its timestamp,
   // so a line left open on screen expires instead of keeping its first age.
-  function transfersField (t) {
+  function transfersField (t, receivedAt = performance.now()) {
     if (!t) return null
     const v = h('span'), sm = h('small')
-    const paint = () => { const x = transfersView(t, Date.now()); v.className = 'tr-' + x.state; v.textContent = x.state; sm.textContent = x.small }
+    const paint = () => { const x = transfersView(t, performance.now() - receivedAt); v.className = 'tr-' + x.state; v.textContent = x.state; sm.textContent = x.small }
     paint()
     const el = h('div', { class: 'field' }, h('span', { class: 'k' }, 'transfers'), h('span', { class: 'dots-fill' }), h('span', { class: 'v' }, v, sm))
-    const tm = setInterval(() => { if (!el.isConnected) { clearInterval(tm); return } paint() }, 30e3)
+    const tm = setInterval(() => { if (!el.isConnected) { clearInterval(tm); return } paint() }, 5e3)
     return el
   }
 
@@ -128,7 +137,8 @@
     if (!LOOKUP.test(path)) return fetchJson(path)
     const k = kept.get(path)
     if (k && Date.now() - k.at < KEEP_MS) return k.p.then((b) => structuredClone(b)) // a copy: no two renders share one object
-    const p = fetchJson(path)
+    // When the answer arrived, by performance.now(): the B20 line ages from there (transfersView), not by the wall clock.
+    const p = fetchJson(path).then((b) => { if (b && typeof b === 'object') b._at = performance.now(); return b })
     kept.set(path, { at: Date.now(), p })
     p.catch(() => kept.delete(path)) // a failure is never kept: the next try asks again
     while (kept.size > KEEP_MAX) kept.delete(kept.keys().next().value)
@@ -483,11 +493,12 @@
     // The B20 notes say what the transfers line says, and expire with it: by the block time of the reading, never
     // shown once that reading is older than 15 minutes, and taken off a page left open when it gets there.
     const B20_NOTE = { transfers_restricted: 'restricted', transfers_paused: 'paused' }
-    const current = (n) => !B20_NOTE[n] || (transfersView(p.transfers, Date.now()) || {}).state === B20_NOTE[n]
+    const receivedAt = Number.isFinite(p._at) ? p._at : performance.now()
+    const current = (n) => !B20_NOTE[n] || (transfersView(transfersOfPassport(p), performance.now() - receivedAt) || {}).state === B20_NOTE[n]
     const items = p.notes.filter((n) => n !== 'pools_capped' && !(unminted && (n === 'not_minted' || n === 'no_reference')) && current(n)).map((n) => {
       if (!NOTES[n]) return null
       const li = h('li', { class: NOTES[n][1] === 'info' ? '' : NOTES[n][1] }, NOTES[n][0])
-      if (B20_NOTE[n]) { const tm = setInterval(() => { if (!li.isConnected) { clearInterval(tm); return } if (!current(n)) { li.remove(); clearInterval(tm) } }, 30e3) }
+      if (B20_NOTE[n]) { const tm = setInterval(() => { if (!li.isConnected) { clearInterval(tm); return } if (!current(n)) { li.remove(); clearInterval(tm) } }, 5e3) }
       return li
     }).filter(Boolean)
     return items.length ? h('ul', { class: 'notes' }, items) : null
@@ -629,7 +640,7 @@
       field('issuer price', blank(usd(ref && ref.price_usd)), ref && ref.price_usd > 0 ? (REF_KIND[ref.kind] || ref.kind) + ' · ' + (ref.kind === 'token_bid_ask_mid' ? 'last moved ' : 'updated ') + age(ref.age_s) + (ref.spread != null ? ' · bid/ask ' + pct(ref.spread).replace('+', '') + ' apart' : '') : 'the issuer publishes none'),
       field('on-chain price', h('span', { class: sign(l && l.premium) }, blank(usd(l && l.dex_price_usd))), i.minted === false ? 'not minted yet' : l ? (p.notes.includes('reading_stale') ? 'read ' + age(l.age_s) : l.dex_price_usd == null ? 'no pool deep enough' : 'deepest pool') : 'not recorded yet'),
       // Independent of the price row: a token listed today has no reading yet and may already be paused on chain.
-      p.chain === 'base' ? transfersField(p.transfers) : null,
+      p.chain === 'base' ? transfersField(transfersOfPassport(p), Number.isFinite(p._at) ? p._at : performance.now()) : null,
       // Pool depth (owner, 26.11): the deepest pool's size, and "thin" below the threshold the answer names.
       ...(l && l.liquidity && i.minted !== false ? [field('pool depth', h('span', { class: l.liquidity.thin ? 'warn' : '' }, l.liquidity.deepest_pool_usd == null ? 'under ' + big(10000) : big(l.liquidity.deepest_pool_usd)), l.liquidity.thin ? 'thin liquidity: a trade of a few thousand dollars can move the price' : 'deepest pool, both sides')] : []),
       field('on-chain vs issuer', h('span', { class: sign(l && l.premium) }, blank(pct(l && l.premium))), l && l.premium != null ? '+ means on-chain costs more' + (l.age_s != null ? ' · read ' + age(l.age_s) : '') : 'nothing to compare'),

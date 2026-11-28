@@ -22,7 +22,7 @@ console.log('alerts')
 {
   const sentTo = [], logs = []
   const env = { STP_ALERT_TELEGRAM_TOKEN: 'TOKEN-123', STP_ALERT_TELEGRAM_CHAT: '42', STP_ALERT_STATE: path.join(tmp, 'state.json') }
-  const fetchImpl = async (url, init) => { sentTo.push({ url, body: JSON.parse(init.body) }); return { ok: true, status: 200 } }
+  const fetchImpl = async (url, init) => { sentTo.push({ url, body: JSON.parse(init.body) }); return { ok: true, status: 200, json: async () => ({ ok: true, result: { message_id: sentTo.length } }) } }
   let t = 1_000_000
   const o = { env, fetchImpl, now: () => t, log: (m) => logs.push(m) }
   check('an alert goes to the owner\'s chat through the bot', (await alert({ key: 'a', text: 'x broke' }, o)) === 'sent' && sentTo[0].body.chat_id === '42' && /^Proof of Stock: ALERT x broke$/.test(sentTo[0].body.text) && sentTo[0].url.includes('/botTOKEN-123/sendMessage'))

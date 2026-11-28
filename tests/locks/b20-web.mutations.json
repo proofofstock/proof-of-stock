@@ -19,16 +19,16 @@
       "expect": "FAIL the passport: in_registry, the issuer named, latest.transfers restricted with its note"
     },
     {
-      "name": "the baselines never reach the status path",
-      "find": "tokens: b20.snapshots(new Map((freshRecords('base') || []).map((x) => [x.address, x.symbol ?? null])))",
-      "replace": "tokens: {}",
-      "expect": "FAIL /api/status carries base.b20"
+      "name": "the outbox is not served to health-check",
+      "find": "      return send(res, 200, b20 ? { reader: 'on', durable: b20.durable, ...b20.events(after, limit) }",
+      "replace": "      return send(res, 200, b20 ? { reader: 'on', durable: b20.durable, events: [], oldest: null, last: 0 }",
+      "expect": "FAIL /api/status/b20/events gives the outbox"
     },
     {
-      "name": "the changes are not on the status path",
-      "find": "tokens: b20.snapshots(new Map((freshRecords('base') || []).map((x) => [x.address, x.symbol ?? null]))), changes: b20.changes() }",
-      "replace": "tokens: b20.snapshots(new Map((freshRecords('base') || []).map((x) => [x.address, x.symbol ?? null]))), changes: [] }",
-      "expect": "FAIL ...and the change itself is listed"
+      "name": "the status does not say when the reader last read",
+      "find": "last_ok_at: b20.counters.last_ok_at, last_error",
+      "replace": "last_ok_at: null, last_error",
+      "expect": "FAIL /api/status says when the reader last read both RPCs"
     }
   ]
 }

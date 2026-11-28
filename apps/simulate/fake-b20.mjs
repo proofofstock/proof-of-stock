@@ -42,6 +42,7 @@ export function createB20Chain ({ tokens = {}, kinds = {} } = {}) {
       const scope = scopeOf[d.slice(8, 72)]
       st.calls.push({ batch: st.batch, kind: 'policyId', token: to, scope })
       if (st.garbage) return { success: true, data: '0x' + 'f'.repeat(64) }
+      if (st.failPolicyId && st.failPolicyId.token === to && st.failPolicyId.scope === scope) return { success: false, data: '0x' }
       return { success: true, data: '0x' + w(tok.policies[scope] ?? 0) }
     }
     if (tok && f === SEL.isPaused) { st.calls.push({ batch: st.batch, kind: 'isPaused', token: to, feature: Number(BigInt('0x' + d.slice(8, 72))) }); return { success: true, data: '0x' + w(tok.paused ? 1 : 0) } }
@@ -65,30 +66,41 @@ export function createB20Chain ({ tokens = {}, kinds = {} } = {}) {
 }
 
 /**
- * A whole fake node for the B20 reads alone, behind one fetchImpl: the latest block, with a header time from `now`
- * (less `lagS`, for a node behind), and aggregate3 at a block hash with requireCanonical. Per URL, `heads` can give a
- * node its own head (a fallback behind the first), and `mangle` can rewrite an aggregate3 answer (a truncated one).
+ * A whole fake pair of nodes for the B20 reads, behind one fetchImpl (each request's URL says which node). Each node has
+ * a head (`heads` per URL, else `head`), a header time from `now` (less `lags` per URL or `lagS`, and two seconds per
+ * block below the head), and answers `latest`, `safe` and a block by number. A node's hashes carry its own `forks` salt,
+ * so two nodes on different chains give different hashes for one number. aggregate3 is answered at any hash the node
+ * gave, with requireCanonical, from `chains` per URL or `chain`; `mangle` can rewrite an answer (a truncated one).
  */
 export function b20Node (chain, { head = 40_000_000, now = () => Date.now() } = {}) {
-  const node = { chain, head, now, lagS: 0, lags: new Map(), heads: new Map(), mangle: null, requests: [], down: new Set(), hashTags: 0 }
-  const hashOf = (n) => '0x' + BigInt(n).toString(16).padStart(64, 'c')
+  const node = { chain, chains: new Map(), head, now, lagS: 0, lags: new Map(), heads: new Map(), forks: new Map(), mangle: null, requests: [], down: new Set(), downMethods: new Map(), hashTags: 0, issued: new Map() }
+  const headOf = (u) => (node.heads.has(String(u)) ? node.heads.get(String(u)) : node.head)
+  const hashOf = (u, n) => '0x' + (BigInt(n).toString(16) + (node.forks.get(String(u)) || '')).padStart(64, 'c').slice(-64)
+  const timeOf = (u, n) => Math.floor(node.now() / 1000 - (node.lags.has(String(u)) ? node.lags.get(String(u)) : node.lagS) - (headOf(u) - n) * 2)
   node.fetchImpl = async (url, init = {}) => {
     const body = JSON.parse(init.body)
-    node.requests.push({ url: String(url), method: body.method, params: body.params })
+    const u = String(url)
+    node.requests.push({ url: u, method: body.method, params: body.params })
     const reply = (j, status = 200) => ({ ok: status < 400, status, json: async () => ({ jsonrpc: '2.0', id: 1, ...j }) })
-    if (node.down.has(String(url)) || node.down.has('*')) return reply({ error: { code: -32000, message: 'down' } }, 503)
-    const headOf = (u) => (node.heads.has(String(u)) ? node.heads.get(String(u)) : node.head)
+    if (node.down.has(u) || node.down.has('*')) return reply({ error: { code: -32000, message: 'down 0x' + 'ab'.repeat(20) } }, 503)
+    const dm = node.downMethods.get(u)
+    if (dm && dm(body)) return reply({ error: { code: -32000, message: 'failed for 0x' + 'ab'.repeat(20) } })
     if (body.method === 'eth_getBlockByNumber') {
-      const n = headOf(url)
-      return reply({ result: { number: '0x' + n.toString(16), hash: hashOf(n), timestamp: '0x' + Math.floor(node.now() / 1000 - (node.lags.has(String(url)) ? node.lags.get(String(url)) : node.lagS)).toString(16) } })
+      const tag = body.params[0]
+      const n = tag === 'latest' || tag === 'safe' ? headOf(u) : Number(BigInt(tag))
+      if (n > headOf(u)) return reply({ result: null })
+      const h = hashOf(u, n)
+      if (!node.issued.has(u)) node.issued.set(u, new Set())
+      node.issued.get(u).add(h)
+      return reply({ result: { number: '0x' + BigInt(n).toString(16), hash: h, timestamp: '0x' + timeOf(u, n).toString(16) } })
     }
     if (body.method === 'eth_call' && String(body.params[0].to).toLowerCase() === MULTICALL3) {
       const tag = body.params[1]
-      if (!tag || typeof tag !== 'object' || tag.blockHash !== hashOf(headOf(url))) return reply({ error: { code: -32000, message: 'header for hash not found' } })
+      if (!tag || typeof tag !== 'object' || !(node.issued.get(u) || new Set()).has(tag.blockHash)) return reply({ error: { code: -32000, message: 'header for hash not found' } })
       if (tag.requireCanonical !== true) return reply({ error: { code: -32000, message: 'the fake insists on requireCanonical' } })
       node.hashTags++
-      const out = node.chain.aggregate(body.params[0].data)
-      return reply({ result: node.mangle ? node.mangle(out) : out })
+      const out = (node.chains.get(u) || node.chain).aggregate(body.params[0].data)
+      return reply({ result: node.mangle ? node.mangle(out, u) : out })
     }
     return reply({ error: { code: -32601, message: 'no such method' } })
   }

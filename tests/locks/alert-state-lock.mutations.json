@@ -1,0 +1,28 @@
+{
+  "_finding": "stp-health and the systemd failure notifier share one alert state file (scripts/lib/alert.mjs): a write is a read-modify-write under an exclusive lock file, reading the state again under the lock and changing only its own key, so no writer loses another's newer entry (outside review of the B20 hardening).",
+  "target": "scripts/lib/alert.mjs",
+  "runner": [
+    "node",
+    "scripts/stocks/health-b20.test.mjs"
+  ],
+  "mutations": [
+    {
+      "name": "the state is not read again under the lock",
+      "find": "  const record = () => withStateLock(file, () => { const fresh = readState(file); fresh[key]",
+      "replace": "  const record = () => withStateLock(file, () => { const fresh = state; fresh[key]",
+      "expect": "FAIL a writer waits for the lock, then reads again"
+    },
+    {
+      "name": "the lock is not waited for",
+      "find": "      if (!e || e.code !== 'EEXIST') break",
+      "replace": "      break",
+      "expect": "FAIL a writer waits for the lock, then reads again"
+    },
+    {
+      "name": "the throttle is recorded before delivery",
+      "find": "  if (r.ok) { await record(); return 'sent' }",
+      "replace": "  await record()\n  if (r.ok) return 'sent'",
+      "expect": "FAIL an outage alert Telegram did not take"
+    }
+  ]
+}

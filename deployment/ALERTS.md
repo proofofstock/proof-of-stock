@@ -21,11 +21,24 @@ off, and one more when it clears.
 | sources disagree | more than 10% of tokens refused with `sources_disagree` | the last run row |
 | a source changed its format | a new field, a field gone, a type changed, or a list that shrank by more than 10% (Coinbase, Robinhood, DexScreener) | `shape_changes` in the run row (`evm/core/stocks/shape.mjs`) |
 | the token streams stopped | the newest `static/token-static-*` day file of a chain's token dataset (another project's collector) is older than 8 h, or cannot be read: "the token streams that feed the look-alike list have not been updated for X h; the list may be stale" | `tokenStreamChecks`, `TOKEN_STREAM_MAX_AGE_S` |
-| a token's B20 transfer rules changed | a Base token's bound policy id, its pause, or a policy's answer for an account we check differs from what the owner was last told (docs/b20-transfers-tz.md §5). `stp-web` reads the rules every 5 minutes, writes one dated `[b20]` line to its journal per change, and serves each token's current baseline under `base.b20.tokens` and the changes it saw lately, each with its block and time, under `base.b20.changes` in `/api/status` (the probe wallet named `ordinary_wallet`, never by its address). `stp-health` keeps the baseline it last told the owner about and the changes it told in `/var/lib/stp-alerts/b20-sent.json`, sends one alert per listed change not told (so a pause and an unpause between two runs are two alerts), then one per difference with the baseline (after a restart of `stp-web`), never for a block not above the last one told, counts it only when Telegram took it, and writes the file after each one; so a restart of `stp-web`, a burst of changes or a run cut short loses and repeats nothing. Without the bot's settings nothing counts as told, and the changes wait. `stp-web` holds no bot token | `stp-health`, every 15 min, from `/api/status` |
+| a token's B20 transfer rules changed | a Base token's bound policy id, its pause, or a policy's answer for an account we check changed between two readings both RPCs agreed on (docs/b20-transfers-tz.md §5). `stp-web` writes each change, with the baseline it leads to and a sequence high-water mark that never goes down, to one file written atomically, `/var/lib/stp-b20/b20-state.json` (`StateDirectory=stp-b20`), so a restart or a crash loses and repeats nothing; a write that fails commits nothing and shows as `outbox_write_failed` and one dated `[b20]` journal line; `stp-health` reads the outbox from `/api/status/b20/events` with its cursor in `/var/lib/stp-alerts/b20-sent.json`, batches a burst into few messages, each line with the change's stable id, and counts a message only when Telegram answered ok with a message id (a short `retry_after` is waited for). A cursor file it cannot read, or cannot write after a send, stops B20 alerts and is itself an alert; the file the deployed release before this one wrote there (`{ tokens, told }`) is taken as an upgrade: its outbox did not exist, so the cursor starts at 0 and everything the new outbox holds is told; any other file without a valid cursor is an error and an alert. Changes the site dropped before they were told, gaps inside the outbox and an outbox reset (a new outbox epoch) are said. During a Telegram outage nothing moves; a batch Telegram refuses while it takes other messages is moved past after three runs, and only once a loss notice naming its ids has been delivered. At-least-once: a message Telegram took whose answer was lost comes again, with the same ids. `stp-web` holds no bot token | `stp-health`, every 15 min |
+| the B20 reader is blind | its last cycle that read both RPCs and agreed is older than 20 min, or there has been none (`base.b20.last_ok_at` in `/api/status`); clears when a cycle succeeds | `stp-health`, every 15 min |
 | no backup | the last successful backup of `/var/lib/pos` is older than 24 h, or none is recorded ([BACKUP.md](BACKUP.md)) | `backupChecks`, `/var/lib/pos-backup/status.json` |
+| `stale:npm-guard` | the latest `@proofofstock/guard` on npm (`registry.npmjs.org/@proofofstock%2fguard/latest`) has been below the deployed release's `packages/proofofstock-guard/package.json` for more than 3 days. Publishing is the owner's step ([PUBLISHING.md](PUBLISHING.md) §1) | `stp-health`, every 15 min, `staleChecks` |
+| `stale:mcp-registry` | the official MCP registry's latest version of our server (`registry.modelcontextprotocol.io/v0/servers/<name>/versions/latest`, by the `name` in `server.json`) has been below the deployed release's `server.json` for more than 3 days ([PUBLISHING.md](PUBLISHING.md) §2) | `stp-health`, every 15 min, `staleChecks` |
+| `stale:release` | `[Unreleased]` in the deployed release's `CHANGELOG.md` has entries and its newest dated release is more than 7 days old (counted in UTC days): changes are deployed but no release is cut | `stp-health`, every 15 min, `staleChecks` |
 
-The same alert is sent at most once an hour while it lasts. The thresholds are `THRESHOLDS` and the constants beside
+The same alert is sent at most once an hour while it lasts. The throttle and a resolution are recorded only once the message is delivered, under a lock on the state file shared by `stp-health` and `stp-alert@`, so a failed alert is tried again and no writer loses another's entry. The thresholds are `THRESHOLDS` and the constants beside
 each check in `scripts/stocks/health-check.mjs`.
+
+The three `stale:` checks compare the release `stp-health` runs from (`/opt/stp/current`) with what the world sees
+(owner, 27.11: every merge was deployed, but nothing was published or released, and nothing said so). "More than 3
+days" counts from the first run that saw the registry behind; that time is kept under `stale-since` in the alert state
+file (`/var/lib/stp-alerts/state.json`) and dropped once the registry catches up. Within the 3 days the check is neither
+an alert nor a clear, so a lost state file never sends RESOLVED for something still behind. A registry that does not
+answer, or answers about another package or server, is not compared: the run writes one `[stp-health]` line to the
+journal saying so and keeps the first-seen time, and it is never an alert by itself. The registries are asked only in the
+run itself; `npm test` injects its fetch and asks nobody.
 
 The 8 hours for the token streams come from the host (12.11, 30 days of `observed_at`): ordinary quiet stretches last
 up to 5.1 h, and the one real outage (1 to 2 Nov) lasted about 30 h on both chains. `STP_TOKEN_STREAM_MAX_AGE_H` in the
@@ -91,3 +104,10 @@ goes silent. POS's own bot needs no code change, only a new token in two places.
 
 5. Once the test message arrived from the new bot, `/etc/stp/alert.env` may be deleted
    (`rm /etc/stp/alert.env`); the units ignore a missing one.
+
+## B20 outbox (host step, once)
+
+`deployment/systemd/stp-web.service` gives the site a state directory for the B20 outbox: `StateDirectory=stp-b20` and
+`STP_B20_DIR=/var/lib/stp-b20`. After the release that carries it, as root: `systemctl daemon-reload && systemctl
+restart stp-web`. systemd creates `/var/lib/stp-b20` owned by `pos`; nothing else is needed. Without it the site keeps
+the outbox in memory, and a restart forgets changes not yet told (`base.b20.durable` in `/api/status` says which).

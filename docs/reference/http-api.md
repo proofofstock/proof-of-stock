@@ -135,6 +135,7 @@ is still not listed. With `addresses`, one held address fails the whole batch wi
 |---|---|---|
 | 200 | the result | `Cache-Control: public, max-age=300` when listed, `max-age=60` otherwise; `Access-Control-Allow-Origin: *` |
 | 400 | `chain must be one of base, robinhood` or `address must be 0x followed by 40 hex characters` | CORS |
+| 400 | with no `address` and no `addresses` at all: `{ "error", "example", "docs" }`, an error that shows one working request (`example`) and links this section (`docs`) | CORS |
 | 503 | `{ "error": "registry unavailable", "registries_checked", "chain", "address", "registry_age_s", "checked_at" }`: the registry was never read, or was read more than 900 s ago | `Cache-Control: no-store`, `Retry-After: 60`, CORS |
 | 503 | `{ "error": "no verdict: the issuer list names this address, but the chain does not back it", "reason", "held_since", "registries_checked", "chain", "address", "registry_age_s", "checked_at", "issuer_factory" }`: the record is held by the list locks. `reason` is `issuer_prefix_mismatch` (on Base, no pinned prefix), `factory_check_unavailable` (no factory mirror we trust), `factory_conflict` (the factory never created it, or the chain took a creation back) or `awaiting_factory_confirmation` (a new listing not yet seen created, or not yet confirmed by the second RPC). `held_since` is when the address first appeared on the issuer's list, or null | `Cache-Control: no-store`, `Retry-After: 60`, CORS |
 | 503 | from the [kill switch](#kill-switch), while it is tripped | |
